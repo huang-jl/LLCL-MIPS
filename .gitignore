@@ -8,6 +8,7 @@
 *.a
 
 # sbt specific
+.bsp/
 .cache/
 .history/
 .lib/
@@ -31,6 +32,14 @@ bin/
 .project
 .settings
 .cache-main
+
+# VSCode
+.vscode/
+
+# Metals
+.metals/
+.bloop/
+project/project
 
 #User
 /*.vhd
