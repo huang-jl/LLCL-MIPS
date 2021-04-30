@@ -9,7 +9,7 @@ class Fetch extends Component {
   val io = new Bundle {
     val dataOut = out(FetchData(32))
     val bus = master(
-      SramBus(SramBusConfig(dataWidth = 32, addrWidth = 32, selWidth = 2))
+      SramBus(ConstantVal.SRAM_BUS_CONFIG)
     )
   }
 

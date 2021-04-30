@@ -23,4 +23,16 @@ case class SramBus(config: SramBusConfig) extends Bundle with IMasterSlave {
     out(req, wr, wdata, size, addr)
     in(rdata, addrOk, dataOk)
   }
+
+  def <<(that: SramBus): Unit = this >> that
+  def >>(that: SramBus): Unit = {
+    that.req := this.req
+    that.wr := this.wr
+    that.wdata := this.wdata
+    that.size := this.size
+    that.addr := this.addr
+    this.rdata := that.rdata
+    this.addrOk := that.addrOk
+    this.dataOk := that.dataOk
+  }
 }
