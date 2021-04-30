@@ -2,7 +2,6 @@ package cpu.defs
 
 import spinal.core._
 import spinal.lib.IMasterSlave
-import spinal.lib.bus.amba3.apb.Apb3
 
 case class SramBusConfig(
   dataWidth: Int,
@@ -21,7 +20,7 @@ case class SramBus(config: SramBusConfig) extends Bundle with IMasterSlave{
   val rdata = Bits(config.dataWidth bits)
 
   override def asMaster(): Unit = {
-    out(wr, wdata, size, addr)
+    out(req, wr, wdata, size, addr)
     in(rdata, addrOk, dataOk)
   }
 }
