@@ -8,12 +8,14 @@ import spinal.lib.bus.amba4.axi._
 
 // Direct-Mapped Cache
 case class ICacheConfig(
-                         lineWidth: Int = 256,
+                         lineSize: Int = 256,  //256B = 64word
                          cacheSize: Int = 16 * 256 //4KiB
                        ) {
-  def lineNum: Int = cacheSize / lineWidth
+  def lineNum: Int = cacheSize / lineSize
 
-  def wordNumPerLine: Int = lineWidth / 32
+  def wordNumPerLine: Int = lineSize / 4
+
+  def lineWidth: Int = log2Up(lineSize)
 
   def tagWidth: Int = {
     val addrWidth = 32
@@ -86,7 +88,7 @@ class ICache(config: ICacheConfig) extends Component {
   io.axi.ar.payload.cache := 0
   io.axi.ar.payload.prot := 0
   io.axi.ar.len := config.wordNumPerLine
-  io.axi.ar.size := U"3'b101" //2^5 = 32
+  io.axi.ar.size := U"3'b010" //2^2 = 4Bytes
   io.axi.ar.burst := B"2'b01" //INCR
   io.axi.ar.valid := False
   //r
@@ -109,7 +111,7 @@ class ICache(config: ICacheConfig) extends Component {
     //    println(s"wordTag = (${start} downto ${start - config.wordOffsetWidth + 1})")
   }
   val comparison = new Area {
-    val hit: Bool = lines(tags.lineTag).tag === tags.addrTag
+    val hit: Bool = lines(tags.lineTag).tag === tags.addrTag simPublic()
     val hitData = lines(tags.lineTag).datas(tags.wordTag)
   }
 
