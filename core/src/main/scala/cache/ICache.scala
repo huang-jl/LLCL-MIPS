@@ -8,25 +8,25 @@ import spinal.lib.bus.amba4.axi._
 
 // Direct-Mapped Cache
 case class ICacheConfig(
-                         lineSize: Int = 256,  //256B = 64word
+                         lineSize: Int = 256, //256B = 64word
                          cacheSize: Int = 16 * 256 //4KiB
                        ) {
   def lineNum: Int = cacheSize / lineSize
 
-  def wordNumPerLine: Int = lineSize / 4
+  def wordPerLine: Int = lineSize / 4
 
-  def lineWidth: Int = log2Up(lineSize)
+  def lineOffset: Int = log2Up(lineSize)
 
   def tagWidth: Int = {
     val addrWidth = 32
-    addrWidth - byteOffsetWidth - wordOffsetWidth - lineOffsetWidth
+    addrWidth - byteIndexWidth - wordIndexWidth - lineIndexWidth
   }
 
-  def lineOffsetWidth: Int = log2Up(lineNum)
+  def lineIndexWidth: Int = log2Up(lineNum)
 
-  def wordOffsetWidth: Int = log2Up(wordNumPerLine)
+  def wordIndexWidth: Int = log2Up(wordPerLine)
 
-  def byteOffsetWidth: Int = 2
+  def byteIndexWidth: Int = 2
   //  def cacheTagRange: Range = {
   //    (31 downto (32 - tagWidth))
   //  }
@@ -53,87 +53,79 @@ object ICache {
 
 class CPUICacheInterface extends Bundle with IMasterSlave {
   val read = Bool
-  val raddr = UInt(32 bits)
-  val rdata = Bits(32 bits)
+  val addr = UInt(32 bits)
+  val data = Bits(32 bits)
   val stall = Bool
 
   override def asMaster(): Unit = {
-    out(read, raddr)
-    in(rdata, stall)
+    out(read, addr)
+    in(data, stall)
   }
 }
 
 
 class ICache(config: ICacheConfig) extends Component {
-  def willMem: Bool = {
-    io.cpu.read && !comparison.hit
-  }
-
   val io = new Bundle {
     val cpu = slave(new CPUICacheInterface())
     val axi = master(Axi4ReadOnly(ICache.axiConfig))
   }
   // Cache configuration
-  val lines = Vec(new ICacheLine(
-    CacheLineConfig(wordNum = config.wordNumPerLine, tagWidth = config.tagWidth)
-  ), config.lineNum) simPublic()
+  val cacheData = new ICacheData(CacheLineConfig(config.wordPerLine, config.tagWidth), config.lineNum) simPublic()
+  val readCounter = Reg(UInt(config.wordIndexWidth bits)) init (0) // The number of readed "Word"
+  //Tag Comparison
+  val comparison = new Area {
+    val tag = Bits(config.tagWidth bits)
+    val lineIndex = UInt(config.lineIndexWidth bits) simPublic()
+    val wordIndex = UInt(config.wordIndexWidth bits) simPublic()
 
+    var start = 31
+    tag := io.cpu.addr(start downto start - config.tagWidth + 1).asBits
+    //    println(s"addrTag = (${start} downto ${start - config.tagWidth + 1})")
+    start = start - config.tagWidth
+    lineIndex := io.cpu.addr(start downto start - config.lineIndexWidth + 1)
+    //    println(s"lineTag = (${start} downto ${start - config.lineOffsetWidth + 1})")
+    start = start - config.lineIndexWidth
+    wordIndex := io.cpu.addr(start downto start - config.wordIndexWidth + 1)
+    //    println(s"wordTag = (${start} downto ${start - config.wordOffsetWidth + 1})")
+    val hit: Bool = cacheData.hit(lineIndex, tag) simPublic()
+    val hitData = cacheData.readData(lineIndex, wordIndex)
+    val willMem = io.cpu.read && !hit
+  }
 
   //Default Value
   //Constant AXI in ICache
   //ar
-  io.axi.ar.payload.addr := (io.cpu.raddr(31 downto config.byteOffsetWidth) ## B"2'b00").asUInt
-  io.axi.ar.payload.id := 0
-  io.axi.ar.payload.lock := 0
-  io.axi.ar.payload.cache := 0
-  io.axi.ar.payload.prot := 0
-  io.axi.ar.len := config.wordNumPerLine
+  io.axi.ar.addr := (comparison.tag ## comparison.lineIndex ## U(0, config.lineOffset bits)).asUInt
+  io.axi.ar.id := 0
+  io.axi.ar.lock := 0
+  io.axi.ar.cache := 0
+  io.axi.ar.prot := 0
+  io.axi.ar.len := config.wordPerLine - 1
   io.axi.ar.size := U"3'b010" //2^2 = 4Bytes
   io.axi.ar.burst := B"2'b01" //INCR
   io.axi.ar.valid := False
   //r
   io.axi.r.ready := False
 
-  //Tag Comparison
-  val tags = new Area {
-    val addrTag = Bits(config.tagWidth bits)
-    val lineTag = UInt(config.lineOffsetWidth bits) simPublic()
-    val wordTag = UInt(config.wordOffsetWidth bits) simPublic()
-
-    var start = 31
-    addrTag := io.cpu.raddr(start downto start - config.tagWidth + 1).asBits
-    //    println(s"addrTag = (${start} downto ${start - config.tagWidth + 1})")
-    start = start - config.tagWidth
-    lineTag := io.cpu.raddr(start downto start - config.lineOffsetWidth + 1)
-    //    println(s"lineTag = (${start} downto ${start - config.lineOffsetWidth + 1})")
-    start = start - config.lineOffsetWidth
-    wordTag := io.cpu.raddr(start downto start - config.wordOffsetWidth + 1)
-    //    println(s"wordTag = (${start} downto ${start - config.wordOffsetWidth + 1})")
-  }
-  val comparison = new Area {
-    val hit: Bool = lines(tags.lineTag).tag === tags.addrTag simPublic()
-    val hitData = lines(tags.lineTag).datas(tags.wordTag)
-  }
 
   //State Machine
   val iCacheFSM = new StateMachine {
-    val read_cnt = Reg(UInt(config.wordOffsetWidth bits)) init (0) // The number of readed "Word"
     val IDLE: State = new State with EntryPoint {
       whenIsActive {
-        when(willMem)(goto(AXI_READ_START))
+        when(comparison.willMem)(goto(AXI_READ_START))
       }
     }
 
     val AXI_READ_START: State = new State {
       whenIsActive {
-        read_cnt := 0
-        goto(AXI_READ)
+        readCounter := 0
+        when(io.axi.ar.ready)(goto(AXI_READ))
       }
     }
 
     val AXI_READ: State = new State {
       whenIsActive {
-        when(io.axi.ar.ready)(read_cnt := read_cnt + 1)
+        when(io.axi.r.valid)(readCounter := readCounter + 1)
         when(io.axi.r.last)(goto(WRITE_CACHE))
       }
     }
@@ -147,7 +139,6 @@ class ICache(config: ICacheConfig) extends Component {
 
   val AXI_READ_START = new Area {
     when(iCacheFSM.isActive(iCacheFSM.AXI_READ_START)) {
-      io.axi.ar.addr := io.cpu.raddr
       io.axi.ar.valid := True
     }
   }
@@ -156,21 +147,16 @@ class ICache(config: ICacheConfig) extends Component {
     when(iCacheFSM.isActive(iCacheFSM.AXI_READ)) {
       when(io.axi.r.valid) {
         io.axi.r.ready := True
-        lines(tags.lineTag).datas(iCacheFSM.read_cnt) := io.axi.r.data
-        lines(tags.lineTag).tag := tags.addrTag
+        cacheData.writeData(lineIndex = comparison.lineIndex, wordIndex = readCounter, data = io.axi.r.data)
+      }
+      when(io.axi.r.last) {
+        cacheData.validate(comparison.lineIndex)
+        cacheData.writeTag(lineIndex = comparison.lineIndex, tag = comparison.tag)
       }
     }
   }
 
-  val WRITE_CACHE = new Area {
-    when(iCacheFSM.isActive(iCacheFSM.WRITE_CACHE)) {
-
-    }
-  }
-
-
-
   //CPU-Cache Interface
-  io.cpu.rdata := comparison.hitData
-  io.cpu.stall := willMem || !iCacheFSM.isActive(iCacheFSM.IDLE)
+  io.cpu.data := comparison.hitData
+  io.cpu.stall := comparison.willMem || !iCacheFSM.isActive(iCacheFSM.IDLE)
 }
