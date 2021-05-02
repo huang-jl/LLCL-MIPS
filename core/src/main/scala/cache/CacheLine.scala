@@ -26,6 +26,24 @@ class CacheDataBase[T <: CacheLineBase](config: CacheLineConfig, lineNum: Int, f
     lines(lineIndex).datas(wordIndex) := data
   }
 
+  def writeDataByteEnable(lineIndex: UInt, wordIndex: UInt, byteIndex: UInt, data: Bits, byteEnable: Bits): Unit = {
+    //byteEnable is 2 bits signal
+    //0 ------> byteIndex*8+7 : byteIndex*8
+    //1 ------> byteIndex*8+15: byteIndex*8
+    //2 ------> whole word
+    switch(byteEnable) {
+      is(0) {
+        lines(lineIndex).datas(wordIndex)(byteIndex << 3, 8 bits) := data
+      }
+      is(1) {
+        lines(lineIndex).datas(wordIndex)(byteIndex << 3, 16 bits) := data
+      }
+      is(2) {
+        lines(lineIndex).datas(wordIndex) := data
+      }
+    }
+  }
+
   def writeTag(lineIndex: UInt, tag: Bits): Unit = {
     lines(lineIndex).tag := tag
   }
@@ -34,7 +52,7 @@ class CacheDataBase[T <: CacheLineBase](config: CacheLineConfig, lineNum: Int, f
     lines(lineIndex).datas(wordIndex)
   }
 
-  def readTag(lineIndex:UInt):Bits = {
+  def readTag(lineIndex: UInt): Bits = {
     lines(lineIndex).tag
   }
 

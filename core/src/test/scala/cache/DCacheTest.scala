@@ -12,7 +12,7 @@ class DCacheTest extends Component {
   val io = new Bundle {
     val cpu = slave(new CPUDCacheInterface)
   }
-  val  cpu = new CPUDCacheInterface
+  val cpu = new CPUDCacheInterface
   val dCache = new DCache(DCacheConfig())
   val ram = new axi_ram(AXIRamConfig(32, 16, 4))
   cpu >> dCache.io.cpu
@@ -35,58 +35,94 @@ object DCacheTest {
 
   def main(args: Array[String]): Unit = {
     val compile = SimConfig.addSimulatorFlag("-Wno-CASEINCOMPLETE").addRtl("./rtl/axi_ram.v").withWave.allOptimisation.compile(new DCacheTest)
-    compile.doSim("DCacheRead", 2021) { dut => {
+    compile.doSim("DCache_read_only", 2021) { dut => {
       dut.clockDomain.forkStimulus(10)
       dut.clockDomain.assertReset()
       sleep(10)
       dut.clockDomain.deassertReset()
 
       val initMemData = getMemInitData
-      for(i <- 0 to 200){
+      dut.io.cpu.byteEnable #= 2
+      for (i <- 0 to 200) {
         val randomRamAddr = rand.nextInt(0xffff) & 0xfffc
         val cpuAddr = (0xbfc00000L + randomRamAddr) & ((0x1L << 32) - 1)
-        dut.clockDomain.waitRisingEdge(rand.nextInt(3) + 1)
+        dut.clockDomain.waitRisingEdge(rand.nextInt(3))
         dut.io.cpu.addr #= cpuAddr
         dut.io.cpu.read #= true
         dut.io.cpu.write #= false
-        dut.clockDomain.waitFallingEdge()
-        while(dut.io.cpu.stall.toBoolean)(dut.clockDomain.waitSampling())
+        dut.clockDomain.waitFallingEdge()   //read can get from the same cycle
+        while (dut.io.cpu.stall.toBoolean) (dut.clockDomain.waitSampling())
         assert(dut.io.cpu.rdata.toLong == initMemData(randomRamAddr))
         dut.io.cpu.read #= false
       }
     }
     }
 
-    compile.doSim("DCachedWrite", 2021) {dut => {
+    compile.doSim("DCached_read_after_write", 2021) { dut => {
 
       dut.clockDomain.forkStimulus(10)
       dut.clockDomain.assertReset()
       sleep(10)
       dut.clockDomain.deassertReset()
 
-      val initMemData = getMemInitData
-      var writeData = Map[Long, Long]()
-      for(i <- 0 to 200){
-        val randomRamAddr = rand.nextInt(0xffff)
+      dut.io.cpu.byteEnable #= 2
+      for (i <- 0 to 200) {
+        val randomRamAddr = rand.nextInt(0xffff) &0xfffc
         val cpuAddr = (0xbfc00000L + randomRamAddr) & ((0x1L << 32) - 1)
-        val randData = rand.nextLong() & 0xffffffff
-        writeData += (cpuAddr -> randData)
-        dut.clockDomain.waitRisingEdge(rand.nextInt(3) + 1)
+        val randData = rand.nextLong() & 0xffffffffL
+        dut.clockDomain.waitRisingEdge(rand.nextInt(3))
         dut.io.cpu.addr #= cpuAddr
         dut.io.cpu.read #= false
         dut.io.cpu.write #= true
         dut.io.cpu.wdata #= randData
-        dut.clockDomain.waitFallingEdge()
-        while(dut.io.cpu.stall.toBoolean)(dut.clockDomain.waitSampling())
+        dut.clockDomain.waitRisingEdge() // write must wait for at least one cycle
+        while (dut.io.cpu.stall.toBoolean) (dut.clockDomain.waitSampling())
         dut.io.cpu.read #= false
         dut.io.cpu.write #= false
-        dut.clockDomain.waitRisingEdge(rand.nextInt(3))
+        dut.clockDomain.waitRisingEdge(rand.nextInt(3) + 1)
         dut.io.cpu.read #= true
         dut.io.cpu.write #= false
         dut.io.cpu.addr #= cpuAddr
         dut.clockDomain.waitFallingEdge()
-        assert(!dut.io.cpu.stall.toBoolean && (dut.io.cpu.rdata.toLong == writeData(cpuAddr)))
+        assert(!dut.io.cpu.stall.toBoolean && dut.io.cpu.rdata.toLong == randData)
       }
-    }}
+    }
+    }
+
+    compile.doSim("Random_read_write", 2021) { dut =>
+      dut.clockDomain.forkStimulus(10)
+      dut.clockDomain.assertReset()
+      sleep(10)
+      dut.clockDomain.deassertReset()
+
+      var memData = getMemInitData
+      dut.io.cpu.byteEnable #= 2
+      for (i <- 0 to 10000) {
+        val op = rand.nextInt(2) //0: read, 1: write
+        val randomRamAddr = rand.nextInt(0xffff) & 0xfffc
+        val cpuAddr = (0xbfc00000L + randomRamAddr) & ((0x1L << 32) - 1)
+        if (op == 0) {
+          dut.clockDomain.waitRisingEdge(rand.nextInt(3))
+          dut.io.cpu.read #= true
+          dut.io.cpu.write #= false
+          dut.io.cpu.addr #= cpuAddr
+          dut.clockDomain.waitFallingEdge() //read can get from the same cycle
+          while (dut.io.cpu.stall.toBoolean) (dut.clockDomain.waitSampling())
+          assert(dut.io.cpu.rdata.toLong == memData(randomRamAddr))
+        } else if (op == 1) {
+          val randData = rand.nextLong() & 0xffffffffL
+          memData += (randomRamAddr -> randData)
+          dut.clockDomain.waitRisingEdge(rand.nextInt(3) + 1)
+          dut.io.cpu.addr #= cpuAddr
+          dut.io.cpu.read #= false
+          dut.io.cpu.write #= true
+          dut.io.cpu.wdata #= randData
+          // write must wait for at least one cycle
+          do (dut.clockDomain.waitSampling()) while (dut.io.cpu.stall.toBoolean)
+        }
+        dut.io.cpu.read #= false
+        dut.io.cpu.write #= false
+      }
+    }
   }
 }

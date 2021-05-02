@@ -149,7 +149,7 @@ class ICache(config: ICacheConfig) extends Component {
         io.axi.r.ready := True
         cacheData.writeData(lineIndex = comparison.lineIndex, wordIndex = readCounter, data = io.axi.r.data)
       }
-      when(io.axi.r.last) {
+      when(io.axi.r.last & io.axi.r.valid) {
         cacheData.validate(comparison.lineIndex)
         cacheData.writeTag(lineIndex = comparison.lineIndex, tag = comparison.tag)
       }

@@ -35,7 +35,7 @@ class axi_ram(config: AXIRamConfig) extends BlackBox {
       val pattern = "(.*?)_(ar|r|w|aw|b)_(.*?)".r
       var target = pattern.replaceFirstIn(bt.getName(), "s_$1_$2$3")
       target = "payload_".r.replaceAllIn(target, "")
-      println(s"origin = ${bt.getName()}, target = $target")
+//      println(s"origin = ${bt.getName()}, target = $target")
       bt.setName(target)
     })
   }

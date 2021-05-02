@@ -46,7 +46,7 @@ class CPUDCacheInterface extends Bundle with IMasterSlave {
   val addr = UInt(32 bits)
   val rdata = Bits(32 bits)
   val wdata = Bits(32 bits)
-  val byteEnable = UInt(2 bits)
+  val byteEnable = Bits(2 bits)
   val stall = Bool
 
   override def asMaster(): Unit = {
@@ -91,6 +91,7 @@ class DCache(config: DCacheConfig) extends Component {
     val tag = Bits(config.tagWidth bits)
     val lineIndex = UInt(config.lineIndexWidth bits) simPublic()
     val wordIndex = UInt(config.wordIndexWidth bits) simPublic()
+    val byteIndex = UInt(config.byteIndexWidth bits) simPublic()
 
     var start = 31
     tag := io.cpu.addr(start downto start - config.tagWidth + 1).asBits
@@ -98,12 +99,15 @@ class DCache(config: DCacheConfig) extends Component {
     lineIndex := io.cpu.addr(start downto start - config.lineIndexWidth + 1)
     start = start - config.lineIndexWidth
     wordIndex := io.cpu.addr(start downto start - config.wordIndexWidth + 1)
+    start = start - config.wordIndexWidth
+    assert(start - config.byteIndexWidth + 1 == 0 && start == 1)
+    byteIndex := io.cpu.addr(start downto start - config.byteIndexWidth + 1)
 
     val cacheTag = cacheData.readTag(lineIndex) //tag in the cache
     val hit: Bool = cacheData.hit(lineIndex, tag) simPublic()
-    val hitData = cacheData.readData(lineIndex, wordIndex)
-    val dirty: Bool = cacheData.isDirty(lineIndex)
-    val writeMem: Bool = (io.cpu.read || io.cpu.write) & !hit & dirty
+    val hitData = cacheData.readData(lineIndex, wordIndex) simPublic()
+    val dirty: Bool = cacheData.isDirty(lineIndex) simPublic()
+    val writeMem: Bool = (io.cpu.read || io.cpu.write) & !hit & dirty simPublic()
     val readMem: Bool = (io.cpu.read || io.cpu.write) & !hit & !dirty
     val writeCache: Bool = io.cpu.write & hit
   }
@@ -145,7 +149,8 @@ class DCache(config: DCacheConfig) extends Component {
         when(comparison.writeMem)(goto(AXI_WRITE_START))
           .elsewhen(comparison.readMem)(goto(AXI_READ_START))
           .elsewhen(comparison.writeCache) {
-            cacheData.writeData(comparison.lineIndex, comparison.wordIndex, io.cpu.wdata)
+            cacheData.writeDataByteEnable(lineIndex = comparison.lineIndex, wordIndex = comparison.wordIndex,
+              byteIndex = comparison.byteIndex, data = io.cpu.wdata, byteEnable = io.cpu.byteEnable)
             cacheData.markDirty(comparison.lineIndex)
             goto(DONE)
           }
@@ -163,9 +168,9 @@ class DCache(config: DCacheConfig) extends Component {
         when(io.cachedAxi.r.valid) {
           readCounter := readCounter + 1
           io.cachedAxi.r.ready := True
-          cacheData.writeData(comparison.lineIndex, comparison.wordIndex, io.cachedAxi.r.data)
+          cacheData.writeData(comparison.lineIndex, readCounter, io.cachedAxi.r.data)
         }
-        when(io.cachedAxi.r.last) {
+        when(io.cachedAxi.r.last & io.cachedAxi.r.valid) {
           cacheData.writeTag(comparison.lineIndex, comparison.tag)
           cacheData.validate(comparison.lineIndex)
           cacheData.clearDirty(comparison.lineIndex)
@@ -183,7 +188,10 @@ class DCache(config: DCacheConfig) extends Component {
     val AXI_WRITE: State = new State {
       whenIsActive {
         when(io.cachedAxi.w.ready)(writeCounter := writeCounter + 1)
-        when(io.cachedAxi.w.last & io.cachedAxi.w.ready)(goto(AXI_WRITE_DONE))
+        when(io.cachedAxi.w.last & io.cachedAxi.w.ready) {
+          cacheData.clearDirty(comparison.lineIndex)
+          goto(AXI_WRITE_DONE)
+        }
         io.cachedAxi.w.valid := True
       }
     }
@@ -198,6 +206,6 @@ class DCache(config: DCacheConfig) extends Component {
     }
   }
 
-  io.cpu.stall := !dCacheFSM.isActive(dCacheFSM.IDLE) || comparison.readMem || comparison.writeMem || comparison.writeCache
+  io.cpu.stall := !dCacheFSM.isActive(dCacheFSM.IDLE) || comparison.readMem || comparison.writeMem
   io.cpu.rdata := comparison.hitData
 }
