@@ -27,17 +27,6 @@ case class ICacheConfig(
   def wordIndexWidth: Int = log2Up(wordPerLine)
 
   def byteIndexWidth: Int = 2
-  //  def cacheTagRange: Range = {
-  //    (31 downto (32 - tagWidth))
-  //  }
-  //  def lineTagRange: Range = {
-  //    val start = (32 - tagWidth)  - 1
-  //    (start downto (start - log2Up(lineNum) + 1))
-  //  }
-  //  def wordTagRange: Range = {
-  //    val wordOffsetWidth = log2Up(lindWidth / 32)
-  //    (2 + wordOffsetWidth - 1 downto 2)
-  //  }
 }
 
 object ICache {
@@ -60,6 +49,16 @@ class CPUICacheInterface extends Bundle with IMasterSlave {
   override def asMaster(): Unit = {
     out(read, addr)
     in(data, stall)
+  }
+
+  def <<(that: CPUICacheInterface): Unit = that >> this
+
+  def >>(that: CPUICacheInterface): Unit = {
+    //this is master
+    that.read := this.read
+    that.addr := this.addr
+    this.data := that.data
+    this.stall := that.stall
   }
 }
 
@@ -119,40 +118,29 @@ class ICache(config: ICacheConfig) extends Component {
     val AXI_READ_START: State = new State {
       whenIsActive {
         readCounter := 0
+        io.axi.ar.valid := True
         when(io.axi.ar.ready)(goto(AXI_READ))
       }
     }
 
     val AXI_READ: State = new State {
       whenIsActive {
-        when(io.axi.r.valid)(readCounter := readCounter + 1)
-        when(io.axi.r.last)(goto(WRITE_CACHE))
+        when(io.axi.r.valid) {
+          readCounter := readCounter + 1
+          io.axi.r.ready := True
+          cacheData.writeData(lineIndex = comparison.lineIndex, wordIndex = readCounter, data = io.axi.r.data)
+        }
+        when(io.axi.r.last & io.axi.r.valid) {
+          goto(WRITE_CACHE)
+          cacheData.validate(comparison.lineIndex)
+          cacheData.writeTag(lineIndex = comparison.lineIndex, tag = comparison.tag)
+        }
       }
     }
 
     val WRITE_CACHE: State = new State {
       //Use for the last word to write back cache
       whenIsActive(goto(IDLE))
-    }
-  }
-
-
-  val AXI_READ_START = new Area {
-    when(iCacheFSM.isActive(iCacheFSM.AXI_READ_START)) {
-      io.axi.ar.valid := True
-    }
-  }
-
-  val AXI_READ = new Area {
-    when(iCacheFSM.isActive(iCacheFSM.AXI_READ)) {
-      when(io.axi.r.valid) {
-        io.axi.r.ready := True
-        cacheData.writeData(lineIndex = comparison.lineIndex, wordIndex = readCounter, data = io.axi.r.data)
-      }
-      when(io.axi.r.last & io.axi.r.valid) {
-        cacheData.validate(comparison.lineIndex)
-        cacheData.writeTag(lineIndex = comparison.lineIndex, tag = comparison.tag)
-      }
     }
   }
 

@@ -43,14 +43,18 @@ object DCacheTest {
 
       val initMemData = getMemInitData
       dut.io.cpu.byteEnable #= 2
+      dut.io.cpu.read #= false
+      dut.io.cpu.write #= false
       for (i <- 0 to 200) {
         val randomRamAddr = rand.nextInt(0xffff) & 0xfffc
         val cpuAddr = (0xbfc00000L + randomRamAddr) & ((0x1L << 32) - 1)
-        dut.clockDomain.waitRisingEdge(rand.nextInt(3))
+        var waitCycle = rand.nextInt(3)
+        if (i == 0 && waitCycle == 0) waitCycle = 1
+        dut.clockDomain.waitRisingEdge(waitCycle)
         dut.io.cpu.addr #= cpuAddr
         dut.io.cpu.read #= true
         dut.io.cpu.write #= false
-        dut.clockDomain.waitFallingEdge()   //read can get from the same cycle
+        dut.clockDomain.waitFallingEdge() //read can get from the same cycle
         while (dut.io.cpu.stall.toBoolean) (dut.clockDomain.waitSampling())
         assert(dut.io.cpu.rdata.toLong == initMemData(randomRamAddr))
         dut.io.cpu.read #= false
@@ -66,11 +70,15 @@ object DCacheTest {
       dut.clockDomain.deassertReset()
 
       dut.io.cpu.byteEnable #= 2
+      dut.io.cpu.read #= false
+      dut.io.cpu.write #= false
       for (i <- 0 to 200) {
-        val randomRamAddr = rand.nextInt(0xffff) &0xfffc
+        val randomRamAddr = rand.nextInt(0xffff) & 0xfffc
         val cpuAddr = (0xbfc00000L + randomRamAddr) & ((0x1L << 32) - 1)
         val randData = rand.nextLong() & 0xffffffffL
-        dut.clockDomain.waitRisingEdge(rand.nextInt(3))
+        var waitCycle = rand.nextInt(3)
+        if (i == 0 && waitCycle == 0) waitCycle = 1
+        dut.clockDomain.waitRisingEdge(waitCycle)
         dut.io.cpu.addr #= cpuAddr
         dut.io.cpu.read #= false
         dut.io.cpu.write #= true
@@ -97,12 +105,16 @@ object DCacheTest {
 
       var memData = getMemInitData
       dut.io.cpu.byteEnable #= 2
+      dut.io.cpu.read #= false
+      dut.io.cpu.write #= false
       for (i <- 0 to 10000) {
         val op = rand.nextInt(2) //0: read, 1: write
         val randomRamAddr = rand.nextInt(0xffff) & 0xfffc
         val cpuAddr = (0xbfc00000L + randomRamAddr) & ((0x1L << 32) - 1)
+        var waitCycle = rand.nextInt(3)
+        if (i == 0 && waitCycle == 0) waitCycle = 1
         if (op == 0) {
-          dut.clockDomain.waitRisingEdge(rand.nextInt(3))
+          dut.clockDomain.waitRisingEdge(waitCycle)
           dut.io.cpu.read #= true
           dut.io.cpu.write #= false
           dut.io.cpu.addr #= cpuAddr
@@ -112,7 +124,7 @@ object DCacheTest {
         } else if (op == 1) {
           val randData = rand.nextLong() & 0xffffffffL
           memData += (randomRamAddr -> randData)
-          dut.clockDomain.waitRisingEdge(rand.nextInt(3) + 1)
+          dut.clockDomain.waitRisingEdge(waitCycle)
           dut.io.cpu.addr #= cpuAddr
           dut.io.cpu.read #= false
           dut.io.cpu.write #= true

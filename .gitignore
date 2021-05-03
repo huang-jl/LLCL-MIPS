@@ -6,6 +6,9 @@
 *.coe
 *.o
 *.a
+*.v
+
+!core/**/rtl/*.v
 
 # sbt specific
 .cache/
