@@ -53,3 +53,7 @@ project/project
 simWorkspace/
 tmp/
 null
+
+tests/func/bin.lds
+tests/func/convert
+tests/func/**/obj
