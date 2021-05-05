@@ -131,17 +131,17 @@ class ICache(config: ICacheConfig) extends Component {
           cacheData.writeData(lineIndex = comparison.lineIndex, wordIndex = readCounter, data = io.axi.r.data)
         }
         when(io.axi.r.last & io.axi.r.valid) {
-          goto(WRITE_CACHE)
           cacheData.validate(comparison.lineIndex)
           cacheData.writeTag(lineIndex = comparison.lineIndex, tag = comparison.tag)
+          goto(IDLE)
         }
       }
     }
 
-    val WRITE_CACHE: State = new State {
-      //Use for the last word to write back cache
-      whenIsActive(goto(IDLE))
-    }
+//    val WRITE_CACHE: State = new State {
+//      //Use for the last word to write back cache
+//      whenIsActive(goto(IDLE))
+//    }
   }
 
   //CPU-Cache Interface

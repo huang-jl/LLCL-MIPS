@@ -26,6 +26,36 @@ class CacheDataBase[T <: CacheLineBase](config: CacheLineConfig, lineNum: Int, f
     lines(lineIndex).datas(wordIndex) := data
   }
 
+  def writeTag(lineIndex: UInt, tag: Bits): Unit = {
+    lines(lineIndex).tag := tag
+  }
+
+  def readData(lineIndex: UInt, wordIndex: UInt): Bits = {
+    lines(lineIndex).datas(wordIndex)
+  }
+
+  def readTag(lineIndex: UInt): Bits = {
+    lines(lineIndex).tag
+  }
+
+  def hit(lineIndex: UInt, tag: Bits): Bool = {
+    lines(lineIndex).tag === tag & lines(lineIndex).valid
+  }
+
+  def invalidate(lineIndex: UInt): Unit = (lines(lineIndex).valid := False)
+
+  def validate(lineIndex: UInt): Unit = (lines(lineIndex).valid := True)
+}
+
+class ICacheData(config: CacheLineConfig, lineNum: Int) extends CacheDataBase[ICacheLine](config, lineNum, (x) => new ICacheLine(x))
+
+class DCacheData(config: CacheLineConfig, lineNum: Int) extends CacheDataBase[DCacheLine](config, lineNum, (x) => new DCacheLine(x)) {
+  def isDirty(lineIndex: UInt): Bool = (lines(lineIndex).dirty)
+
+  def markDirty(lineIndex: UInt): Unit = (lines(lineIndex).dirty := True)
+
+  def clearDirty(lineIndex: UInt): Unit = (lines(lineIndex).dirty := False)
+
   def writeDataByteEnable(lineIndex: UInt, wordIndex: UInt, byteIndex: UInt, data: Bits, byteEnable: Bits): Unit = {
     //byteEnable is 2 bits signal
     //0 ------> byteIndex*8+7 : byteIndex*8
@@ -66,34 +96,4 @@ class CacheDataBase[T <: CacheLineBase](config: CacheLineConfig, lineNum: Int, f
     }
     lines(lineIndex).datas(wordIndex) := wdata
   }
-
-  def writeTag(lineIndex: UInt, tag: Bits): Unit = {
-    lines(lineIndex).tag := tag
-  }
-
-  def readData(lineIndex: UInt, wordIndex: UInt): Bits = {
-    lines(lineIndex).datas(wordIndex)
-  }
-
-  def readTag(lineIndex: UInt): Bits = {
-    lines(lineIndex).tag
-  }
-
-  def hit(lineIndex: UInt, tag: Bits): Bool = {
-    lines(lineIndex).tag === tag & lines(lineIndex).valid
-  }
-
-  def invalidate(lineIndex: UInt): Unit = (lines(lineIndex).valid := False)
-
-  def validate(lineIndex: UInt): Unit = (lines(lineIndex).valid := True)
-}
-
-class ICacheData(config: CacheLineConfig, lineNum: Int) extends CacheDataBase[ICacheLine](config, lineNum, (x) => new ICacheLine(x))
-
-class DCacheData(config: CacheLineConfig, lineNum: Int) extends CacheDataBase[DCacheLine](config, lineNum, (x) => new DCacheLine(x)) {
-  def isDirty(lineIndex: UInt): Bool = (lines(lineIndex).dirty)
-
-  def markDirty(lineIndex: UInt): Unit = (lines(lineIndex).dirty := True)
-
-  def clearDirty(lineIndex: UInt): Unit = (lines(lineIndex).dirty := False)
 }
