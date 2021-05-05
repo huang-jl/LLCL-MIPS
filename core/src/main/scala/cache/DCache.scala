@@ -112,36 +112,38 @@ class DCache(config: DCacheConfig) extends Component {
     val writeCache: Bool = io.cpu.write & hit
   }
   //Default Value of AXI
-  //ar
-  io.cachedAxi.ar.addr := (comparison.tag ## comparison.lineIndex ## U(0, config.lineOffset bits)).asUInt
-  io.cachedAxi.ar.id := 0
-  io.cachedAxi.ar.lock := 0
-  io.cachedAxi.ar.cache := 0
-  io.cachedAxi.ar.prot := 0
-  io.cachedAxi.ar.len := config.wordPerLine - 1
-  io.cachedAxi.ar.size := U"3'b010" //2^2 = 4Bytes
-  io.cachedAxi.ar.burst := B"2'b01" //INCR
-  io.cachedAxi.ar.valid := False
-  //r
-  io.cachedAxi.r.ready := False
-  //Write
-  //aw
-  io.cachedAxi.aw.addr := (comparison.cacheTag ## comparison.lineIndex ## U(0, config.lineOffset bits)).asUInt
-  io.cachedAxi.aw.id := 0
-  io.cachedAxi.aw.lock := 0
-  io.cachedAxi.aw.cache := 0
-  io.cachedAxi.aw.prot := 0
-  io.cachedAxi.aw.len := config.wordPerLine - 1
-  io.cachedAxi.aw.size := U"3'b010" //2^2 = 4Bytes
-  io.cachedAxi.aw.burst := B"2'b01" //INCR
-  io.cachedAxi.aw.valid := False
-  //w
-  io.cachedAxi.w.valid := False
-  io.cachedAxi.w.last := (writeCounter === config.wordPerLine - 1)
-  io.cachedAxi.w.strb := B"4'b1111"
-  io.cachedAxi.w.data := cacheData.readData(comparison.lineIndex, writeCounter)
-  //b
-  io.cachedAxi.b.ready := True
+  val cachedDefault = new Area {
+    //ar
+    io.cachedAxi.ar.addr := (comparison.tag ## comparison.lineIndex ## U(0, config.lineOffset bits)).asUInt
+    io.cachedAxi.ar.id := 0
+    io.cachedAxi.ar.lock := 0
+    io.cachedAxi.ar.cache := 0
+    io.cachedAxi.ar.prot := 0
+    io.cachedAxi.ar.len := config.wordPerLine - 1
+    io.cachedAxi.ar.size := U"3'b010" //2^2 = 4Bytes
+    io.cachedAxi.ar.burst := B"2'b01" //INCR
+    io.cachedAxi.ar.valid := False
+    //r
+    io.cachedAxi.r.ready := False
+    //Write
+    //aw
+    io.cachedAxi.aw.addr := (comparison.cacheTag ## comparison.lineIndex ## U(0, config.lineOffset bits)).asUInt
+    io.cachedAxi.aw.id := 0
+    io.cachedAxi.aw.lock := 0
+    io.cachedAxi.aw.cache := 0
+    io.cachedAxi.aw.prot := 0
+    io.cachedAxi.aw.len := config.wordPerLine - 1
+    io.cachedAxi.aw.size := U"3'b010" //2^2 = 4Bytes
+    io.cachedAxi.aw.burst := B"2'b01" //INCR
+    io.cachedAxi.aw.valid := False
+    //w
+    io.cachedAxi.w.valid := False
+    io.cachedAxi.w.last := (writeCounter === config.wordPerLine - 1)
+    io.cachedAxi.w.strb := B"4'b1111"
+    io.cachedAxi.w.data := cacheData.readData(comparison.lineIndex, writeCounter)
+    //b
+    io.cachedAxi.b.ready := True
+  }
 
   val dCacheFSM = new StateMachine {
     val IDLE: State = new State with EntryPoint {

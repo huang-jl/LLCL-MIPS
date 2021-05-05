@@ -31,17 +31,40 @@ class CacheDataBase[T <: CacheLineBase](config: CacheLineConfig, lineNum: Int, f
     //0 ------> byteIndex*8+7 : byteIndex*8
     //1 ------> byteIndex*8+15: byteIndex*8
     //2 ------> whole word
+    val hitData: Bits = lines(lineIndex).datas(wordIndex) //origin data in the cache
+    var wdata = hitData //default to value in the cache
     switch(byteEnable) {
       is(0) {
-        lines(lineIndex).datas(wordIndex)(byteIndex << 3, 8 bits) := data
+        switch(byteIndex) {
+          is(0) {
+            wdata \= hitData(31 downto 8) ## data(7 downto 0)
+          }
+          is(1) {
+            wdata \= hitData(31 downto 16) ## data(15 downto 8) ## hitData(7 downto 0)
+          }
+          is(2) {
+            wdata \= hitData(31 downto 24) ## data(23 downto 16) ## hitData(15 downto 0)
+          }
+          is(3) {
+            wdata \= data(31 downto 24) ## hitData(23 downto 0)
+          }
+        }
       }
       is(1) {
-        lines(lineIndex).datas(wordIndex)(byteIndex << 3, 16 bits) := data
+        switch(byteIndex) {
+          is(0) {
+            wdata \= hitData(31 downto 16) ## data(15 downto 0)
+          }
+          is(2) {
+            wdata \= data(31 downto 16) ## hitData(15 downto 0)
+          }
+        }
       }
       is(2) {
-        lines(lineIndex).datas(wordIndex) := data
+        wdata \= data
       }
     }
+    lines(lineIndex).datas(wordIndex) := wdata
   }
 
   def writeTag(lineIndex: UInt, tag: Bits): Unit = {
