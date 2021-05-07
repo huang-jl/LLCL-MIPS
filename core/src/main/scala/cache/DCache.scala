@@ -114,6 +114,19 @@ class DCache(config: DCacheConfig) extends Component {
     val readMem: Bool = (io.cpu.read || io.cpu.write) & !comparison.hit & !comparison.dirty
     val writeCache: Bool = io.cpu.write & comparison.hit
   }
+  //data written to cache with byteEnable
+//  val newData = new Area {
+//    val wdata = io.cpu.wdata
+//    switch(io.cpu.byteEnable) {
+//      is(0) {
+//        cacheData.lines(comparison.lineIndex).datas(comparison.wordIndex)(comparison.byteIndex << 3, 8 bits) := io.cpu.wdata(comparison.byteIndex << 3, 8 bits)
+//      }
+//      is(1) {
+//        cacheData.lines(comparison.lineIndex).datas(comparison.wordIndex)(comparison.byteIndex << 3, 16 bits) := io.cpu.wdata(comparison.byteIndex << 3, 16 bits)
+//      }
+//    }
+//    cacheData.writeData(comparison.lineIndex, comparison.wordIndex, wdata)
+//  }
   //Default Value of AXI
   //ar
   io.axi.ar.addr := (comparison.tag ## comparison.lineIndex ## U(0, config.lineOffset bits)).asUInt

@@ -49,7 +49,8 @@ object UncacheTest {
   }
 
   def main(args: Array[String]): Unit = {
-    val compile = SimConfig.addSimulatorFlag("-Wno-CASEINCOMPLETE").addRtl("./rtl/axi_ram.v").withWave.allOptimisation.compile(new UncacheTest)
+    val compile = SimConfig.addSimulatorFlag("-Wno-CASEINCOMPLETE").addSimulatorFlag("-Wno-TIMESCALEMOD")
+      .addRtl("./rtl/axi_ram.v").withWave.allOptimisation.compile(new UncacheTest)
     compile.doSim("uncache_read_only", 2021) { dut => {
       dut.clockDomain.forkStimulus(10)
       dut.clockDomain.assertReset()
@@ -141,7 +142,7 @@ object UncacheTest {
         } else if (op == 1) {
           val randData = rand.nextLong() & 0xffffffffL
           memData += (randomRamAddr -> randData)
-          if(i == 0)
+          if (i == 0)
             dut.clockDomain.waitRisingEdge()
           dut.io.cpu.addr #= cpuAddr
           dut.io.cpu.read #= false

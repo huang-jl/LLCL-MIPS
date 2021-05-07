@@ -56,42 +56,45 @@ class DCacheData(config: CacheLineConfig, lineNum: Int) extends CacheDataBase[DC
 
   def clearDirty(lineIndex: UInt): Unit = (lines(lineIndex).dirty := False)
 
-  def writeDataByteEnable(lineIndex: UInt, wordIndex: UInt, byteIndex: UInt, data: Bits, byteEnable: Bits): Unit = {
+  def writeDataByteEnable(lineIndex: UInt, wordIndex: UInt, byteIndex: UInt, data: Bits, byteEnable: Bits):Unit = {
     //byteEnable is 2 bits signal
     //0 ------> byteIndex*8+7 : byteIndex*8
     //1 ------> byteIndex*8+15: byteIndex*8
     //2 ------> whole word
     val hitData: Bits = lines(lineIndex).datas(wordIndex) //origin data in the cache
-    var wdata = hitData //default to value in the cache
+    val wdata = B(0, 32 bits) //value written to the cache
     switch(byteEnable) {
       is(0) {
         switch(byteIndex) {
           is(0) {
-            wdata \= hitData(31 downto 8) ## data(7 downto 0)
+            wdata := hitData(31 downto 8) ## data(7 downto 0)
           }
           is(1) {
-            wdata \= hitData(31 downto 16) ## data(15 downto 8) ## hitData(7 downto 0)
+            wdata := hitData(31 downto 16) ## data(15 downto 8) ## hitData(7 downto 0)
           }
           is(2) {
-            wdata \= hitData(31 downto 24) ## data(23 downto 16) ## hitData(15 downto 0)
+            wdata := hitData(31 downto 24) ## data(23 downto 16) ## hitData(15 downto 0)
           }
           is(3) {
-            wdata \= data(31 downto 24) ## hitData(23 downto 0)
+            wdata := data(31 downto 24) ## hitData(23 downto 0)
           }
         }
       }
       is(1) {
         switch(byteIndex) {
           is(0) {
-            wdata \= hitData(31 downto 16) ## data(15 downto 0)
+            wdata := hitData(31 downto 16) ## data(15 downto 0)
           }
           is(2) {
-            wdata \= data(31 downto 16) ## hitData(15 downto 0)
+            wdata := data(31 downto 16) ## hitData(15 downto 0)
           }
         }
       }
       is(2) {
-        wdata \= data
+        wdata := data
+      }
+      default {
+        wdata := hitData
       }
     }
     lines(lineIndex).datas(wordIndex) := wdata

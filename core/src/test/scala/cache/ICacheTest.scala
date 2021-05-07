@@ -52,7 +52,7 @@ object ICacheTest {
   }
 
   def main(args: Array[String]): Unit = {
-    val compile = SimConfig.addSimulatorFlag("-Wno-CASEINCOMPLETE").
+    val compile = SimConfig.addSimulatorFlag("-Wno-CASEINCOMPLETE").addSimulatorFlag("-Wno-TIMESCALEMOD").
       addRtl("./rtl/axi_ram.v").withWave.allOptimisation.compile(new ICacheTest)
     compile.doSim("ICache_small_range_random_read", 2021) { dut => {
       dut.clockDomain.forkStimulus(10)
