@@ -1,15 +1,13 @@
 package cpu
 
-import cache._
 import cpu.alu._
-import cpu.defs.ConstantVal._
 import cpu.defs.{SramBus, SramBusConfig}
 import cpu.du._
 import cpu.ju._
 import cpu.mu._
 import cpu.pcu._
-import cpu.rfu._
 import cpu.pu._
+import cpu.rfu._
 import spinal.core._
 import spinal.lib.master
 
@@ -30,7 +28,10 @@ class CPU extends Component {
 
   io.iSramBus <> icu.sramBus
   io.dSramBus <> dcu.sramBus
-  io.debug := rfu.debug
+  io.debug.wb.rf.wen := B(S(rfu.we, 4 bits))
+  io.debug.wb.rf.wdata := rfu.rd_v
+  io.debug.wb.rf.wnum := B(rfu.rd)
+  io.debug.wb.pc := B(pu.wb_pcu_pc)
 
 
   pcu.stall := pu.if_stall
@@ -42,14 +43,14 @@ class CPU extends Component {
   icu.re := True
   icu.we := False
   icu.be := U"11"
-  icu.ex := MU_EX.u
+  icu.ex.assignFromBits(B"0")
 
   du.inst := pu.id_du_inst
 
   ju.op := du.ju_op
   ju.pc_src := du.ju_pc_src
-  ju.a := pu.du_rs_v.asSInt
-  ju.b := pu.du_rt_v.asSInt
+  ju.a := S(pu.du_rs_v)
+  ju.b := S(pu.du_rt_v)
   ju.pc := pu.id_pcu_pc
   ju.offset := du.offset
   ju.index := du.index

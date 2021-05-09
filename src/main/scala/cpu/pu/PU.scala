@@ -4,6 +4,8 @@ import cpu.defs.ConstantVal._
 import spinal.core._
 
 class PU extends Component {
+  /// 数据流水线
+
   // in
   val rfu_ra_v = in Bits (32 bits)
   val rfu_rb_v = in Bits (32 bits)
@@ -53,6 +55,7 @@ class PU extends Component {
   val me_dcu_be = out(Reg(UInt(2 bits)))
   val me_dcu_ex = out(Reg(MU_EX))
 
+  val wb_pcu_pc = out(Reg(UInt(32 bits)))
   val wb_rfu_we = out(Reg(Bool))
   val wb_rfu_rd = out(Reg(UInt(5 bits)))
   val wb_rfu_rd_v = out(Reg(Bits(32 bits)))
@@ -62,6 +65,7 @@ class PU extends Component {
   //
   val id_rfu_rd_v = (id_pcu_pc + 8).asBits
 
+  val ex_pcu_pc = Reg(UInt(32 bits))
   val ex_du_rs = Reg(UInt(5 bits))
   val ex_du_rt = Reg(UInt(5 bits))
   val ex_du_offset = Reg(SInt(16 bits))
@@ -81,6 +85,7 @@ class PU extends Component {
   val ex_id_rfu_rd_v = Reg(Bits(32 bits))
   val ex_rfu_rd_v = (ex_rfu_rd_src === RFU_RD_SRC.alu) ? ex_alu_c | ex_id_rfu_rd_v
 
+  val me_pcu_pc = Reg(UInt(32 bits))
   val me_rfu_we = Reg(Bool)
   val me_rfu_rd = Reg(UInt(5 bits))
   val me_rfu_rd_src = Reg(RFU_RD_SRC)
@@ -107,6 +112,7 @@ class PU extends Component {
       ex_dcu_we := False
       ex_rfu_we := False
     } otherwise {
+      ex_pcu_pc := id_pcu_pc
       ex_alu_op := id_alu_op
       ex_alu_a := id_alu_a_src.mux(ALU_A_SRC.rs -> du_rs_v.asUInt, ALU_A_SRC.sa -> id_du_sa.resize(32))
       ex_alu_b := id_alu_b_src.mux(ALU_B_SRC.rt -> du_rt_v.asUInt, ALU_B_SRC.imm -> id_du_imm.resize(32))
@@ -132,6 +138,7 @@ class PU extends Component {
     //      me_dcu_we := False
     //      me_rfu_we := False
     //    } otherwise {
+    me_pcu_pc := ex_pcu_pc
     me_dcu_addr := ex_dcu_addr
     me_dcu_data := ex_dcu_data
     me_dcu_re := ex_dcu_re
@@ -148,6 +155,7 @@ class PU extends Component {
   when(me_stall) {
     wb_rfu_we := False
   } otherwise {
+    wb_pcu_pc := me_pcu_pc
     wb_rfu_we := me_rfu_we
     wb_rfu_rd := me_rfu_rd
     wb_rfu_rd_v := me_rfu_rd_v

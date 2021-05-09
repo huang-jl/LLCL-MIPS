@@ -4,6 +4,8 @@ import cpu.defs.ConstantVal._
 import spinal.core._
 
 class PCU extends Component {
+  /// 控制 PC
+
   // in
   val stall = in Bool
   val we = in Bool

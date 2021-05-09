@@ -19,8 +19,7 @@ object ConstantVal {
   )
 
   object ALU_OP extends SpinalEnum {
-    val add, addu, sub, subu, and, or, xor, nor, sll, lu, srl, sra, mult, div,
-    slt, sltu = newElement()
+    val add, addu, sub, subu, and, or, xor, nor, sll, lu, srl, sra, mult, div, slt, sltu = newElement()
   }
 
   object ALU_A_SRC extends SpinalEnum {

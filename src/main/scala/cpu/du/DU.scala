@@ -4,6 +4,8 @@ import cpu.defs.ConstantVal._
 import spinal.core._
 
 class DU extends Component {
+  /// 解码指令
+
   // in
   val inst = in Bits (32 bits)
 
@@ -40,22 +42,22 @@ class DU extends Component {
   val fn = inst(5 downto 0)
 
   //
-  rs := inst(25 downto 21).asUInt
-  rt := inst(20 downto 16).asUInt
-  rd := inst(15 downto 11).asUInt
-  sa := inst(10 downto 6).asUInt
-  imm := inst(15 downto 0).asUInt
-  offset := inst(15 downto 0).asSInt
-  index := inst(25 downto 0).asUInt
+  rs := U(inst(25 downto 21))
+  rt := U(inst(20 downto 16))
+  rd := U(inst(15 downto 11))
+  sa := U(inst(10 downto 6))
+  imm := U(inst(15 downto 0))
+  offset := S(inst(15 downto 0))
+  index := U(inst(25 downto 0))
 
   alu_op.assignFromBits(op(3) ? op(2 downto 0).mux(B"010" -> B"1110", B"011" -> B"1111", B"111" -> B"1001", default -> B"0" ## op(2 downto 0)) | (fn(5) ## fn(3)).mux(B"00" -> B"10" ## fn(1 downto 0), B"01" -> B"110" ## fn(1), B"10" -> B"0" ## fn(2 downto 0), B"11" -> B"11" ## fn(1 downto 0)))
-  alu_a_src.assignFromBits((op(3) ## fn(5 downto 4) ## fn(2) === B"0000").asBits)
-  alu_b_src.assignFromBits(op(3).asBits)
+  alu_a_src.assignFromBits(B(op(3) ## fn(5 downto 4) ## fn(2) === B"0000"))
+  alu_b_src.assignFromBits(B(op(3)))
 
   dcu_re := op(5) ## op(3) === B"10"
   dcu_we := op(5) ## op(3) === B"11"
-  dcu_be := op(1 downto 0).asUInt
-  mu_ex.assignFromBits(op(2).asBits)
+  dcu_be := U(op(1 downto 0))
+  mu_ex.assignFromBits(B(op(2)))
 
   rfu_we := rfu_rd =/= 0 & (op(5) ^ op(3) | op(5) ## op(2 downto 0) === B"0011" | (op(5) ## op(3) ## op(2 downto 0) === B"00000" & (!fn(3) | fn(4) | fn(5) | fn(0))) | (op(5) ## op(3) ## op(2 downto 0) === B"00001" & rt(4)))
   rfu_rd := (op(5) ## op(3) === B"00") ? (op(0) ? U"11111" | rd) | rt

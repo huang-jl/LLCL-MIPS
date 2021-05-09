@@ -5,6 +5,8 @@ import cpu.defs.ConstantVal._
 import spinal.core._
 
 class ALU extends Component {
+  /// 运算器
+
   // in
   val op = in(ALU_OP)
   val a = in UInt (32 bits)
@@ -58,10 +60,10 @@ class ALU extends Component {
       c := 0
     }
     is(slt) {
-      c := (a.asSInt < b.asSInt).asUInt(32 bits)
+      c := U(S(a) < S(b), 32 bits)
     }
     is(sltu) {
-      c := (a < b).asUInt(32 bits)
+      c := U(a < b, 32 bits)
     }
   }
 }
