@@ -6,11 +6,12 @@
 *.coe
 *.o
 *.a
-*.v
+golden_trace.txt
 
 !core/**/rtl/*.v
 
 # sbt specific
+.bsp/
 .cache/
 .history/
 .lib/
@@ -35,6 +36,15 @@ bin/
 .settings
 .cache-main
 
+# VSCode
+.vscode/
+
+# Metals
+.metals/
+.bloop/
+project/project
+metals.sbt
+
 #User
 /*.vhd
 /*.v
@@ -47,3 +57,20 @@ bin/
 simWorkspace/
 tmp/
 null
+
+tests/func/bin.lds
+tests/func/convert
+tests/func/**/obj
+core/*.v
+
+# Vivado
+*.runs/
+*.sim/
+*.jou
+*.ip_user_files/
+**/xilinx_ip/clk_pll/*
+!**/xilinx_ip/clk_pll/*.xci
+**/xilinx_ip/data_ram/*
+!**/xilinx_ip/data_ram/*.xci
+**/xilinx_ip/inst_ram/*
+!**/xilinx_ip/inst_ram/*.xci
