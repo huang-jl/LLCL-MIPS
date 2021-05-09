@@ -41,8 +41,8 @@ class PU extends Component {
   val du_rs_v = out Bits (32 bits)
   val du_rt_v = out Bits (32 bits)
 
-  val id_pcu_pc = out(Reg(UInt(32 bits)))
-  val id_du_inst = out(Reg(Bits(32 bits)))
+  val id_pcu_pc = out(RegInit(UInt(32 bits)))
+  val id_du_inst = out(RegInit(B(INST_NOP)))
 
   val ex_alu_op = out(Reg(ALU_OP))
   val ex_alu_a = out(Reg(UInt(32 bits)))
@@ -50,20 +50,20 @@ class PU extends Component {
 
   val me_dcu_addr = out(Reg(UInt(32 bits)))
   val me_dcu_data = out(Reg(Bits(32 bits)))
-  val me_dcu_re = out(Reg(Bool))
-  val me_dcu_we = out(Reg(Bool))
+  val me_dcu_re = out(RegInit(False))
+  val me_dcu_we = out(RegInit(False))
   val me_dcu_be = out(Reg(UInt(2 bits)))
   val me_dcu_ex = out(Reg(MU_EX))
 
   val wb_pcu_pc = out(Reg(UInt(32 bits)))
-  val wb_rfu_we = out(Reg(Bool))
+  val wb_rfu_we = out(RegInit(False))
   val wb_rfu_rd = out(Reg(UInt(5 bits)))
   val wb_rfu_rd_v = out(Reg(Bits(32 bits)))
 
   val if_stall = out Bool
 
   //
-  val id_rfu_rd_v = (id_pcu_pc + 8).asBits
+  val id_rfu_rd_v = B(id_pcu_pc + 8)
 
   val ex_pcu_pc = Reg(UInt(32 bits))
   val ex_du_rs = Reg(UInt(5 bits))
@@ -73,20 +73,20 @@ class PU extends Component {
   val ex_du_rs_v = ex_id_du_rs_v
   val ex_id_du_rt_v = Reg(Bits(32 bits))
   val ex_du_rt_v = ex_id_du_rt_v
-  val ex_dcu_addr = (ex_du_rs_v.asSInt + ex_du_offset).asUInt
+  val ex_dcu_addr = U(S(ex_du_rs_v) + ex_du_offset)
   val ex_dcu_data = ex_du_rt_v
-  val ex_dcu_re = Reg(Bool)
-  val ex_dcu_we = Reg(Bool)
+  val ex_dcu_re = RegInit(False)
+  val ex_dcu_we = RegInit(False)
   val ex_dcu_be = Reg(UInt(2 bits))
   val ex_mu_ex = Reg(MU_EX)
-  val ex_rfu_we = Reg(Bool)
+  val ex_rfu_we = RegInit(False)
   val ex_rfu_rd = Reg(UInt(5 bits))
   val ex_rfu_rd_src = Reg(RFU_RD_SRC)
   val ex_id_rfu_rd_v = Reg(Bits(32 bits))
   val ex_rfu_rd_v = (ex_rfu_rd_src === RFU_RD_SRC.alu) ? ex_alu_c | ex_id_rfu_rd_v
 
   val me_pcu_pc = Reg(UInt(32 bits))
-  val me_rfu_we = Reg(Bool)
+  val me_rfu_we = RegInit(False)
   val me_rfu_rd = Reg(UInt(5 bits))
   val me_rfu_rd_src = Reg(RFU_RD_SRC)
   val me_ex_rfu_rd_v = Reg(Bits(32 bits))
@@ -114,8 +114,8 @@ class PU extends Component {
     } otherwise {
       ex_pcu_pc := id_pcu_pc
       ex_alu_op := id_alu_op
-      ex_alu_a := id_alu_a_src.mux(ALU_A_SRC.rs -> du_rs_v.asUInt, ALU_A_SRC.sa -> id_du_sa.resize(32))
-      ex_alu_b := id_alu_b_src.mux(ALU_B_SRC.rt -> du_rt_v.asUInt, ALU_B_SRC.imm -> id_du_imm.resize(32))
+      ex_alu_a := id_alu_a_src.mux(ALU_A_SRC.rs -> U(du_rs_v), ALU_A_SRC.sa -> id_du_sa.resize(32))
+      ex_alu_b := id_alu_b_src.mux(ALU_B_SRC.rt -> U(du_rt_v), ALU_B_SRC.imm -> id_du_imm.resize(32))
       ex_du_rs := id_du_rs
       ex_du_rt := id_du_rt
       ex_du_offset := id_du_offset

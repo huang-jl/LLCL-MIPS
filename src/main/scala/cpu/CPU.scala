@@ -94,7 +94,7 @@ class CPU extends Component {
   pu.id_rfu_rd_src := du.rfu_rd_src
   pu.id_use_rs := du.use_rs
   pu.id_use_rt := du.use_rt
-  pu.ex_alu_c := alu.c.asBits
+  pu.ex_alu_c := B(alu.c)
   pu.me_dcu_stall := dcu.stall
   pu.me_mu_data_out := dcu.data_out
 }
