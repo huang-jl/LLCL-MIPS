@@ -19,6 +19,7 @@ class PU extends Component {
   val id_du_sa = in UInt (5 bits)
   val id_du_imm = in UInt (32 bits)
   val id_du_offset = in SInt (16 bits)
+  val id_ju_jump = in Bool
   val id_alu_op = in(ALU_OP)
   val id_alu_a_src = in(ALU_A_SRC)
   val id_alu_b_src = in(ALU_B_SRC)
@@ -94,7 +95,7 @@ class PU extends Component {
 
   val me_stall = me_dcu_stall
   val ex_stall = me_stall
-  val id_stall = ex_stall | ex_rfu_we & ex_rfu_rd_src === RFU_RD_SRC.mu & (ex_rfu_rd === id_du_rs & id_use_rs | ex_rfu_rd === id_du_rt & id_use_rt)
+  val id_stall = ex_stall | ex_rfu_we & ex_rfu_rd_src === RFU_RD_SRC.mu & (ex_rfu_rd === id_du_rs & id_use_rs | ex_rfu_rd === id_du_rt & id_use_rt) | if_icu_stall & id_ju_jump
   if_stall := id_stall | if_icu_stall
 
   when(!id_stall) {

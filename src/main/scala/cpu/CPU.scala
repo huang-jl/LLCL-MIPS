@@ -33,7 +33,6 @@ class CPU extends Component {
   io.debug.wb.rf.wnum := B(rfu.rd)
   io.debug.wb.pc := B(pu.wb_pcu_pc)
 
-
   pcu.stall := pu.if_stall
   pcu.we := ju.jump
   pcu.new_pc := ju.jump_pc
@@ -82,6 +81,7 @@ class CPU extends Component {
   pu.id_du_sa := du.sa
   pu.id_du_imm := du.imm
   pu.id_du_offset := du.offset
+  pu.id_ju_jump := ju.jump
   pu.id_alu_op := du.alu_op
   pu.id_alu_a_src := du.alu_a_src
   pu.id_alu_b_src := du.alu_b_src
