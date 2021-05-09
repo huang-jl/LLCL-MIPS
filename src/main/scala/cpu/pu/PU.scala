@@ -17,7 +17,7 @@ class PU extends Component {
   val id_du_rs = in UInt (5 bits)
   val id_du_rt = in UInt (5 bits)
   val id_du_sa = in UInt (5 bits)
-  val id_du_imm = in UInt (16 bits)
+  val id_du_imm = in UInt (32 bits)
   val id_du_offset = in SInt (16 bits)
   val id_alu_op = in(ALU_OP)
   val id_alu_a_src = in(ALU_A_SRC)
@@ -115,7 +115,7 @@ class PU extends Component {
       ex_pcu_pc := id_pcu_pc
       ex_alu_op := id_alu_op
       ex_alu_a := id_alu_a_src.mux(ALU_A_SRC.rs -> U(du_rs_v), ALU_A_SRC.sa -> id_du_sa.resize(32))
-      ex_alu_b := id_alu_b_src.mux(ALU_B_SRC.rt -> U(du_rt_v), ALU_B_SRC.imm -> id_du_imm.resize(32))
+      ex_alu_b := id_alu_b_src.mux(ALU_B_SRC.rt -> U(du_rt_v), ALU_B_SRC.imm -> id_du_imm)
       ex_du_rs := id_du_rs
       ex_du_rt := id_du_rt
       ex_du_offset := id_du_offset

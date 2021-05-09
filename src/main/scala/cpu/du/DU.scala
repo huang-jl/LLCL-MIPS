@@ -14,7 +14,7 @@ class DU extends Component {
   val rt = out UInt (5 bits)
   val rd = out UInt (5 bits)
   val sa = out UInt (5 bits)
-  val imm = out UInt (16 bits)
+  val imm = out UInt (32 bits)
   val offset = out SInt (16 bits)
   val index = out UInt (26 bits)
 
@@ -46,7 +46,7 @@ class DU extends Component {
   rt := U(inst(20 downto 16))
   rd := U(inst(15 downto 11))
   sa := U(inst(10 downto 6))
-  imm := U(inst(15 downto 0))
+  imm := op(2) ? U(inst(15 downto 0), 32 bits) | U(S(inst(15 downto 0), 32 bits))
   offset := S(inst(15 downto 0))
   index := U(inst(25 downto 0))
 
