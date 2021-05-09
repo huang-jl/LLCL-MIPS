@@ -36,7 +36,11 @@ class CpuAXIInterface extends BlackBox {
 
   noIoPrefix()
 
-  mapCurrentClockDomain(clock = io.clk, reset = io.resetn)
+  mapCurrentClockDomain(
+    clock = io.clk,
+    reset = io.resetn,
+    resetActiveLevel = LOW
+  )
 
   addRTLPath("official/cpu_axi_interface.v")
 }
