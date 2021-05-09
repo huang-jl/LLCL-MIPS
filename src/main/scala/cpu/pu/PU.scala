@@ -41,8 +41,8 @@ class PU extends Component {
   val du_rs_v = out Bits (32 bits)
   val du_rt_v = out Bits (32 bits)
 
-  val id_pcu_pc = out(RegInit(UInt(32 bits)))
-  val id_du_inst = out(RegInit(B(INST_NOP)))
+  val id_pcu_pc = out(Reg(UInt(32 bits)) init INIT_PC)
+  val id_du_inst = out(Reg(Bits(32 bits)) init INST_NOP)
 
   val ex_alu_op = out(Reg(ALU_OP))
   val ex_alu_a = out(Reg(UInt(32 bits)))
