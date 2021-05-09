@@ -5,15 +5,15 @@ import cpu.defs._
 import spinal.lib._
 import spinal.lib.fsm._
 
-
 class Fetch extends Component {
   val io = new Bundle {
     val dataOut = out(FetchData(32))
-    val bus = master(SramBus(SramBusConfig(dataWidth = 32, addrWidth = 32, selWidth = 2)))
+    val bus = master(
+      SramBus(ConstantVal.SRAM_BUS_CONFIG)
+    )
   }
 
-
-  val pcReg = Reg(UInt(32 bits)) init(ConstantVal.INIT_PC)
+  val pcReg = Reg(UInt(32 bits)) init (ConstantVal.INIT_PC)
   pcReg := pcReg + U"32'd4"
 
   val default = new Area {
@@ -30,7 +30,7 @@ class Fetch extends Component {
 
   val stateMachine = new StateMachine {
     val Idle_S: State = new State with EntryPoint {
-      whenIsActive{
+      whenIsActive {
         io.bus.req := True
         io.bus.addr := pcReg
         io.bus.size := 2
@@ -39,8 +39,8 @@ class Fetch extends Component {
     }
     val AddrHandShake_S = new State {
       onEntry(io.dataOut.stall := True)
-      whenIsActive{
-        when(io.bus.addrOk){
+      whenIsActive {
+        when(io.bus.addrOk) {
           io.bus.req := False
           io.bus.addr := 0
           io.bus.size := 0
@@ -50,8 +50,8 @@ class Fetch extends Component {
     }
     val DataHandShake_S = new State {
       onEntry(io.dataOut.stall := True)
-      whenIsActive{
-        when(io.bus.dataOk){
+      whenIsActive {
+        when(io.bus.dataOk) {
           io.dataOut.instOut := io.bus.rdata
           io.dataOut.stall := False
           goto(Idle_S)
@@ -62,7 +62,7 @@ class Fetch extends Component {
 }
 
 object Fetch {
-  def main(args: Array[String]): Unit ={
+  def main(args: Array[String]): Unit = {
     SpinalVerilog(new Fetch)
   }
 }
