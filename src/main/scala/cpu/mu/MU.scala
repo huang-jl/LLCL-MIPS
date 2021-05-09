@@ -24,7 +24,7 @@ class MU extends Component {
   val byteIndex: UInt = addr(1 downto 0)
 
   //
-  val dataReg = Reg(Bits(32 bits)) init(0)
+  val dataReg = Reg(Bits(32 bits)) init (0)
 
   //concat sign bit
   def signExtend(signal: Bits): Bits = signal.asSInt.resize(32).asBits
@@ -36,7 +36,11 @@ class MU extends Component {
 
   val MUFsm = new StateMachine {
     val IDLE: State = new State with EntryPoint {
-      whenIsNext(stall := False)
+      whenIsNext {
+        when(!isStateRegBoot()) {
+          stall := False
+        }
+      }
       whenIsActive {
         when(we)(goto(WRITE))
           .elsewhen(re)(goto(READ))
@@ -102,7 +106,7 @@ class MU extends Component {
   //concat zero
   def unsignExtend(signal: Bits): Bits = signal.resize(32)
 
-//  stall := !(MUFsm.isActive(MUFsm.DONE) || (MUFsm.isActive(MUFsm.IDLE) & !re & !we)) //stall when fsm not in DONE
+  //  stall := !(MUFsm.isActive(MUFsm.DONE) || (MUFsm.isActive(MUFsm.IDLE) & !re & !we)) //stall when fsm not in DONE
 }
 
 object MU {
