@@ -20,9 +20,9 @@ class DU extends Component {
   val alu_a_src = out(ALU_A_SRC)
   val alu_b_src = out(ALU_B_SRC)
 
-  val mu_re = out Bool
-  val mu_we = out Bool
-  val mu_be = out UInt (2 bits)
+  val dcu_re = out Bool
+  val dcu_we = out Bool
+  val dcu_be = out UInt (2 bits)
   val mu_ex = out(MU_EX)
 
   val rfu_we = out Bool
@@ -52,16 +52,16 @@ class DU extends Component {
   alu_a_src.assignFromBits((op(3) ## fn(5 downto 4) ## fn(2) === B"0000").asBits)
   alu_b_src.assignFromBits(op(3).asBits)
 
-  mu_re := op(5) ## op(3) === B"10"
-  mu_we := op(5) ## op(3) === B"11"
-  mu_be := op(1 downto 0).asUInt
+  dcu_re := op(5) ## op(3) === B"10"
+  dcu_we := op(5) ## op(3) === B"11"
+  dcu_be := op(1 downto 0).asUInt
   mu_ex.assignFromBits(op(2).asBits)
 
-  rfu_we := op(5) ^ op(3) | op(5) ## op(2 downto 0) === B"0011" | (op(5) ## op(3) ## op(2 downto 0) === B"00000" & (!fn(3) | fn(4) | fn(5) | fn(0))) | (op(5) ## op(3) ## op(2 downto 0) === B"00001" & rt(4))
+  rfu_we := rfu_rd =/= 0 & (op(5) ^ op(3) | op(5) ## op(2 downto 0) === B"0011" | (op(5) ## op(3) ## op(2 downto 0) === B"00000" & (!fn(3) | fn(4) | fn(5) | fn(0))) | (op(5) ## op(3) ## op(2 downto 0) === B"00001" & rt(4)))
   rfu_rd := (op(5) ## op(3) === B"00") ? (op(0) ? U"11111" | rd) | rt
   rfu_rd_src.assignFromBits(op(5) ## (op(5) ## op(3) === B"00" & (op(0) | fn(5 downto 3) === B"001")))
 
-  ju_op.assignFromBits((op(5) ## op(3) === B"00") ? op(2 downto 0).mux(B"000" -> ((fn(5 downto 3) === B"001") ? B"010" | B"011"), B"001" -> B"00" ## rt(0), B"010" -> B"011", default -> op(2 downto 0)) | B"010")
+  ju_op.assignFromBits((op(5) ## op(3) === B"00") ? op(2 downto 0).mux(B"000" -> ((fn(5 downto 3) === B"001") ? B"011" | B"010"), B"001" -> B"00" ## rt(0), B"010" -> B"011", default -> op(2 downto 0)) | B"010")
   ju_pc_src.assignFromBits(op(2) ? B"01" | op(1 downto 0))
 
   use_rs := op(5) ## op(3) === B"01" | op(5) ## op(2) === B"01" | op(5) ## op(1 downto 0) === B"001" | op(5) ## op(3 downto 0) === B"00000" & (fn(2) | fn(3) | fn(5))

@@ -4,6 +4,7 @@ import spinal.core._
 
 object ConstantVal {
   val INIT_PC = U"32'hbfc0_0000"
+  val INST_NOP = BigInt("00000000000000000000000000100000", 2)
 
   object ALU_OP extends SpinalEnum {
     val add, addu, sub, subu, and, or, xor, nor, sll, lu, srl, sra, mult, div, slt, sltu = newElement()
@@ -26,10 +27,10 @@ object ConstantVal {
   }
 
   object JU_OP extends SpinalEnum {
-    val lz, gez, f, t, lez, gz, noe, e = newElement()
+    val lz, gez, f, t, e, noe, lez, gz = newElement()
   }
 
   object JU_PC_SRC extends SpinalEnum {
-    val rs, offset, index = newElement()
+    val rs, offset, index1, index2 = newElement()
   }
 }
