@@ -2,7 +2,8 @@ package cpu
 
 import cache._
 import cpu.alu._
-import cpu.defs.ConstantVal.MU_EX
+import cpu.defs.ConstantVal._
+import cpu.defs.{SramBus, SramBusConfig}
 import cpu.du._
 import cpu.ju._
 import cpu.mu._
@@ -10,8 +11,14 @@ import cpu.pcu._
 import cpu.rfu._
 import cpu.pu._
 import spinal.core._
+import spinal.lib.master
 
 class CPU extends Component {
+  val io = new Bundle {
+    val iSramBus = master(SramBus(SramBusConfig(32, 32, 2)))
+    val dSramBus = master(SramBus(SramBusConfig(32, 32, 2)))
+    val debug = new DebugInterface
+  }
   val pcu = new PCU
   val icu = new MU
   val du = new DU
@@ -20,6 +27,11 @@ class CPU extends Component {
   val dcu = new MU
   val rfu = new RFU
   val pu = new PU
+
+  io.iSramBus <> icu.sramBus
+  io.dSramBus <> dcu.sramBus
+  io.debug := rfu.debug
+
 
   pcu.stall := pu.if_stall
   pcu.we := ju.jump

@@ -77,7 +77,7 @@ class MU extends Component {
       signExt := signExtend(sramBus.rdata((byteIndex << 3), 16 bits))
       unsignExt := unsignExtend(sramBus.rdata((byteIndex << 3), 16 bits))
     }
-    is(2) {
+    is(3) {
       signExt := sramBus.rdata
       unsignExt := sramBus.rdata
     }
