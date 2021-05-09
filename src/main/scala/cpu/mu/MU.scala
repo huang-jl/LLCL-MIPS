@@ -22,30 +22,46 @@ class MU extends Component {
   val signExt = Bits(32 bits)
   val unsignExt = Bits(32 bits)
   val byteIndex: UInt = addr(1 downto 0)
+
+  //
+  val dataReg = Reg(Bits(32 bits)) init(0)
+
+  //concat sign bit
+  def signExtend(signal: Bits): Bits = signal.asSInt.resize(32).asBits
+
+  sramBus.wr := we
+  sramBus.addr := addr
+  sramBus.wdata := data_in
+  stall := True
+
   val MUFsm = new StateMachine {
     val IDLE: State = new State with EntryPoint {
+      whenIsNext(stall := False)
       whenIsActive {
-        when(we)(goto(WRITE_START))
-          .elsewhen(re)(goto(READ_START))
+        when(we)(goto(WRITE))
+          .elsewhen(re)(goto(READ))
       }
     }
-    val READ_START = new State {
-      whenIsActive {
-        sramBus.req := True
-        when(sramBus.addrOk)(goto(READ))
-      }
-    }
+    //    val READ_START = new State {
+    //      whenIsActive {
+    ////        sramBus.req := True
+    //        when(sramBus.addrOk)(goto(READ))
+    //      }
+    //    }
     val READ = new State {
       whenIsActive {
-        when(sramBus.dataOk)(goto(DONE))
+        when(sramBus.dataOk) {
+          dataReg := sramBus.rdata
+          goto(DONE)
+        }
       }
     }
-    val WRITE_START = new State {
-      whenIsActive {
-        sramBus.wr := True
-        when(sramBus.addrOk)(goto(WRITE))
-      }
-    }
+    //    val WRITE_START = new State {
+    //      whenIsActive {
+    //        sramBus.wr := True
+    //        when(sramBus.addrOk)(goto(WRITE))
+    //      }
+    //    }
     val WRITE = new State {
       whenIsActive {
         when(sramBus.dataOk)(goto(DONE))
@@ -56,35 +72,29 @@ class MU extends Component {
     }
   }
 
-  //concat sign bit
-  def signExtend(signal: Bits): Bits = signal.asSInt.resize(32).asBits
-
-  sramBus.req := re | we
-  sramBus.wr := we
-  sramBus.addr := addr
-  sramBus.wdata := data_in
+  sramBus.req := (re | we) & (MUFsm.isActive(MUFsm.READ) | MUFsm.isActive(MUFsm.WRITE))
 
   switch(be) {
     is(0) {
-      signExt := signExtend(sramBus.rdata((byteIndex << 3), 8 bits))
-      unsignExt := unsignExtend(sramBus.rdata((byteIndex << 3), 8 bits))
+      signExt := signExtend(dataReg((byteIndex << 3), 8 bits))
+      unsignExt := unsignExtend(dataReg((byteIndex << 3), 8 bits))
       sramBus.size := 0
     }
     is(1) {
       // the byteIndex can only be 0 or 2
-      signExt := signExtend(sramBus.rdata((byteIndex << 3), 16 bits))
-      unsignExt := unsignExtend(sramBus.rdata((byteIndex << 3), 16 bits))
+      signExt := signExtend(dataReg((byteIndex << 3), 16 bits))
+      unsignExt := unsignExtend(dataReg((byteIndex << 3), 16 bits))
       sramBus.size := 1
     }
     is(3) {
-      signExt := sramBus.rdata
-      unsignExt := sramBus.rdata
+      signExt := dataReg
+      unsignExt := dataReg
       sramBus.size := 2
     }
     default {
       sramBus.size := 0
-      signExt := sramBus.rdata
-      unsignExt := sramBus.rdata
+      signExt := dataReg
+      unsignExt := dataReg
     }
   }
   data_out := (ex === MU_EX.s) ? signExt | unsignExt
@@ -92,7 +102,7 @@ class MU extends Component {
   //concat zero
   def unsignExtend(signal: Bits): Bits = signal.resize(32)
 
-  stall := !MUFsm.isActive(MUFsm.DONE) //stall when fsm not in DONE
+//  stall := !(MUFsm.isActive(MUFsm.DONE) || (MUFsm.isActive(MUFsm.IDLE) & !re & !we)) //stall when fsm not in DONE
 }
 
 object MU {
