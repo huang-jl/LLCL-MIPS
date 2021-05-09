@@ -63,21 +63,26 @@ class MU extends Component {
   sramBus.wr := we
   sramBus.addr := addr
   sramBus.wdata := data_in
-  sramBus.size := be.asBits
 
-  signExt := sramBus.rdata
-  unsignExt := sramBus.rdata
   switch(be) {
     is(0) {
       signExt := signExtend(sramBus.rdata((byteIndex << 3), 8 bits))
       unsignExt := unsignExtend(sramBus.rdata((byteIndex << 3), 8 bits))
+      sramBus.size := 0
     }
     is(1) {
       // the byteIndex can only be 0 or 2
       signExt := signExtend(sramBus.rdata((byteIndex << 3), 16 bits))
       unsignExt := unsignExtend(sramBus.rdata((byteIndex << 3), 16 bits))
+      sramBus.size := 1
     }
     is(3) {
+      signExt := sramBus.rdata
+      unsignExt := sramBus.rdata
+      sramBus.size := 2
+    }
+    default {
+      sramBus.size := 0
       signExt := sramBus.rdata
       unsignExt := sramBus.rdata
     }
