@@ -51,7 +51,7 @@ class ALU extends Component {
       c := b |>> a
     }
     is(sra) {
-      c := b >> a
+      c := U(S(b) >> a)
     }
     is(mult) {
       c := 0

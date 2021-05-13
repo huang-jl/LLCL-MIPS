@@ -39,11 +39,10 @@ class PU extends Component {
   val me_mu_data_out = in Bits (32 bits)
 
   // out
-  val du_rs_v = out Bits (32 bits)
-  val du_rt_v = out Bits (32 bits)
-
   val id_pcu_pc = out(Reg(UInt(32 bits)) init INIT_PC)
   val id_du_inst = out(Reg(Bits(32 bits)) init INST_NOP)
+  val id_du_rs_v = out Bits (32 bits)
+  val id_du_rt_v = out Bits (32 bits)
 
   val ex_alu_op = out(Reg(ALU_OP))
   val ex_alu_a = out(Reg(UInt(32 bits)))
@@ -115,13 +114,13 @@ class PU extends Component {
     } otherwise {
       ex_pcu_pc := id_pcu_pc
       ex_alu_op := id_alu_op
-      ex_alu_a := id_alu_a_src.mux(ALU_A_SRC.rs -> U(du_rs_v), ALU_A_SRC.sa -> id_du_sa.resize(32))
-      ex_alu_b := id_alu_b_src.mux(ALU_B_SRC.rt -> U(du_rt_v), ALU_B_SRC.imm -> id_du_imm)
+      ex_alu_a := id_alu_a_src.mux(ALU_A_SRC.rs -> U(id_du_rs_v), ALU_A_SRC.sa -> id_du_sa.resize(32))
+      ex_alu_b := id_alu_b_src.mux(ALU_B_SRC.rt -> U(id_du_rt_v), ALU_B_SRC.imm -> id_du_imm)
       ex_du_rs := id_du_rs
       ex_du_rt := id_du_rt
       ex_du_offset := id_du_offset
-      ex_id_du_rs_v := du_rs_v
-      ex_id_du_rt_v := du_rt_v
+      ex_id_du_rs_v := id_du_rs_v
+      ex_id_du_rt_v := id_du_rt_v
       ex_dcu_re := id_dcu_re
       ex_dcu_we := id_dcu_we
       ex_dcu_be := id_dcu_be
@@ -171,22 +170,22 @@ class PU extends Component {
 
 
   when(ex_rfu_we & ex_rfu_rd === id_du_rs) {
-    du_rs_v := ex_rfu_rd_v
+    id_du_rs_v := ex_rfu_rd_v
   } elsewhen (me_rfu_we & me_rfu_rd === id_du_rs) {
-    du_rs_v := me_rfu_rd_v
+    id_du_rs_v := me_rfu_rd_v
   } elsewhen (wb_rfu_we & wb_rfu_rd === id_du_rs) {
-    du_rs_v := wb_rfu_rd_v
+    id_du_rs_v := wb_rfu_rd_v
   } otherwise {
-    du_rs_v := rfu_ra_v
+    id_du_rs_v := rfu_ra_v
   }
   when(ex_rfu_we & ex_rfu_rd === id_du_rt) {
-    du_rt_v := ex_rfu_rd_v
+    id_du_rt_v := ex_rfu_rd_v
   } elsewhen (me_rfu_we & me_rfu_rd === id_du_rt) {
-    du_rt_v := me_rfu_rd_v
+    id_du_rt_v := me_rfu_rd_v
   } elsewhen (wb_rfu_we & wb_rfu_rd === id_du_rt) {
-    du_rt_v := wb_rfu_rd_v
+    id_du_rt_v := wb_rfu_rd_v
   } otherwise {
-    du_rt_v := rfu_rb_v
+    id_du_rt_v := rfu_rb_v
   }
 }
 

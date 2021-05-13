@@ -48,9 +48,9 @@ class CPU extends Component {
 
   ju.op := du.ju_op
   ju.pc_src := du.ju_pc_src
-  ju.a := S(pu.du_rs_v)
-  ju.b := S(pu.du_rt_v)
-  ju.pc := pu.id_pcu_pc
+  ju.a := S(pu.id_du_rs_v)
+  ju.b := S(pu.id_du_rt_v)
+  ju.pc := pcu.pc
   ju.offset := du.offset
   ju.index := du.index
 
