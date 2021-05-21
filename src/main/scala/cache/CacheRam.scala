@@ -29,9 +29,26 @@ case class CacheRamConfig(
 //blockSize: 一个数据块的大小:bytes
 case class Block(blockSize: Int) extends Bundle {
   val banks = Vec(Bits(32 bits), blockSize / 4)
+
+}
+
+object Block {
+  def fromBits(value: Bits, bz: Int): Block = {
+    val res = Block(bz)
+    res.assignFromBits(value.resize(res.getBitsWidth))
+    res
+  }
 }
 
 case class Meta(tagWidth: Int) extends Bundle {
   val tag = Bits(tagWidth bits)
   val valid = Bool()
+}
+
+object Meta {
+  def fromBits(value: Bits, tagWidth: Int): Meta = {
+    val res = Meta(tagWidth)
+    res.assignFromBits(value.resize(res.getBitsWidth))
+    res
+  }
 }

@@ -43,27 +43,80 @@ class ICache(config: CacheRamConfig) extends Component {
     )))
   }
 
+  /*
+   * Signal and Area Definition
+   */
+
+  val plru = new LRUManegr(config.wayNum)
+
   val inputAddr = new Area {
     val tag: UInt = io.cpu.addr(config.offsetWidth + config.indexWidth, config.tagWidth bits)
     val index: UInt = io.cpu.addr(config.offsetWidth, config.indexWidth bits)
-    val offset: UInt = io.cpu.addr(0, config.offsetWidth bits)
+    val wordOffset: UInt = io.cpu.addr(2 until config.offsetWidth)
   }
   val cacheRam = new Area {
     val tags = Array.fill(config.wayNum)(Mem(Meta(config.tagWidth), 1 << config.indexWidth))
     val datas = Array.fill(config.wayNum)(Mem(Block(config.blockSize), 1 << config.indexWidth))
   }
 
-  val hit = new Area {
-    val hitPerWay = Bits(config.wayNum bits) //每一路是否命中
+  val icache = new Area {
+    val dataWE = Bits(config.wayNum bits) //写cache.data的使能
+    val tagWE = Bits(config.wayNum bits) //写cache.meta的使能
+    /*
+     * Cache读端口
+     */
+    val rdata = Vec(Block(config.blockSize), config.wayNum)
+    val rmeta = Vec(Meta(config.tagWidth), config.wayNum)
     for (i <- 0 until config.wayNum) {
-      val meta = cacheRam.tags(i).readAsync(inputAddr.index)
-      hitPerWay(i) := (meta.tag.asUInt === inputAddr.tag) & meta.valid
+      rmeta(i) := cacheRam.tags(i).readAsync(inputAddr.index)
+      rdata(i) := cacheRam.datas(i).readAsync(inputAddr.index)
     }
+    /*
+     * Cache写端口
+     */
+    val writeMeta = Meta(config.tagWidth) //要写入cache的Meta
+    val writeData = Block(config.blockSize) //要写入cache的Block
+    //TODO 加入invalidate功能后需要修改valid的逻辑
+    for (i <- 0 until config.wayNum) {
+      cacheRam.tags(i).write(inputAddr.index, writeMeta, enable = tagWE(i))
+      cacheRam.datas(i).write(inputAddr.index, writeData, enable = dataWE(i))
+    }
+
+    val hitPerWay: Bits = Bits(config.wayNum bits) //每一路是否命中
     val hit: Bool = hitPerWay.orR & io.cpu.read
-    val hitLine = MuxOH(hitPerWay, for (i <- 0 until config.wayNum) yield cacheRam.datas(i).readAsync(inputAddr.index))
+    //把hitPerWay中为1的那一路对应数据拿出来
+    val hitLine: Block = MuxOH(hitPerWay, for (i <- 0 until config.wayNum) yield rdata(i))
+    for (i <- 0 until config.wayNum) {
+      hitPerWay(i) := (rmeta(i).tag.asUInt === inputAddr.tag) & rmeta(i).valid
+    }
   }
-  io.cpu.stall := False
-  io.cpu.data := 0
+
+  //要替换的那一路的地址
+  val replace = new Area {
+    val addr = UInt(log2Up(config.wayNum) bits)
+    addr := plru.io.next
+    for (i <- 0 until config.wayNum) {
+      when(!icache.rmeta(i).valid)(addr := i) //如果有未使用的cache line，优先替换它
+    }
+  }
+
+  val counter = Counter(0 to config.wordSize) //从内存读入数据的计数器
+  val recvBlock = Reg(Block(config.blockSize)) init(Block.fromBits(B(0), config.blockSize))  //从内存中读出的一行的寄存器
+
+  /** *********************************
+   * ********* default value **********
+   * ********************************* */
+  io.cpu.stall := True  //默认stall
+  io.cpu.data := icache.hitLine.banks(inputAddr.wordOffset)
+
+  plru.io.update := False
+  plru.io.access := icache.hitPerWay
+
+  icache.tagWE := 0 //默认禁止所有的cache写
+  icache.dataWE := 0 //默认禁止所有的cache写
+  icache.writeMeta.tag := inputAddr.tag.asBits
+  icache.writeMeta.valid := True
+  icache.writeData := recvBlock
 
   //  Default value of AXI singal
   io.axi.ar.id := 0
@@ -96,17 +149,20 @@ class ICache(config: CacheRamConfig) extends Component {
   //b
   io.axi.b.ready := False
 
-  val counter = Counter(0 to config.wordSize)
   val ICacheFSM = new StateMachine {
     val waitAXIReady = new State
     val readMem = new State
     val done = new State
-    disableAutoStart()
+    setEntry(stateBoot)
 
     stateBoot
+      .whenIsNext(io.cpu.stall := False)  //当下一个状态仍然是boot的时候，icache不会stall
       .whenIsActive {
         counter.clear()
-        when(io.cpu.read & !hit.hit)(goto(waitAXIReady))
+        when(io.cpu.read & !icache.hit)(goto(waitAXIReady))
+        when(io.cpu.read & icache.hit) {
+          plru.io.update := True //获取cache数据更新LRU标志
+        }
       }
 
     waitAXIReady
@@ -121,137 +177,20 @@ class ICache(config: CacheRamConfig) extends Component {
         io.axi.r.ready := True
         when(io.axi.r.valid) {
           counter.increment()
-          cacheRam.datas
+          recvBlock.banks(counter.value.resize(3)) := io.axi.r.data
         }
-        when(io.axi.r.valid & io.axi.r.last)(goto(done))
+        when(io.axi.r.valid & io.axi.r.last) {
+          goto(done)
+        }
       }
 
+    //待最后一个读入数据写入recvBlocks后，打开cache的写使能
     done
-      .whenIsActive(goto(stateBoot))
+      .whenIsActive {
+        icache.tagWE(replace.addr) := True
+        icache.dataWE(replace.addr) := True
+        goto(stateBoot)
+      }
   }
 
-  //更新
 }
-
-//
-//// Direct-Mapped Cache
-//case class ICacheConfig(
-//                         lineSize: Int = 256, //256B = 64word
-//                         cacheSize: Int = 16 * 256 //4KiB
-//                       ) {
-//  def lineNum: Int = cacheSize / lineSize
-//
-//  def wordPerLine: Int = lineSize / 4
-//
-//  def lineOffset: Int = log2Up(lineSize)
-//
-//  def tagWidth: Int = {
-//    val addrWidth = 32
-//    addrWidth - byteIndexWidth - wordIndexWidth - lineIndexWidth
-//  }
-//
-//  def lineIndexWidth: Int = log2Up(lineNum)
-//
-//  def wordIndexWidth: Int = log2Up(wordPerLine)
-//
-//  def byteIndexWidth: Int = 2
-//}
-//
-//object ICache {
-//  val axiConfig = Axi4Config(
-//    addressWidth = 32, dataWidth = 32, idWidth = 4,
-//    useRegion = false, useQos = false
-//  )
-//
-//  def main(args: Array[String]): Unit = {
-//    SpinalVerilog(new ICache(ICacheConfig()))
-//  }
-//}
-//
-//
-//
-//class ICache(config: ICacheConfig) extends Component {
-//  val io = new Bundle {
-//    val cpu = slave(new CPUICacheInterface())
-//    val axi = master(Axi4ReadOnly(ICache.axiConfig))
-//  }
-//  // Cache configuration
-//  val cacheData = new ICacheData(CacheLineConfig(config.wordPerLine, config.tagWidth), config.lineNum) simPublic()
-//  val readCounter = Reg(UInt(config.wordIndexWidth bits)) init (0) // The number of readed "Word"
-//  //Tag Comparison
-//  val comparison = new Area {
-//    val tag = Bits(config.tagWidth bits)
-//    val lineIndex = UInt(config.lineIndexWidth bits) simPublic()
-//    val wordIndex = UInt(config.wordIndexWidth bits) simPublic()
-//
-//    var start = 31
-//    tag := io.cpu.addr(start downto start - config.tagWidth + 1).asBits
-//    //    println(s"addrTag = (${start} downto ${start - config.tagWidth + 1})")
-//    start = start - config.tagWidth
-//    lineIndex := io.cpu.addr(start downto start - config.lineIndexWidth + 1)
-//    //    println(s"lineTag = (${start} downto ${start - config.lineOffsetWidth + 1})")
-//    start = start - config.lineIndexWidth
-//    wordIndex := io.cpu.addr(start downto start - config.wordIndexWidth + 1)
-//    //    println(s"wordTag = (${start} downto ${start - config.wordOffsetWidth + 1})")
-//    val hit: Bool = cacheData.hit(lineIndex, tag) simPublic()
-//    val hitData = cacheData.readData(lineIndex, wordIndex)
-//    val willMem = io.cpu.read && !hit
-//  }
-//
-//  //Default Value
-//  //Constant AXI in ICache
-//  //ar
-//  io.axi.ar.addr := (comparison.tag ## comparison.lineIndex ## U(0, config.lineOffset bits)).asUInt
-//  io.axi.ar.id := 0
-//  io.axi.ar.lock := 0
-//  io.axi.ar.cache := 0
-//  io.axi.ar.prot := 0
-//  io.axi.ar.len := config.wordPerLine - 1
-//  io.axi.ar.size := U"3'b010" //2^2 = 4Bytes
-//  io.axi.ar.burst := B"2'b01" //INCR
-//  io.axi.ar.valid := False
-//  //r
-//  io.axi.r.ready := False
-//
-//
-//  //State Machine
-//  val iCacheFSM = new StateMachine {
-//    val IDLE: State = new State with EntryPoint {
-//      whenIsActive {
-//        when(comparison.willMem)(goto(AXI_READ_START))
-//      }
-//    }
-//
-//    val AXI_READ_START: State = new State {
-//      whenIsActive {
-//        readCounter := 0
-//        io.axi.ar.valid := True
-//        when(io.axi.ar.ready)(goto(AXI_READ))
-//      }
-//    }
-//
-//    val AXI_READ: State = new State {
-//      whenIsActive {
-//        when(io.axi.r.valid) {
-//          readCounter := readCounter + 1
-//          io.axi.r.ready := True
-//          cacheData.writeData(lineIndex = comparison.lineIndex, wordIndex = readCounter, data = io.axi.r.data)
-//        }
-//        when(io.axi.r.last & io.axi.r.valid) {
-//          cacheData.validate(comparison.lineIndex)
-//          cacheData.writeTag(lineIndex = comparison.lineIndex, tag = comparison.tag)
-//          goto(IDLE)
-//        }
-//      }
-//    }
-//
-////    val WRITE_CACHE: State = new State {
-////      //Use for the last word to write back cache
-////      whenIsActive(goto(IDLE))
-////    }
-//  }
-//
-//  //CPU-Cache Interface
-//  io.cpu.data := comparison.hitData
-//  io.cpu.stall := comparison.willMem || !iCacheFSM.isActive(iCacheFSM.IDLE)
-//}
