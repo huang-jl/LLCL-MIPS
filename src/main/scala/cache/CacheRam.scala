@@ -5,7 +5,7 @@ import spinal.core._
 case class CacheRamConfig(
                            blockSize: Int = 32, //数据块的大小, bytes
                            indexWidth: Int = 7, //Index的宽度
-                           wayNum: Int = 2 //组相连个数
+                           wayNum: Int = 2 //路个数
                          ) {
   def tagWidth: Int = 32 - indexWidth - offsetWidth
 
@@ -14,6 +14,8 @@ case class CacheRamConfig(
   def wordSize: Int = blockSize / 4
 
   def bitSize: Int = blockSize * 8
+
+  def setSize: Int = 1 << indexWidth //组数
 
   def lruLength: Int = {
     var sum = 0
@@ -33,6 +35,8 @@ case class Block(blockSize: Int) extends Bundle {
 }
 
 object Block {
+  def getBitWidth(blockSize: Int): Int = blockSize * 8
+
   def fromBits(value: Bits, bz: Int): Block = {
     val res = Block(bz)
     res.assignFromBits(value.resize(res.getBitsWidth))
@@ -42,13 +46,25 @@ object Block {
 
 case class Meta(tagWidth: Int) extends Bundle {
   val tag = Bits(tagWidth bits)
-  val valid = Bool()
+  val valid = Bool
 }
 
 object Meta {
+  def getBitWidth(tagWidth: Int): Int = tagWidth + 1
+
   def fromBits(value: Bits, tagWidth: Int): Meta = {
     val res = Meta(tagWidth)
     res.assignFromBits(value.resize(res.getBitsWidth))
     res
   }
+}
+
+case class DMeta(tagWidth: Int) extends Bundle {
+  val tag = Bits(tagWidth bits)
+  val valid = Bool
+  val dirty = Bool
+}
+
+object DMeta {
+  def getBitWidth(tagWidth: Int): Int = tagWidth + 2
 }
