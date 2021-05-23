@@ -2,7 +2,7 @@ package cache
 //TODO
 //1.写cache ram的使能 V
 //2.写fifo的使能 V
-//3.什么时候stall
+//3.什么时候stall V
 //4.更新lru的使能 V
 
 import spinal.core._
@@ -11,13 +11,13 @@ import spinal.lib.fsm._
 import spinal.lib.bus.amba4.axi.{Axi4, Axi4Config}
 
 class CPUDCacheInterface extends Bundle with IMasterSlave {
-  val read = Bool
-  val write = Bool
-  val addr = UInt(32 bits)
-  val rdata = Bits(32 bits)
-  val wdata = Bits(32 bits)
-  val byteEnable = Bits(4 bits) //???1 -> enable byte0, ??1? -> enable byte1....
-  val stall = Bool
+  val read: Bool = Bool
+  val write: Bool = Bool
+  val addr: UInt = UInt(32 bits)
+  val rdata: Bits = Bits(32 bits)
+  val wdata: Bits = Bits(32 bits)
+  val byteEnable: Bits = Bits(4 bits) //???1 -> enable byte0, ??1? -> enable byte1....
+  val stall: Bool = Bool
 
   override def asMaster(): Unit = {
     out(read, write, addr, byteEnable, wdata)
@@ -89,11 +89,11 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
      * Cache写端口
      */
     val writeMeta = Meta(config.tagWidth) //要写入cache的Meta
-    val writeData = Block(config.blockSize) //要写入cache的Block
+    val writeData = Bits(config.bitSize bits) //要写入cache的Block
     //TODO 加入invalidate功能后需要修改valid的逻辑
     for (i <- 0 until config.wayNum) {
       cacheRam.tags(i).write(inputAddr.index, writeMeta.asBits, enable = tagWE(i))
-      cacheRam.datas(i).write(inputAddr.index, writeData.asBits, enable = dataWE(i))
+      cacheRam.datas(i).write(inputAddr.index, writeData, enable = dataWE(i))
     }
 
     val hitPerWay: Bits = Bits(config.wayNum bits) //cache每一路是否命中
@@ -201,6 +201,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
         when(readMiss | writeMiss)(goto(waitWb))
       }
 
+    //这个状态是开始读一个cache line的前置状态
     waitWb.whenIsActive {
       //当FIFO要push并且FIFO已经满了的时候，需要等待
       when(!(fifo.push & fifo.full)) {
@@ -306,19 +307,20 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     }
   }
 
-  dcache.writeData := recvBlock
+  dcache.writeData := recvBlock.asBits
   when(dcacheFSM.isActive(dcacheFSM.readMem)) {
-    dcache.writeData.banks(config.wordSize - 1) := io.axi.r.data
+    dcache.writeData((config.wordSize - 1) << log2Up(32), 32 bits) := io.axi.r.data
   }.elsewhen(dcacheFSM.isActive(dcacheFSM.waitWb)) {
-    dcache.writeData := wb.data //在waitWb阶段也可能写cache ram，此时命中正在写回内存的数据
+    dcache.writeData := wb.data.asBits //在waitWb阶段也可能写cache ram，此时命中正在写回内存的数据
   }.elsewhen(dcacheFSM.isActive(dcacheFSM.stateBoot)) {
-    dcache.writeData := dcache.hitLine //直接cache命中则使用cache的值
+    dcache.writeData := dcache.hitLine.asBits //直接cache命中则使用cache的值
   }
   //如果是写cache，那么还需要通过byteEnable修改dcache.writeData
   when(io.cpu.write) {
     for (i <- 0 until 4) {
       when(io.cpu.byteEnable(i)) {
-//        dcache.writeData.banks(inputAddr.wordOffset)(i * 8, 8 bits) := io.cpu.wdata(i * 8, 8 bits)
+//                dcache.writeData.banks(inputAddr.wordOffset)(i * 8, 8 bits) := io.cpu.wdata(i * 8, 8 bits)
+        dcache.writeData((inputAddr.byteOffset << 3) + (i * 8), 8 bits) := io.cpu.wdata(i * 8, 8 bits)
       }
     }
   }

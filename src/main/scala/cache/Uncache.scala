@@ -1,10 +1,20 @@
-//package cache
+package cache
 //
-//import spinal.core._
+import spinal.core._
 //import spinal.lib._
 //import spinal.lib.bus.amba4.axi.{Axi4, Axi4Config}
 //import spinal.lib.fsm.{EntryPoint, State, StateMachine}
 //
+//object Test {
+//  def main(args:Array[String]): Unit ={
+//    SpinalVerilog(new Test)
+//  }
+//}
+//class Test extends Component {
+//  val data = Vec(Bits(32 bits), 8)
+//  val addr = UInt(3 bits)
+//  data(addr)(0, 8 bits) := B(0, 8 bits)
+//}
 //object Uncache {
 //  val axiConfig = Axi4Config(
 //    addressWidth = 32, dataWidth = 32, idWidth = 4,

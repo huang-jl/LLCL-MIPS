@@ -31,7 +31,6 @@ case class CacheRamConfig(
 //blockSize: 一个数据块的大小:bytes
 case class Block(blockSize: Int) extends Bundle {
   val banks = Vec(Bits(32 bits), blockSize / 4)
-
 }
 
 object Block {
