@@ -55,6 +55,11 @@ class ICache(config: CacheRamConfig) extends Component {
   val cacheRam = new Area {
     val tags = Array.fill(config.wayNum)(Mem(Bits(Meta.getBitWidth(config.tagWidth) bits), config.setSize))
     val datas = Array.fill(config.wayNum)(Mem(Bits(Block.getBitWidth(config.blockSize) bits), config.setSize))
+    //仿真时初值
+    for (i <- 0 until config.wayNum) {
+      tags(i).init(for (i <- 0 until config.setSize) yield B(0))
+      datas(i).init(for (i <- 0 until config.setSize) yield B(0))
+    }
   }
 
   val icache = new Area {
@@ -118,14 +123,10 @@ class ICache(config: CacheRamConfig) extends Component {
 
     icache.tagWE := 0 //默认禁止所有的cache写
     icache.dataWE := 0 //默认禁止所有的cache写
-    icache.writeMeta.tag := inputAddr.tag.asBits
-    icache.writeMeta.valid := True
-    icache.writeData := recvBlock
-    icache.writeData.banks(config.wordSize - 1) := io.axi.r.data
 
     //  Default value of AXI singal
     io.axi.ar.id := 0
-    io.axi.ar.addr := io.cpu.addr
+    io.axi.ar.addr := (inputAddr.tag ## inputAddr.index ## B(0, config.offsetWidth bits)).asUInt
     io.axi.ar.lock := 0
     io.axi.ar.cache := 0
     io.axi.ar.prot := 0
@@ -155,7 +156,7 @@ class ICache(config: CacheRamConfig) extends Component {
     io.axi.b.ready := False
   }
 
-  val ICacheFSM = new StateMachine {
+  val icacheFSM = new StateMachine {
     val waitAXIReady = new State
     val readMem = new State
     val done = new State
@@ -172,7 +173,7 @@ class ICache(config: CacheRamConfig) extends Component {
     waitAXIReady.whenIsActive {
       io.axi.ar.valid := True
       counter.clear()
-      when(io.axi.ar.ready)(goto(waitAXIReady))
+      when(io.axi.ar.ready)(goto(readMem))
     }
 
     readMem.whenIsActive {
@@ -191,6 +192,14 @@ class ICache(config: CacheRamConfig) extends Component {
     done.whenIsActive {
       goto(stateBoot)
     }
+  }
+
+  //写回cache ram的数据
+  icache.writeMeta.tag := inputAddr.tag.asBits
+  icache.writeMeta.valid := True
+  icache.writeData := recvBlock
+  when(icacheFSM.isActive(icacheFSM.readMem)) {
+    icache.writeData.banks(config.wordSize - 1) := io.axi.r.data
   }
 
 }

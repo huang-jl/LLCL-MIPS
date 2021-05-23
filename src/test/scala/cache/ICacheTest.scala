@@ -22,20 +22,6 @@ class ICacheTest extends Component {
   io.cpu >> cpu
   cpu >> iCache.io.cpu
   iCache.io.axi >> ram.io.axi
-  ram.io.axi.b.ready := False
-  ram.io.axi.w.valid := False
-  ram.io.axi.aw.valid := False
-  ram.io.axi.w.data := 0
-  ram.io.axi.w.last := False
-  ram.io.axi.w.strb := 0
-  ram.io.axi.aw.id := 0
-  ram.io.axi.aw.addr := 0
-  ram.io.axi.aw.len := 0
-  ram.io.axi.aw.size := 0
-  ram.io.axi.aw.prot := 0
-  ram.io.axi.aw.cache := 0
-  ram.io.axi.aw.lock := 0
-  ram.io.axi.aw.burst := 0
 }
 
 object ICacheTest {

@@ -90,8 +90,8 @@ class WriteBuffer(config: WriteBufferConfig) extends Component {
   /*
    * Logic
    */
-  io.empty := counter.cnt === config.depth
-  io.full := counter.cnt === 0
+  io.empty := counter.cnt === 0
+  io.full := counter.cnt === config.depth
   for (i <- 0 until config.depth) {
     queryReadHit(i) := (mem.fifoTag(i) === io.queryTag) & mem.fifoValid(i)
     //如果当前第i个是head并且正在pop，那么写不命中

@@ -71,6 +71,11 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   val cacheRam = new Area {
     val tags = Array.fill(config.wayNum)(new Mem(Bits(DMeta.getBitWidth(config.tagWidth) bits), config.setSize))
     val datas = Array.fill(config.wayNum)(new Mem(Bits(Block.getBitWidth(config.blockSize) bits), config.setSize))
+    //仿真时初值
+    for (i <- 0 until config.wayNum) {
+      tags(i).init(for (i <- 0 until config.setSize) yield B(0))
+      datas(i).init(for (i <- 0 until config.setSize) yield B(0))
+    }
   }
 
   val dcache = new Area {
@@ -131,7 +136,6 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     //正在写回内存的数据命中读请求
     val hit: Bool = (addr(31 downto config.offsetWidth).asBits === (inputAddr.tag ## inputAddr.index)) & writing
     addr := (fifo.popTag ## B(0, config.offsetWidth bits)).asUInt
-    data.assignFromBits(fifo.popData)
   }
 
   val readMiss = Bool
@@ -244,7 +248,10 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
 
     stateBoot.whenIsActive {
       fifo.pop := True
-      when(!fifo.empty)(goto(waitAXIReady))
+      when(!fifo.empty) {
+        wb.data.assignFromBits(fifo.popData)
+        goto(waitAXIReady)
+      }
     }
 
     waitAXIReady.whenIsActive {
@@ -256,7 +263,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     writeMem.whenIsActive {
       io.axi.w.valid := True
       io.axi.w.data := wb.data.banks(counter.send.value)
-      io.axi.w.last := (counter.send.value === config.wordSize)
+      io.axi.w.last := (counter.send.value === config.wordSize - 1)
       when(io.axi.w.ready)(counter.send.increment())
       when(io.axi.w.ready & io.axi.w.last)(goto(waitAXIBValid))
     }
@@ -319,7 +326,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   when(io.cpu.write) {
     for (i <- 0 until 4) {
       when(io.cpu.byteEnable(i)) {
-//                dcache.writeData.banks(inputAddr.wordOffset)(i * 8, 8 bits) := io.cpu.wdata(i * 8, 8 bits)
+        //                dcache.writeData.banks(inputAddr.wordOffset)(i * 8, 8 bits) := io.cpu.wdata(i * 8, 8 bits)
         dcache.writeData((inputAddr.byteOffset << 3) + (i * 8), 8 bits) := io.cpu.wdata(i * 8, 8 bits)
       }
     }
