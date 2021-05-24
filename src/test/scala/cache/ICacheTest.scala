@@ -17,7 +17,7 @@ class ICacheTest extends Component {
   }
 
   val cpu = new CPUICacheInterface
-  val iCache = new ICache(CacheRamConfig())
+  val iCache = new ICache(CacheRamConfig(32, 7, 8))
   val ram = new axi_ram(AXIRamConfig(dataWidth = 32, addrWidth = 16, idWidth = 4, pipelineOutput = 0))
   io.cpu >> cpu
   cpu >> iCache.io.cpu

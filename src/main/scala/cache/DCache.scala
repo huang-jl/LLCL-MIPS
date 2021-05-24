@@ -40,7 +40,7 @@ class CPUDCacheInterface extends Bundle with IMasterSlave {
 
 object DCache {
   def main(args: Array[String]): Unit = {
-    SpinalVerilog(new DCache(CacheRamConfig(), 16))
+    SpinalVerilog(new DCache(CacheRamConfig(), 16)).printPruned()
   }
 }
 
@@ -49,6 +49,13 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   val io = new Bundle {
     val cpu = slave(new CPUDCacheInterface)
     val axi = master(new Axi4(Axi4Config(
+      addressWidth = 32, dataWidth = 32, idWidth = 4,
+      useRegion = false, useQos = false
+    )))
+    //uncached
+    //之所以和DCache放在一起，是保证uncached和cached的一致（受一个状态机管理）
+    val uncache = slave(new CPUDCacheInterface)
+    val uncacheAXI = master(new Axi4(Axi4Config(
       addressWidth = 32, dataWidth = 32, idWidth = 4,
       useRegion = false, useQos = false
     )))
@@ -61,9 +68,10 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   fifo <> writeBuffer.io
 
   val inputAddr = new Area {
-    val tag: UInt = io.cpu.addr(config.offsetWidth + config.indexWidth, config.tagWidth bits)
-    val index: UInt = io.cpu.addr(config.offsetWidth, config.indexWidth bits)
-    val wordOffset: UInt = io.cpu.addr(2 until config.offsetWidth)
+    val addr: UInt = (io.uncache.read | io.uncache.write) ? io.uncache.addr | io.cpu.addr
+    val tag: UInt = addr(config.offsetWidth + config.indexWidth, config.tagWidth bits)
+    val index: UInt = addr(config.offsetWidth, config.indexWidth bits)
+    val wordOffset: UInt = addr(2 until config.offsetWidth)
     //offsetWidth = 5为例，此时cache line大小为32，所以byteOffset在0-31
     val byteOffset: UInt = (wordOffset ## B(0, 2 bits)).asUInt
   }
@@ -93,7 +101,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     /*
      * Cache写端口
      */
-    val writeMeta = Meta(config.tagWidth) //要写入cache的Meta
+    val writeMeta = DMeta(config.tagWidth) //要写入cache的Meta
     val writeData = Bits(config.bitSize bits) //要写入cache的Block
     //TODO 加入invalidate功能后需要修改valid的逻辑
     for (i <- 0 until config.wayNum) {
@@ -135,7 +143,6 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     val writing: Bool = Bool //当前是否正在写回内存
     //正在写回内存的数据命中读请求
     val hit: Bool = (addr(31 downto config.offsetWidth).asBits === (inputAddr.tag ## inputAddr.index)) & writing
-    addr := (fifo.popTag ## B(0, config.offsetWidth bits)).asUInt
   }
 
   val readMiss = Bool
@@ -153,7 +160,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     dcache.dataWE := 0
     fifo.pop := False
     io.cpu.stall := True
-    //Default Value of AXI
+    //Default Value of Cached AXI
     //ar
     io.axi.ar.addr := (inputAddr.tag ## inputAddr.index ## B(0, config.offsetWidth bits)).asUInt
     io.axi.ar.id := 0
@@ -184,59 +191,106 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     io.axi.w.strb := B"4'b1111"
     //b
     io.axi.b.ready := True
+
+    //Default Value of UnCached AXI
+    io.uncacheAXI.ar.addr := (inputAddr.addr(31 downto 2) ## B(0, 2 bits)).asUInt
+    io.uncacheAXI.ar.id := 0
+    io.uncacheAXI.ar.lock := 0
+    io.uncacheAXI.ar.cache := 0
+    io.uncacheAXI.ar.prot := 0
+    io.uncacheAXI.ar.len := 0
+    io.uncacheAXI.ar.size := U"3'b010" //2^2 = 4Bytes
+    io.uncacheAXI.ar.burst := B"2'b01" //INCR
+    io.uncacheAXI.ar.valid := False
+    //r
+    io.uncacheAXI.r.ready := False
+    //Write
+    //aw
+    io.uncacheAXI.aw.id := 0
+    io.uncacheAXI.aw.lock := 0
+    io.uncacheAXI.aw.cache := 0
+    io.uncacheAXI.aw.prot := 0
+    io.uncacheAXI.aw.len := 0
+    io.uncacheAXI.aw.size := U"3'b010" //2^2 = 4Bytes
+    io.uncacheAXI.aw.burst := B"2'b01" //INCR
+    io.uncacheAXI.aw.valid := False
+    io.uncacheAXI.aw.addr := (inputAddr.addr(31 downto 2) ## B(0, 2 bits)).asUInt
+    //w
+    io.uncacheAXI.w.data := io.uncache.wdata
+    io.uncacheAXI.w.valid := False
+    io.uncacheAXI.w.last := False
+    io.uncacheAXI.w.strb := io.uncache.byteEnable
+    //b
+    io.uncacheAXI.b.ready := True
   }
 
   /*
    * Logic
    */
 
-  //这个状态机不包括写内存的逻辑
+  //这个状态机不包括写内存
   //写内存的逻辑是单独一个状态机，直接和fifo进行交互
   val dcacheFSM = new StateMachine {
     val waitWb = new State //用来等待write_back的状态，并且会从cache中移动对应的数据到FIFO中
     val waitAXIReady = new State //等待arready信号
     val readMem = new State //读内存
+
+    val uncacheReadWaitAXIReady = new State
+    val uncacheReadMem = new State
+    val uncacheWriteWaitAXIReady = new State
+    val uncacheWriteMem = new State
+    val uncacheWaitAXIBValid = new State
+
     val done = new State
     setEntry(stateBoot)
     disableAutoStart()
     stateBoot
-      .whenIsNext(io.cpu.stall := False)
       .whenIsActive {
         when(readMiss | writeMiss)(goto(waitWb))
+        when(io.uncache.read) {
+          when(io.uncacheAXI.ar.ready)(goto(uncacheReadMem))
+            .otherwise(goto(uncacheReadWaitAXIReady))
+        }
+        when(io.uncache.write) {
+          when(io.uncacheAXI.aw.ready)(goto(uncacheWriteMem))
+            .otherwise(goto(uncacheWriteWaitAXIReady))
+        }
       }
 
     //这个状态是开始读一个cache line的前置状态
     waitWb.whenIsActive {
       //当FIFO要push并且FIFO已经满了的时候，需要等待
       when(!(fifo.push & fifo.full)) {
-        when(wb.hit)(goto(stateBoot)) //在写回的数据中命中了
+        when(wb.hit)(goto(stateBoot)) //在写回的数据中命中了，这个判断必须单独一个状态，否则没法stall
           .otherwise(goto(waitAXIReady))
       }
     }
 
     waitAXIReady.whenIsActive {
-      counter.recv.clear()
-      io.axi.ar.valid := True
       when(io.axi.ar.ready)(goto(readMem))
     }
-
     readMem.whenIsActive {
-      io.axi.r.ready := True
-      when(io.axi.r.valid) {
-        counter.recv.increment()
-        recvBlock.banks(counter.recv.value) := io.axi.r.data
-      }
-      when(io.axi.r.valid & io.axi.r.last) {
-        dcache.tagWE(replace.addr) := True
-        dcache.dataWE(replace.addr) := True
-        goto(done)
-      }
+      when(io.axi.r.valid & io.axi.r.last)(goto(done))
     }
 
-    done.whenIsActive {
-      io.cpu.stall := False
-      goto(stateBoot)
+    //uncache state
+    uncacheReadWaitAXIReady.whenIsActive {
+      when(io.uncacheAXI.ar.ready)(goto(uncacheReadMem))
     }
+    uncacheReadMem.whenIsActive {
+      when(io.uncacheAXI.r.valid)(goto(done))
+    }
+    uncacheWriteWaitAXIReady.whenIsActive {
+      when(io.uncacheAXI.aw.ready)(goto(uncacheWriteMem))
+    }
+    uncacheWriteMem.whenIsActive {
+      when(io.uncacheAXI.w.ready)(goto(uncacheWaitAXIBValid))
+    }
+    uncacheWaitAXIBValid.whenIsActive {
+      when(io.uncacheAXI.b.valid)(goto(done))
+    }
+
+    done.whenIsActive(goto(stateBoot))
   }
 
   val wbFSM = new StateMachine {
@@ -250,6 +304,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
       fifo.pop := True
       when(!fifo.empty) {
         wb.data.assignFromBits(fifo.popData)
+        wb.addr := (fifo.popTag ## B(0, config.offsetWidth bits)).asUInt
         goto(waitAXIReady)
       }
     }
@@ -273,9 +328,58 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     }
   }
 
+  //dcache状态机的逻辑
+  val dcacheFSMLogic = new Area {
+    dcacheFSM.stateBoot.whenIsNext(io.cpu.stall := False)
+    dcacheFSM.stateBoot.whenIsActive {
+      io.uncacheAXI.ar.valid := io.uncache.read
+      io.uncacheAXI.aw.valid := io.uncache.write
+    }
+    dcacheFSM.waitAXIReady.whenIsActive {
+      counter.recv.clear()
+      io.axi.ar.valid := True
+    }
+    dcacheFSM.readMem.whenIsActive {
+      io.axi.r.ready := True
+      when(io.axi.r.valid) {
+        counter.recv.increment()
+        recvBlock.banks(counter.recv.value) := io.axi.r.data
+      }
+      when(io.axi.r.valid & io.axi.r.last) {
+        dcache.tagWE(replace.addr) := True
+        dcache.dataWE(replace.addr) := True
+      }
+    }
+    dcacheFSM.done.whenIsActive(io.cpu.stall := False)
+    //uncache dcache状态
+    dcacheFSM.uncacheReadWaitAXIReady.whenIsActive {
+      io.uncacheAXI.ar.valid := True
+    }
+    dcacheFSM.uncacheReadMem.whenIsActive {
+      io.uncacheAXI.r.ready := True
+      when(io.uncacheAXI.r.valid) {
+        recvBlock.banks(0) := io.uncacheAXI.r.data
+      }
+    }
+    dcacheFSM.uncacheWriteWaitAXIReady.whenIsActive {
+      io.uncacheAXI.aw.valid := True
+    }
+    dcacheFSM.uncacheWriteMem.whenIsActive {
+      io.uncacheAXI.w.valid := True
+      io.uncacheAXI.w.last := True
+    }
+  }
+  //stall信号
+  io.uncache.stall := io.cpu.stall
+
   readMiss := (!dcache.hit) & (!fifo.readHit) & (!wb.hit) & io.cpu.read //读缺失
   writeMiss := (!dcache.hit) & (!fifo.writeHit) & io.cpu.write //写缺失
 
+  //cache读出的数据可能是
+  //1.如果读miss，那么只能是来自内存的数据送回cpu
+  //2.中cache: hitLine
+  //3.命中Fifo中的数据
+  //4.命中**正在写回**的wb.data
   io.cpu.rdata := dcache.hitLine.banks(inputAddr.wordOffset)
   when(readMiss) {
     io.cpu.rdata := recvBlock.banks(inputAddr.wordOffset)
@@ -284,6 +388,8 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   }.elsewhen(!dcache.hit & wb.hit) {
     io.cpu.rdata := wb.data.banks(inputAddr.wordOffset)
   }
+  //uncache读出的数据
+  io.uncache.rdata := recvBlock.banks(0)
 
   wb.writing := !wbFSM.isActive(wbFSM.stateBoot)
 
@@ -296,9 +402,11 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   fifo.queryWData(inputAddr.byteOffset << 3, 32 bits) := io.cpu.wdata //byteOffset << 3对应cpu.addr的bit偏移
   fifo.queryBE := 0
   fifo.queryBE(inputAddr.byteOffset, 4 bits) := io.cpu.byteEnable
-  fifo.write := io.cpu.write & !io.cpu.stall & fifo.writeHit
+  fifo.write := io.cpu.write & !io.cpu.stall //fifo内部会检查是否写命中
+  //  fifo.write := io.cpu.write & !io.cpu.stall & fifo.writeHit
 
-  //写cache ram的信号
+  //写入dcache ram的信号
+  dcache.writeMeta.dirty := False
   dcache.writeMeta.valid := True
   dcache.writeMeta.tag := inputAddr.tag.asBits
   dcacheFSM.waitWb.whenIsActive {
@@ -308,12 +416,16 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     }
   }
   dcacheFSM.stateBoot.whenIsActive {
+    //当直接写cache命中时，会开启dcache的写使能
     when(dcache.writeHit) {
       dcache.tagWE := dcache.hitPerWay
       dcache.dataWE := dcache.hitPerWay
     }
   }
-
+  //写入dache ram的数据
+  //1.从内存读出来数据
+  //2.从wb的data中命中的数据
+  //3.似乎还应有从fifo中命中的数据? TODO
   dcache.writeData := recvBlock.asBits
   when(dcacheFSM.isActive(dcacheFSM.readMem)) {
     dcache.writeData((config.wordSize - 1) << log2Up(32), 32 bits) := io.axi.r.data
@@ -322,8 +434,9 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   }.elsewhen(dcacheFSM.isActive(dcacheFSM.stateBoot)) {
     dcache.writeData := dcache.hitLine.asBits //直接cache命中则使用cache的值
   }
-  //如果是写cache，那么还需要通过byteEnable修改dcache.writeData
+  //如果是写指令，那么还需要通过byteEnable修改dcache.writeData
   when(io.cpu.write) {
+    dcache.writeMeta.dirty := True
     for (i <- 0 until 4) {
       when(io.cpu.byteEnable(i)) {
         //                dcache.writeData.banks(inputAddr.wordOffset)(i * 8, 8 bits) := io.cpu.wdata(i * 8, 8 bits)
