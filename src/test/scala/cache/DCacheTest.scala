@@ -198,7 +198,10 @@ object DCacheTest {
       }
     }
 
-    compile.doSim("byteEnable", 2021) { dut =>
+    val iterNum = 1000000
+    val noWave = SimConfig.addSimulatorFlag("-Wno-CASEINCOMPLETE").addSimulatorFlag("-Wno-TIMESCALEMOD")
+      .addRtl("./rtl/axi_ram.v").allOptimisation.compile(new DCacheTest)
+    noWave.doSim("super_large_byteEnable", 2021) { dut =>
       dut.clockDomain.forkStimulus(10)
       dut.clockDomain.assertReset()
       sleep(10)
@@ -212,9 +215,10 @@ object DCacheTest {
       dut.io.uncache.write #= false
       dut.io.uncache.byteEnable #= 0xf
       dut.io.uncache.wdata #= 0
-      for (i <- 0 to 30000) {
+      for (i <- 0 to iterNum) {
+        if (i % (iterNum / 10) == 0) println("Sim for %d / %d times".format(i, iterNum))
         val op = rand.nextInt(2) //0: read, 1: write
-        val (randomRamAddr, cpuAddr) = getRandomAddr(0x1000)
+        val (randomRamAddr, cpuAddr) = getRandomAddr(0xffff)
         val answer = memData.getOrElse(cpuAddr, memData(getMapAddr(cpuAddr)))
         var waitCycle = rand.nextInt(3)
         if (i == 0 && waitCycle == 0) waitCycle = 1
@@ -226,9 +230,9 @@ object DCacheTest {
           dut.io.cpu.byteEnable #= 0xf
           dut.clockDomain.waitFallingEdge() //read can get from the same cycle
           while (dut.io.cpu.stall.toBoolean) (dut.clockDomain.waitSampling())
-          if (i % printBase == 0) {
-            println("read addr = 0x%x, cpu data = 0x%x, answer = 0x%x".format(cpuAddr, dut.io.cpu.rdata.toLong, answer))
-          }
+//          if (i % printBase == 0) {
+//            println("read addr = 0x%x, cpu data = 0x%x, answer = 0x%x".format(cpuAddr, dut.io.cpu.rdata.toLong, answer))
+//          }
           assert(dut.io.cpu.rdata.toLong == answer)
         } else if (op == 1) {
           val byteEnable = rand.nextInt(0xf) + 1
@@ -242,10 +246,10 @@ object DCacheTest {
           }
           val newData = toNum(rawBytes)
           memData += (cpuAddr -> newData)
-          if (i % printBase == 0) {
-            println(s"write addr = 0x%x, byteEnable = ${byteEnable.toBinaryString}, raw data = 0x%x, random data = 0x%x, write data = 0x%x".format(cpuAddr,
-              answer, randData, newData))
-          }
+//          if (i % printBase == 0) {
+//            println(s"write addr = 0x%x, byteEnable = ${byteEnable.toBinaryString}, raw data = 0x%x, random data = 0x%x, write data = 0x%x".format(cpuAddr,
+//              answer, randData, newData))
+//          }
           dut.clockDomain.waitRisingEdge(waitCycle)
           dut.io.cpu.addr #= cpuAddr
           dut.io.cpu.read #= false
