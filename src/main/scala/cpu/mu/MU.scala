@@ -30,9 +30,15 @@ class MU extends Component {
   def signExtend(signal: Bits): Bits = signal.asSInt.resize(32).asBits
 
   sramBus.wr := we
-  sramBus.addr := addr
+  sramBus.addr := (B(0, 3 bits) ## addr(28 downto 0)).asUInt
   sramBus.wdata := data_in
   stall := True
+
+  val addrByteIndex = addr(0, 2 bits)
+  switch(sramBus.size){
+    is(B"2'b00")(sramBus.wdata(addrByteIndex << 3, 8 bits) := data_in(0, 8 bits))
+    is(B"2'b01")(sramBus.wdata(addrByteIndex << 3, 16 bits) := data_in(0, 16 bits))
+  }
 
   val MUFsm = new StateMachine {
     val IDLE: State = new State with EntryPoint {
