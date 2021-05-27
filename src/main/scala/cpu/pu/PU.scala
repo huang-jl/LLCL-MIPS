@@ -7,6 +7,8 @@ class PU extends Component {
   /// 数据流水线
 
   // in
+  val hlu_hi_v = in Bits (32 bits)
+  val hlu_lo_v = in Bits (32 bits)
   val rfu_ra_v = in Bits (32 bits)
   val rfu_rb_v = in Bits (32 bits)
 
@@ -27,6 +29,10 @@ class PU extends Component {
   val id_dcu_we = in Bool
   val id_dcu_be = in UInt (2 bits)
   val id_mu_ex = in(MU_EX)
+  val id_hlu_hi_we = in Bool
+  val id_hlu_hi_src = in(HLU_SRC)
+  val id_hlu_lo_we = in Bool
+  val id_hlu_lo_src = in(HLU_SRC)
   val id_rfu_we = in Bool
   val id_rfu_rd = in UInt (5 bits)
   val id_rfu_rd_src = in(RFU_RD_SRC)
@@ -34,6 +40,7 @@ class PU extends Component {
   val id_use_rt = in Bool
 
   val ex_alu_c = in Bits (32 bits)
+  val ex_alu_d = in Bits (32 bits)
 
   val me_dcu_stall = in Bool
   val me_mu_data_out = in Bits (32 bits)
@@ -54,6 +61,10 @@ class PU extends Component {
   val me_dcu_we = out(RegInit(False))
   val me_dcu_be = out(Reg(UInt(2 bits)))
   val me_dcu_ex = out(Reg(MU_EX))
+  val me_hlu_hi_we = out(RegInit(False))
+  val me_hlu_new_hi = out(Reg(Bits(32 bits)))
+  val me_hlu_lo_we = out(RegInit(False))
+  val me_hlu_new_lo = out(Reg(Bits(32 bits)))
 
   val wb_pcu_pc = out(Reg(UInt(32 bits)))
   val wb_rfu_we = out(RegInit(False))
@@ -79,11 +90,17 @@ class PU extends Component {
   val ex_dcu_we = RegInit(False)
   val ex_dcu_be = Reg(UInt(2 bits))
   val ex_mu_ex = Reg(MU_EX)
+  val ex_hlu_hi_we = RegInit(False)
+  val ex_hlu_hi_src = Reg(HLU_SRC)
+  val ex_hlu_hi_v = me_hlu_hi_we ? me_hlu_new_hi | hlu_hi_v
+  val ex_hlu_lo_we = RegInit(False)
+  val ex_hlu_lo_src = Reg(HLU_SRC)
+  val ex_hlu_lo_v = me_hlu_lo_we ? me_hlu_new_lo | hlu_lo_v
   val ex_rfu_we = RegInit(False)
   val ex_rfu_rd = Reg(UInt(5 bits))
   val ex_rfu_rd_src = Reg(RFU_RD_SRC)
   val ex_id_rfu_rd_v = Reg(Bits(32 bits))
-  val ex_rfu_rd_v = (ex_rfu_rd_src === RFU_RD_SRC.alu) ? ex_alu_c | ex_id_rfu_rd_v
+  val ex_rfu_rd_v = ex_rfu_rd_src.mux(RFU_RD_SRC.alu -> ex_alu_c, RFU_RD_SRC.hi -> ex_hlu_hi_v, RFU_RD_SRC.lo -> ex_hlu_lo_v, default -> ex_id_rfu_rd_v)
 
   val me_pcu_pc = Reg(UInt(32 bits))
   val me_rfu_we = RegInit(False)
@@ -94,7 +111,7 @@ class PU extends Component {
 
   val me_stall = me_dcu_stall
   val ex_stall = me_stall
-  val id_stall = ex_stall | ex_rfu_we & ex_rfu_rd_src === RFU_RD_SRC.mu & (ex_rfu_rd === id_du_rs & id_use_rs | ex_rfu_rd === id_du_rt & id_use_rt) | if_icu_stall & id_ju_jump
+  val id_stall = ex_stall | ex_rfu_we & B(ex_rfu_rd_src)(2) & (ex_rfu_rd === id_du_rs & id_use_rs | ex_rfu_rd === id_du_rt & id_use_rt) | if_icu_stall & id_ju_jump
   if_stall := id_stall | if_icu_stall
 
   when(!id_stall) {
@@ -111,6 +128,8 @@ class PU extends Component {
       ex_dcu_re := False
       ex_dcu_we := False
       ex_rfu_we := False
+      ex_hlu_hi_we := False
+      ex_hlu_lo_we := False
     } otherwise {
       ex_pcu_pc := id_pcu_pc
       ex_alu_op := id_alu_op
@@ -125,6 +144,10 @@ class PU extends Component {
       ex_dcu_we := id_dcu_we
       ex_dcu_be := id_dcu_be
       ex_mu_ex := id_mu_ex
+      ex_hlu_hi_we := id_hlu_hi_we
+      ex_hlu_hi_src := id_hlu_hi_src
+      ex_hlu_lo_we := id_hlu_lo_we
+      ex_hlu_lo_src := id_hlu_lo_src
       ex_rfu_we := id_rfu_we
       ex_rfu_rd := id_rfu_rd
       ex_rfu_rd_src := id_rfu_rd_src
@@ -145,6 +168,10 @@ class PU extends Component {
     me_dcu_we := ex_dcu_we
     me_dcu_be := ex_dcu_be
     me_dcu_ex := ex_mu_ex
+    me_hlu_hi_we := ex_hlu_hi_we
+    me_hlu_new_hi := (ex_hlu_hi_src === HLU_SRC.rs) ? ex_du_rs_v | ex_alu_c
+    me_hlu_lo_we := ex_hlu_lo_we
+    me_hlu_new_lo := (ex_hlu_lo_src === HLU_SRC.rs) ? ex_du_rs_v | ex_alu_d
     me_rfu_we := ex_rfu_we
     me_rfu_rd := ex_rfu_rd
     me_rfu_rd_src := ex_rfu_rd_src

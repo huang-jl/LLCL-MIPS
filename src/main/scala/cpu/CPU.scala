@@ -3,6 +3,7 @@ package cpu
 import cpu.alu._
 import cpu.defs.{SramBus, SramBusConfig}
 import cpu.du._
+import cpu.hlu._
 import cpu.ju._
 import cpu.mu._
 import cpu.pcu._
@@ -23,6 +24,7 @@ class CPU extends Component {
   val ju = new JU
   val alu = new ALU
   val dcu = new MU
+  val hlu = new HLU
   val rfu = new RFU
   val pu = new PU
 
@@ -65,12 +67,19 @@ class CPU extends Component {
   dcu.be := pu.me_dcu_be
   dcu.ex := pu.me_dcu_ex
 
+  hlu.hi_we := pu.me_hlu_hi_we
+  hlu.new_hi := pu.me_hlu_new_hi
+  hlu.lo_we := pu.me_hlu_lo_we
+  hlu.new_lo := pu.me_hlu_new_lo
+
   rfu.we := pu.wb_rfu_we
   rfu.rd := pu.wb_rfu_rd
   rfu.rd_v := pu.wb_rfu_rd_v
   rfu.ra := du.rs
   rfu.rb := du.rt
 
+  pu.hlu_hi_v := hlu.hi_v
+  pu.hlu_lo_v := hlu.lo_v
   pu.rfu_ra_v := rfu.ra_v
   pu.rfu_rb_v := rfu.rb_v
   pu.if_pcu_pc := pcu.pc
@@ -89,12 +98,17 @@ class CPU extends Component {
   pu.id_dcu_we := du.dcu_we
   pu.id_dcu_be := du.dcu_be
   pu.id_mu_ex := du.mu_ex
+  pu.id_hlu_hi_we := du.hlu_hi_we
+  pu.id_hlu_hi_src := du.hlu_hi_src
+  pu.id_hlu_lo_we := du.hlu_lo_we
+  pu.id_hlu_lo_src := du.hlu_lo_src
   pu.id_rfu_we := du.rfu_we
   pu.id_rfu_rd := du.rfu_rd
   pu.id_rfu_rd_src := du.rfu_rd_src
   pu.id_use_rs := du.use_rs
   pu.id_use_rt := du.use_rt
   pu.ex_alu_c := B(alu.c)
+  pu.ex_alu_d := B(alu.d)
   pu.me_dcu_stall := dcu.stall
   pu.me_mu_data_out := dcu.data_out
 }

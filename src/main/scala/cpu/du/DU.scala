@@ -27,6 +27,11 @@ class DU extends Component {
   val dcu_be = out UInt (2 bits)
   val mu_ex = out(MU_EX)
 
+  val hlu_hi_we = out Bool
+  val hlu_hi_src = out(HLU_SRC)
+  val hlu_lo_we = out Bool
+  val hlu_lo_src = out(HLU_SRC)
+
   val rfu_we = out Bool
   val rfu_rd = out UInt (5 bits)
   val rfu_rd_src = out(RFU_RD_SRC)
@@ -50,7 +55,7 @@ class DU extends Component {
   offset := S(inst(15 downto 0))
   index := U(inst(25 downto 0))
 
-  alu_op.assignFromBits(op(3) ? op(2 downto 0).mux(B"010" -> B"1110", B"011" -> B"1111", B"111" -> B"1001", default -> B"0" ## op(2 downto 0)) | (fn(5) ## fn(3)).mux(B"00" -> B"10" ## fn(1 downto 0), B"01" -> B"110" ## fn(1), B"10" -> B"0" ## fn(2 downto 0), B"11" -> B"11" ## fn(1 downto 0)))
+  alu_op.assignFromBits(op(3) ? op(2 downto 0).mux(B"010" -> B"10000", B"011" -> B"10001", B"111" -> B"01001", default -> B"00" ## op(2 downto 0)) | (fn(5) ## fn(3)).mux(B"00" -> B"010" ## fn(1 downto 0), B"01" -> B"011" ## fn(1 downto 0), B"10" -> B"00" ## fn(2 downto 0), B"11" -> B"1000" ## fn(0)))
   alu_a_src.assignFromBits(B(op(3) ## fn(5 downto 4) ## fn(2) === B"0000"))
   alu_b_src.assignFromBits(B(op(3)))
 
@@ -59,15 +64,20 @@ class DU extends Component {
   dcu_be := U(op(1 downto 0))
   mu_ex.assignFromBits(B(op(2)))
 
-  rfu_we := rfu_rd =/= 0 & (op(5) ^ op(3) | op(5) ## op(2 downto 0) === B"0011" | (op(5) ## op(3) ## op(2 downto 0) === B"00000" & (!fn(3) | fn(4) | fn(5) | fn(0))) | (op(5) ## op(3) ## op(2 downto 0) === B"00001" & rt(4)))
-  rfu_rd := (op(5) ## op(3) === B"00") ? (op(0) ? U"11111" | rd) | rt
-  rfu_rd_src.assignFromBits(op(5) ## (op(5) ## op(3) === B"00" & (op(0) | fn(5 downto 3) === B"001")))
+  rfu_we := rfu_rd =/= 0 & (op(5) ^ op(3) | !op(3) & !op(2) & (op(1) === op(0) | !op(1) & rt(4)))
+  rfu_rd := (op(5) ^ op(3)) ? rt | (op(0) ? U(31) | rd)
+  rfu_rd_src.assignFromBits((op(5) ## op(3) ## op(0) === B"000") ? ((fn(4 downto 3) === B"10") ? (B"01" ## fn(1)) | B"00" ## (fn(5) ## fn(3) =/= B"01")) | op(5 downto 3))
 
   ju_op.assignFromBits((op(5) ## op(3) === B"00") ? op(2 downto 0).mux(B"000" -> ((fn(5 downto 3) === B"001") ? B"011" | B"010"), B"001" -> B"00" ## rt(0), B"010" -> B"011", default -> op(2 downto 0)) | B"010")
   ju_pc_src.assignFromBits(op(2) ? B"01" | op(1 downto 0))
 
-  use_rs := op(5) ## op(3) === B"01" | op(5) ## op(2) === B"01" | op(5) ## op(1 downto 0) === B"001" | op(5) ## op(3 downto 0) === B"00000" & (fn(2) | fn(3) | fn(5))
-  use_rt := op(5) ## op(3) ## op(2 downto 1) === B"0010" | op(5) ## op(3) ## op(2 downto 0) === B"00000" & (!fn(3) | fn(4) | fn(5))
+  use_rs := op(5) ## op(3) === B"01" | op(5) ## op(2) === B"01" | op(5) ## op(1 downto 0) === B"001" | op(5) ## op(1) === B"00" & (fn(2) | fn(3) | fn(5))
+  use_rt := op(5) ## op(3) ## op(2 downto 1) === B"0010" | op(5) ## op(3) ## op(1 downto 0) === B"0000" & (fn(4) === fn(5) | fn(5))
+
+  hlu_hi_we := op(5) ## op(3 downto 0) === B"00000" & (fn(4 downto 3) === B"11" | fn(4) ## fn(1 downto 0) === B"101")
+  hlu_hi_src.assignFromBits(B(fn(3)))
+  hlu_lo_we := op(5) ## op(3 downto 0) === B"00000" & (fn(4 downto 3) === B"11" | fn(4) ## fn(1 downto 0) === B"111")
+  hlu_lo_src.assignFromBits(B(fn(3)))
 }
 
 object DU {

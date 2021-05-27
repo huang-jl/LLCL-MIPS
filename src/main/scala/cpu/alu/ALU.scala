@@ -14,6 +14,10 @@ class ALU extends Component {
 
   // out
   val c = out UInt (32 bits)
+  val d = out UInt (32 bits)
+
+  val p = U(S(a) * S(b))
+  val pu = a * b
 
   //
   switch(op) {
@@ -42,28 +46,52 @@ class ALU extends Component {
       c := ~(a | b)
     }
     is(sll) {
-      c := b |<< a
+      c := b |<< a(4 downto 0)
     }
     is(lu) {
       c := b |<< 16
     }
     is(srl) {
-      c := b |>> a
+      c := b |>> a(4 downto 0)
     }
     is(sra) {
-      c := U(S(b) >> a)
+      c := U(S(b) >> a(4 downto 0))
     }
     is(mult) {
-      c := 0
+      c := p(63 downto 32)
+    }
+    is(multu) {
+      c := pu(63 downto 32)
     }
     is(div) {
-      c := 0
+      c := U(S(a) % S(b))
+    }
+    is(divu) {
+      c := a % b
     }
     is(slt) {
       c := U(S(a) < S(b), 32 bits)
     }
     is(sltu) {
       c := U(a < b, 32 bits)
+    }
+  }
+
+  switch(op) {
+    is(mult) {
+      d := p(31 downto 0)
+    }
+    is(multu) {
+      d := pu(31 downto 0)
+    }
+    is(div) {
+      d := U(S(a) / S(b))
+    }
+    is(divu) {
+      d := a / b
+    }
+    default {
+      d := 0
     }
   }
 }
