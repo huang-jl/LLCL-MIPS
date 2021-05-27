@@ -9,13 +9,17 @@ case class CacheRamConfig(
                          ) {
   def tagWidth: Int = 32 - indexWidth - offsetWidth
 
+  /** Cache Line的字节偏移宽度 */
   def offsetWidth: Int = log2Up(blockSize)
 
+  /** Cache Line的字个数 */
   def wordSize: Int = blockSize / 4
 
+  /** Cache Line的bit数 */
   def bitSize: Int = blockSize * 8
 
-  def setSize: Int = 1 << indexWidth //组数
+  /** Cache Line的组数 */
+  def setSize: Int = 1 << indexWidth
 
   def lruLength: Int = {
     var sum = 0

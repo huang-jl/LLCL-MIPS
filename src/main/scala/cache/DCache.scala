@@ -44,6 +44,19 @@ object DCache {
   }
 }
 
+//关于uncache.byteEnable的说明：
+//AXI支持不对齐传输，我们awsize是2，对应一次传输4 byte，cache会始终把给AXI的地址对齐4byte
+//但是你的地址(uncache.addr)可以不对齐，比如sb指令末两bit是10
+//那么这个时候你wdata的第2个byte（编号从0开始算的）才会写入
+//byteEnable的作用是告诉AXI哪些byte是有效的，会给到strb，上面的例子中sb对应的byteEnable应该是0100
+//wdata(16, 8 bits)才是应该写入byte
+
+//关于cache.byteEnable的说明：
+//为了和uncache.byteEnable一致，
+//比如你sb要写的地址末两位是10，传入的地址不必对齐
+//那么你传入的wdata应该是wdata(16, 8 bits)是要写入的数据（寄存器的低8位应该放到这里）
+//并且byteEnable应该是0100
+
 class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   val writeBufferConfig = WriteBufferConfig(config.blockSize, config.tagWidth + config.indexWidth, fifoDepth)
   val io = new Bundle {
@@ -188,7 +201,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     io.axi.w.data := 0
     io.axi.w.valid := False
     io.axi.w.last := False
-    io.axi.w.strb := B"4'b1111"
+    io.axi.w.strb := B"4'b1111" //cache写回内存一定是4 byte都是有效数据
     //b
     io.axi.b.ready := True
 
