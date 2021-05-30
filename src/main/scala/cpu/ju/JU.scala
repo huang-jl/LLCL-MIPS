@@ -24,7 +24,7 @@ class JU extends Component {
 
   //
   jump := op.mux(lz -> (a < 0), gez -> (a >= 0), f -> False, t -> True, lez -> (a <= 0), gz -> (a > 0), noe -> (a =/= b), e -> (a === b))
-  jump_pc := pc_src.mux(rs -> U(a), JU_PC_SRC.offset -> U(S(pc) + S(offset ## B"00")), default -> U(pc(31 downto 28) ## index ## B"00"))
+  jump_pc := pc_src.mux(JU_PC_SRC.rs -> U(a), JU_PC_SRC.offset -> U(S(pc) + S(offset ## B"00")), default -> U(pc(31 downto 28) ## index ## B"00"))
 }
 
 object JU {

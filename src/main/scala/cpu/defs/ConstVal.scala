@@ -39,7 +39,7 @@ object ConstantVal {
   }
 
   object RFU_RD_SRC extends SpinalEnum {
-    val pc, alu, hi, lo, mu = newElement()
+    val pc, alu, hi, lo, mu, cp0 = newElement()
   }
 
   object JU_OP extends SpinalEnum {
@@ -47,7 +47,8 @@ object ConstantVal {
   }
 
   object JU_PC_SRC extends SpinalEnum {
-    val rs, offset, index1, index2 = newElement()
+//    val rs, offset, index1, index2 = newElement()
+    val rs, offset, index = newElement()
   }
 
   object EIU_RD_SEL extends SpinalEnum {
