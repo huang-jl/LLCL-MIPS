@@ -1,4 +1,4 @@
-package cpu.ju
+package cpu
 
 import cpu.defs.ConstantVal.JU_OP._
 import cpu.defs.ConstantVal.JU_PC_SRC._

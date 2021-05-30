@@ -1,14 +1,6 @@
 package cpu
 
-import cpu.alu._
 import cpu.defs.{SramBus, SramBusConfig}
-import cpu.du._
-import cpu.hlu._
-import cpu.ju._
-import cpu.mu._
-import cpu.pcu._
-import cpu.pu._
-import cpu.rfu._
 import spinal.core._
 import spinal.lib.master
 

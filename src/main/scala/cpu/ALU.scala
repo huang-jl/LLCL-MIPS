@@ -1,4 +1,4 @@
-package cpu.alu
+package cpu
 
 import cpu.defs.ConstantVal.ALU_OP._
 import cpu.defs.ConstantVal._

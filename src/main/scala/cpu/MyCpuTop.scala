@@ -5,7 +5,6 @@ import spinal.lib._
 import spinal.lib.bus.amba4.axi._
 
 import defs.{SramBus, ConstantVal}
-import fetch.Fetch
 
 class CpuAXIInterface extends BlackBox {
   setDefinitionName("cpu_axi_interface")
@@ -89,15 +88,7 @@ class MyCPUTop extends Component {
     cpu.io.iSramBus >> cpuAxiInterface.io.inst
     cpu.io.dSramBus >> cpuAxiInterface.io.data
     io.debug := cpu.io.debug
-//    io.debug.wb.pc := cpu.rfu.pc
-    //    val pc = new Fetch
-//    pc.io.bus >> cpuAxiInterface.io.inst
-//
-//    val pc2 = new Fetch
-//    pc2.io.bus >> cpuAxiInterface.io.data
   }
-
-//  io.debug.assignFromBits(B(0, io.debug.getBitsWidth bits))
 
   noIoPrefix()
 

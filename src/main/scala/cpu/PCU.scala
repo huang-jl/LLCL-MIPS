@@ -1,4 +1,4 @@
-package cpu.pcu
+package cpu
 
 import cpu.defs.ConstantVal._
 import spinal.core._

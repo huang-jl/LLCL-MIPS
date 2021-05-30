@@ -1,4 +1,4 @@
-package cpu.hlu
+package cpu
 
 import spinal.core._
 

@@ -1,4 +1,4 @@
-package cpu.rfu
+package cpu
 
 import spinal.core._
 
