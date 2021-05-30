@@ -40,14 +40,19 @@ object OP_FIELD_CONST {
   val SPECIAL = B"000000"
   val REG_IMM = B"000001"
   val CP0 = B"010000"
+
   /** beq, bne, blez, bgtz */
   val BRANCH = B"0001"
+
   /** andi, lui, ori, xori */
   val LOGIC_IMM = B"001"
+
   /** lb, lbu, lh, lhu, lw */
   val LOAD = B"100"
+
   /** sb, sh, sw */
   val STORE = B"101"
+
   /** jal and j */
   val JUMP = B"00001"
 }
@@ -161,7 +166,10 @@ class DU extends Component {
   when(op === OP_FIELD_CONST.SPECIAL) {
     io.rfu_rd := inst.rd
     io.rfu_rd_src := RFU_RD_SRC.alu
-    io.alu_a_src := ALU_A_SRC.rs
+    when(fn === FUNC_CONST.sll | fn === FUNC_CONST.srl | fn === FUNC_CONST.sra)(
+      io.alu_a_src := ALU_A_SRC.sa
+    )
+      .otherwise(io.alu_a_src := ALU_A_SRC.rs)
     io.alu_b_src := ALU_B_SRC.rt
     io.hlu_lo_we := fn === FUNC_CONST.div | fn === FUNC_CONST.divu | fn === FUNC_CONST.mult |
       fn === FUNC_CONST.multu | fn === FUNC_CONST.mtlo
