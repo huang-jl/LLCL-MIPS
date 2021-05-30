@@ -33,7 +33,7 @@ class MU extends Component {
   val dataReg = Reg(Bits(32 bits)) init (0)
 
   sramBus.wr := we
-  sramBus.addr := (B(0, 3 bits) ## addr(28 downto 0)).asUInt
+  sramBus.addr := addr(28 downto 0).resize(32)
   sramBus.wdata := data_in
   stall := True
 

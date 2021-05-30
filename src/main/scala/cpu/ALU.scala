@@ -27,6 +27,7 @@ class ALU extends Component {
 
   val io = new Bundle {
     // in
+    val e = in Bool
     val input = in(ALUInput())
 
     // out
@@ -34,26 +35,34 @@ class ALU extends Component {
     val d = out UInt (32 bits)
   }
 
+  val e = io.e
   val a = io.input.a
   val b = io.input.b
   val c = io.c
   val d = io.d
 
-  val p = U(S(a) * S(b))
-  val pu = a * b
+  val E = new Bundle {
+    val Ov = out Bool
+  }
 
   //
   import ALU_OP._
 
+  d := 0
+  E.Ov := False
   switch(io.input.op) {
     is(add) {
-      c := a + b
+      val temp = S(a, 33 bits) + S(b, 33 bits)
+      c := U(temp(31 downto 0))
+      E.Ov := e & temp(32) =/= temp(31)
     }
     is(addu) {
       c := a + b
     }
     is(sub) {
-      c := a - b
+      val temp = S(a, 33 bits) - S(b, 33 bits)
+      c := U(temp(31 downto 0))
+      E.Ov := e & temp(32) =/= temp(31)
     }
     is(subu) {
       c := a - b
@@ -83,40 +92,28 @@ class ALU extends Component {
       c := U(S(b) >> a(4 downto 0))
     }
     is(mult) {
-      c := p(63 downto 32)
+      val temp = U(S(a) * S(b))
+      c := temp(63 downto 32)
+      d := temp(31 downto 0)
     }
     is(multu) {
-      c := pu(63 downto 32)
+      val temp = a * b
+      c := temp(63 downto 32)
+      d := temp(31 downto 0)
     }
     is(div) {
       c := U(S(a) % S(b))
+      d := U(S(a) / S(b))
     }
     is(divu) {
       c := a % b
+      d := a / b
     }
     is(slt) {
       c := U(S(a) < S(b), 32 bits)
     }
     is(sltu) {
       c := U(a < b, 32 bits)
-    }
-  }
-
-  switch(io.input.op) {
-    is(mult) {
-      d := p(31 downto 0)
-    }
-    is(multu) {
-      d := pu(31 downto 0)
-    }
-    is(div) {
-      d := U(S(a) / S(b))
-    }
-    is(divu) {
-      d := a / b
-    }
-    default {
-      d := 0
     }
   }
 }
