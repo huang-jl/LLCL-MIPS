@@ -106,7 +106,8 @@ class DU extends Component {
   when(op === OpField.SPECIAL) {
     rfu_rd := rd
     rfu_rd_src := RFU_RD_SRC.alu
-    alu_a_src := ALU_A_SRC.rs
+    when(fn === Func.sll | fn === Func.srl | fn === Func.sra) (alu_a_src := ALU_A_SRC.sa)
+      .otherwise(alu_a_src := ALU_A_SRC.rs)
     alu_b_src := ALU_B_SRC.rt
     hlu_lo_we := fn === Func.div | fn === Func.divu | fn === Func.mult |
       fn === Func.multu | fn === Func.mtlo
@@ -126,6 +127,7 @@ class DU extends Component {
       is(Func.jalr) {
         ju_op := JU_OP.t
         ju_pc_src := JU_PC_SRC.rs
+        rfu_rd_src := RFU_RD_SRC.pc
       }
       is(Func.syscall) {
         //TODO
