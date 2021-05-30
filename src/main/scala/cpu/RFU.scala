@@ -2,6 +2,10 @@ package cpu
 
 import spinal.core._
 
+object RFU_RD_SRC extends SpinalEnum {
+  val pc, alu, hi, lo, mu = newElement()
+}
+
 class RFU extends Component {
   /// 读写寄存器
 

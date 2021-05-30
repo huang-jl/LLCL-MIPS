@@ -6,6 +6,10 @@ import spinal.core._
 import spinal.lib.fsm._
 import spinal.lib.master
 
+object MU_EX extends SpinalEnum {
+  val s, u = newElement()
+}
+
 class MU extends Component {
   // in
   val addr = in UInt (32 bits)

@@ -1,8 +1,19 @@
 package cpu
 
-import cpu.defs.ConstantVal.ALU_OP._
 import cpu.defs.ConstantVal._
 import spinal.core._
+
+object ALU_OP extends SpinalEnum {
+  val add, addu, sub, subu, and, or, xor, nor, sll, lu, srl, sra, mult, multu, div, divu, slt, sltu = newElement()
+}
+
+object ALU_A_SRC extends SpinalEnum {
+  val rs, sa = newElement()
+}
+
+object ALU_B_SRC extends SpinalEnum {
+  val rt, imm = newElement()
+}
 
 class ALU extends Component {
   /// 运算器
@@ -20,6 +31,8 @@ class ALU extends Component {
   val pu = a * b
 
   //
+  import ALU_OP._
+
   switch(op) {
     is(add) {
       c := a + b

@@ -1,8 +1,10 @@
 package cpu
 
-import cpu.defs.{SramBus, SramBusConfig}
 import spinal.core._
 import spinal.lib.master
+
+import cpu.defs.{SramBus, SramBusConfig}
+import Mips32InstImplicits._
 
 class CPU extends Component {
   val io = new Bundle {
@@ -38,15 +40,17 @@ class CPU extends Component {
   icu.be := U"11"
   icu.ex.assignFromBits(B"0")
 
-  du.inst := pu.id_du_inst
+  val inst = pu.id_du_inst
 
-  ju.op := du.ju_op
-  ju.pc_src := du.ju_pc_src
+  du.io.inst := inst
+
+  ju.op := du.io.ju_op
+  ju.pc_src := du.io.ju_pc_src
   ju.a := S(pu.id_du_rs_v)
   ju.b := S(pu.id_du_rt_v)
   ju.pc := pcu.pc
-  ju.offset := du.offset
-  ju.index := du.index
+  ju.offset := inst.offset
+  ju.index := inst.index
 
   alu.op := pu.ex_alu_op
   alu.a := pu.ex_alu_a
@@ -67,8 +71,8 @@ class CPU extends Component {
   rfu.we := pu.wb_rfu_we
   rfu.rd := pu.wb_rfu_rd
   rfu.rd_v := pu.wb_rfu_rd_v
-  rfu.ra := du.rs
-  rfu.rb := du.rt
+  rfu.ra := inst.rs
+  rfu.rb := inst.rt
 
   pu.hlu_hi_v := hlu.hi_v
   pu.hlu_lo_v := hlu.lo_v
@@ -77,28 +81,28 @@ class CPU extends Component {
   pu.if_pcu_pc := pcu.pc
   pu.if_icu_stall := icu.stall
   pu.if_icu_data := icu.data_out
-  pu.id_du_rs := du.rs
-  pu.id_du_rt := du.rt
-  pu.id_du_sa := du.sa
-  pu.id_du_imm := du.imm
-  pu.id_du_offset := du.offset
+  pu.id_du_rs := inst.rs
+  pu.id_du_rt := inst.rt
+  pu.id_du_sa := inst.sa
+  pu.id_du_imm := inst.imm_extended.asUInt
+  pu.id_du_offset := inst.offset
   pu.id_ju_jump := ju.jump
-  pu.id_alu_op := du.alu_op
-  pu.id_alu_a_src := du.alu_a_src
-  pu.id_alu_b_src := du.alu_b_src
-  pu.id_dcu_re := du.dcu_re
-  pu.id_dcu_we := du.dcu_we
-  pu.id_dcu_be := du.dcu_be
-  pu.id_mu_ex := du.mu_ex
-  pu.id_hlu_hi_we := du.hlu_hi_we
-  pu.id_hlu_hi_src := du.hlu_hi_src
-  pu.id_hlu_lo_we := du.hlu_lo_we
-  pu.id_hlu_lo_src := du.hlu_lo_src
-  pu.id_rfu_we := du.rfu_we
-  pu.id_rfu_rd := du.rfu_rd
-  pu.id_rfu_rd_src := du.rfu_rd_src
-  pu.id_use_rs := du.use_rs
-  pu.id_use_rt := du.use_rt
+  pu.id_alu_op := du.io.alu_op
+  pu.id_alu_a_src := du.io.alu_a_src
+  pu.id_alu_b_src := du.io.alu_b_src
+  pu.id_dcu_re := du.io.dcu_re
+  pu.id_dcu_we := du.io.dcu_we
+  pu.id_dcu_be := du.io.dcu_be
+  pu.id_mu_ex := du.io.mu_ex
+  pu.id_hlu_hi_we := du.io.hlu_hi_we
+  pu.id_hlu_hi_src := du.io.hlu_hi_src
+  pu.id_hlu_lo_we := du.io.hlu_lo_we
+  pu.id_hlu_lo_src := du.io.hlu_lo_src
+  pu.id_rfu_we := du.io.rfu_we
+  pu.id_rfu_rd := du.io.rfu_rd
+  pu.id_rfu_rd_src := du.io.rfu_rd_src
+  pu.id_use_rs := du.io.use_rs
+  pu.id_use_rt := du.io.use_rt
   pu.ex_alu_c := B(alu.c)
   pu.ex_alu_d := B(alu.d)
   pu.me_dcu_stall := dcu.stall

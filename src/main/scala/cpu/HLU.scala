@@ -2,6 +2,10 @@ package cpu
 
 import spinal.core._
 
+object HLU_SRC extends SpinalEnum {
+  val rs, alu = newElement()
+}
+
 class HLU extends Component {
   val hi_we = in Bool
   val new_hi = in Bits (32 bits)
