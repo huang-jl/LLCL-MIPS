@@ -4,6 +4,7 @@ import spinal.core._
 import spinal.lib._
 
 import defs.ConstantVal._
+import Mips32InstImplicits._
 
 class PU extends Component {
   /// 数据流水线
@@ -18,11 +19,6 @@ class PU extends Component {
   val if_icu_stall = in Bool
   val if_icu_data = in Bits (32 bits)
 
-  val id_du_rs = in UInt (5 bits)
-  val id_du_rt = in UInt (5 bits)
-  val id_du_sa = in UInt (5 bits)
-  val id_du_imm = in UInt (32 bits)
-  val id_du_offset = in SInt (16 bits)
   val id_ju_jump = in Bool
   val id_alu_op = in(ALU_OP)
   val id_alu_a_src = in(ALU_A_SRC)
@@ -49,7 +45,7 @@ class PU extends Component {
 
   // out
   val id_pcu_pc = out(Reg(UInt(32 bits)) init INIT_PC)
-  val id_du_inst = out(Reg(Bits(32 bits)) init INST_NOP)
+  val id_du_inst = out(Reg(Mips32Inst()) init INST_NOP)
   val id_du_rs_v = out Bits (32 bits)
   val id_du_rt_v = out Bits (32 bits)
 
@@ -118,7 +114,7 @@ class PU extends Component {
   val ex_stall = me_stall
   val id_stall = ex_stall | ex_rfu_we & B(ex_rfu_rd_src)(
     2
-  ) & (ex_rfu_rd === id_du_rs & id_use_rs | ex_rfu_rd === id_du_rt & id_use_rt) | if_icu_stall & id_ju_jump
+  ) & (ex_rfu_rd === id_du_inst.rs & id_use_rs | ex_rfu_rd === id_du_inst.rt & id_use_rt) | if_icu_stall & id_ju_jump
   if_stall := id_stall | if_icu_stall
 
   when(!id_stall) {
@@ -142,15 +138,15 @@ class PU extends Component {
       ex_alu_input.op := id_alu_op
       ex_alu_input.a := id_alu_a_src.mux(
         ALU_A_SRC.rs -> U(id_du_rs_v),
-        ALU_A_SRC.sa -> id_du_sa.resize(32)
+        ALU_A_SRC.sa -> id_du_inst.sa.resize(32)
       )
       ex_alu_input.b := id_alu_b_src.mux(
         ALU_B_SRC.rt -> U(id_du_rt_v),
-        ALU_B_SRC.imm -> id_du_imm
+        ALU_B_SRC.imm -> id_du_inst.immExtended.asUInt
       )
-      ex_du_rs := id_du_rs
-      ex_du_rt := id_du_rt
-      ex_du_offset := id_du_offset
+      ex_du_rs := id_du_inst.rs
+      ex_du_rt := id_du_inst.rt
+      ex_du_offset := id_du_inst.offset
       ex_id_du_rs_v := id_du_rs_v
       ex_id_du_rt_v := id_du_rt_v
       ex_dcu_re := id_dcu_re
@@ -208,20 +204,20 @@ class PU extends Component {
     ex_du_rt_v := me_rfu_rd_v
   }
 
-  when(ex_rfu_we & ex_rfu_rd === id_du_rs) {
+  when(ex_rfu_we & ex_rfu_rd === id_du_inst.rs) {
     id_du_rs_v := ex_rfu_rd_v
-  } elsewhen (me_rfu_we & me_rfu_rd === id_du_rs) {
+  } elsewhen (me_rfu_we & me_rfu_rd === id_du_inst.rs) {
     id_du_rs_v := me_rfu_rd_v
-  } elsewhen (wb_rfu.valid & wb_rfu.index === id_du_rs) {
+  } elsewhen (wb_rfu.valid & wb_rfu.index === id_du_inst.rs) {
     id_du_rs_v := wb_rfu.data
   } otherwise {
     id_du_rs_v := rfu_ra_v
   }
-  when(ex_rfu_we & ex_rfu_rd === id_du_rt) {
+  when(ex_rfu_we & ex_rfu_rd === id_du_inst.rt) {
     id_du_rt_v := ex_rfu_rd_v
-  } elsewhen (me_rfu_we & me_rfu_rd === id_du_rt) {
+  } elsewhen (me_rfu_we & me_rfu_rd === id_du_inst.rt) {
     id_du_rt_v := me_rfu_rd_v
-  } elsewhen (wb_rfu.valid & wb_rfu.index === id_du_rt) {
+  } elsewhen (wb_rfu.valid & wb_rfu.index === id_du_inst.rt) {
     id_du_rt_v := wb_rfu.data
   } otherwise {
     id_du_rt_v := rfu_rb_v

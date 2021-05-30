@@ -2,8 +2,8 @@ package cpu
 
 import spinal.core._
 
-import cpu.defs.ConstantVal._
-import cpu.Utils._
+import defs.ConstantVal._
+import Utils._
 
 case class Mips32Inst() extends Bundle {
   val bits = Bits(32 bits)
@@ -13,7 +13,7 @@ case class Mips32Inst() extends Bundle {
   def rd = bits(15 downto 11).asUInt
   def sa = bits(10 downto 6).asUInt
   def imm = bits(15 downto 0)
-  def imm_extended = op(2) ? zeroExtend(imm) | signExtend(imm)
+  def immExtended = op(2) ? zeroExtend(imm) | signExtend(imm)
   def offset = bits(15 downto 0).asSInt
   def index = bits(25 downto 0).asUInt
   def op = bits(31 downto 26)
