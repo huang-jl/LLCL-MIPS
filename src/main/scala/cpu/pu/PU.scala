@@ -114,12 +114,53 @@ class PU extends Component {
   val id_stall = ex_stall | ex_rfu_we & B(ex_rfu_rd_src)(2) & (ex_rfu_rd === id_du_rs & id_use_rs | ex_rfu_rd === id_du_rt & id_use_rt) | if_icu_stall & id_ju_jump
   if_stall := id_stall | if_icu_stall
 
+  val IF = new Bundle {
+    val pcu = new Bundle {
+      val E = new Bundle {
+        val AdEIL = in Bool
+      }
+    }
+
+    val E = Bits(NUM_EXCEPTIONS bits)
+  }
+
+  val ID = new Bundle {
+    val du = new Bundle {
+      val E = new Bundle {
+        val RI, Sys, Bp = in Bool
+      }
+    }
+
+    val IF_E = Reg(Bits(NUM_EXCEPTIONS bits))
+    val E = Bits(NUM_EXCEPTIONS bits)
+  }
+
+  val EX = new Bundle {
+    val alu = new Bundle {
+      val E = new Bundle {
+        val Ov = in Bool
+      }
+    }
+
+    val ID_E = Reg(Bits(NUM_EXCEPTIONS bits))
+    val E = Bits(NUM_EXCEPTIONS bits)
+  }
+
+  val ME = new Bundle {
+    val EX_E = Reg(Bits(NUM_EXCEPTIONS bits))
+    val E = Bits(NUM_EXCEPTIONS bits)
+  }
+
   when(!id_stall) {
     when(if_stall) {
       id_du_inst := INST_NOP
+
+      ID.IF_E := 0
     } otherwise {
       id_pcu_pc := if_pcu_pc
       id_du_inst := if_icu_data
+
+      ID.IF_E := IF.E
     }
   }
 
@@ -130,6 +171,8 @@ class PU extends Component {
       ex_rfu_we := False
       ex_hlu_hi_we := False
       ex_hlu_lo_we := False
+
+      EX.ID_E := 0
     } otherwise {
       ex_pcu_pc := id_pcu_pc
       ex_alu_op := id_alu_op
@@ -152,6 +195,8 @@ class PU extends Component {
       ex_rfu_rd := id_rfu_rd
       ex_rfu_rd_src := id_rfu_rd_src
       ex_id_rfu_rd_v := id_rfu_rd_v
+
+      EX.ID_E := ID.E
     }
   }
 
@@ -176,6 +221,8 @@ class PU extends Component {
     me_rfu_rd := ex_rfu_rd
     me_rfu_rd_src := ex_rfu_rd_src
     me_ex_rfu_rd_v := ex_rfu_rd_v
+
+    ME.EX_E := EX.E
     //    }
   }
 
@@ -214,6 +261,21 @@ class PU extends Component {
   } otherwise {
     id_du_rt_v := rfu_rb_v
   }
+
+  IF.E := 0
+  IF.E(U(B(EXCEPTION.AdEIL))) := IF.pcu.E.AdEIL
+
+  ID.E := ID.IF_E
+  ID.E(U(B(EXCEPTION.RI))) := ID.du.E.RI
+  ID.E(U(B(EXCEPTION.Sys))) := ID.du.E.Sys
+  ID.E(U(B(EXCEPTION.Bp))) := ID.du.E.Bp
+
+  EX.E := EX.ID_E
+  EX.E(U(B(EXCEPTION.Ov))) := EX.alu.E.Ov
+
+  ME.E := ME.EX_E
+  ME.E(U(B(EXCEPTION.AdEDL))) := False
+  ME.E(U(B(EXCEPTION.AdEDS))) := False
 }
 
 object PU {

@@ -42,6 +42,10 @@ class DU extends Component {
   val use_rs = out Bool
   val use_rt = out Bool
 
+  val E = new Bundle {
+    val RI, Sys, Bp = out Bool
+  }
+
   // wires
   val op = inst(31 downto 26)
   val fn = inst(5 downto 0)

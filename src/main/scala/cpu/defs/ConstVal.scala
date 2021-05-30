@@ -1,7 +1,6 @@
 package cpu.defs
 
 import spinal.core._
-import spinal.lib._
 import spinal.lib.bus.amba4.axi._
 
 object ConstantVal {
@@ -17,6 +16,7 @@ object ConstantVal {
     useRegion = false,
     useQos = false
   )
+  val NUM_EXCEPTIONS = EXCEPTION.elements.size
 
   object ALU_OP extends SpinalEnum {
     val add, addu, sub, subu, and, or, xor, nor, sll, lu, srl, sra, mult, multu, div, divu, slt, sltu = newElement()
@@ -48,5 +48,28 @@ object ConstantVal {
 
   object JU_PC_SRC extends SpinalEnum {
     val rs, offset, index1, index2 = newElement()
+  }
+
+  object EIU_RD_SEL extends SpinalEnum {
+    val BadVAddr, Count, Compare, Status, Cause, EPC = newElement()
+    defaultEncoding = SpinalEnumEncoding("staticEncoding")(
+      BadVAddr -> 0x40,
+      Count -> 0x48,
+      Compare -> 0x58,
+      Status -> 0x60,
+      Cause -> 0x68,
+      EPC -> 0x70
+    )
+  }
+
+  object EXCEPTION extends SpinalEnum {
+    val
+    Int, // Interrupt
+    AdEIL, // Address Error - Instruction fetch
+    RI, // Instruction Validity Exceptions
+    Sys, Bp, Ov, // Execution Exception
+    AdEDL, AdEDS, // Address error - Data access
+    None
+    = newElement()
   }
 }
