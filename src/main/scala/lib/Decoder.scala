@@ -7,16 +7,23 @@ import lib.Key
 
 class DecoderFactory(val inputWidth: Int) {
   private[decoder] val keys = HashSet[Key[_ <: Data]]()
-  private[decoder] val defaults = HashMap[Key[_ <: Data], Bits]()
+  private[decoder] val defaults = HashMap[Key[_ <: Data], () => Data]()
   private[decoder] val spec =
-    HashMap[MaskedLiteral, HashMap[Key[_ <: Data], Bits]]()
+    HashMap[MaskedLiteral, HashMap[Key[_ <: Data], () => Data]]()
 
-  class When private[DecoderFactory] (map: HashMap[Key[_ <: Data], Bits]) {
-    def set[T <: Data](key: Key[T], value: T) = {
-      assert(!map.contains(key))
+  class When private[DecoderFactory] (
+      map: HashMap[Key[_ <: Data], () => Data]
+  ) {
+    def set[T <: Data](key: Key[T], value: => T) = {
       keys.add(key)
-      map(key) = value.asBits
+      map(key) = () => value
+      this
     }
+
+    def set[T <: SpinalEnum](
+        key: Key[SpinalEnumCraft[T]],
+        value: SpinalEnumElement[T]
+    ): Unit = set(key, value())
   }
 
   def when(mask: MaskedLiteral) = {
@@ -26,24 +33,35 @@ class DecoderFactory(val inputWidth: Int) {
     )
   }
 
-  def addDefault[T <: Data](key: Key[T], default: T) = {
+  def addDefault[T <: Data](key: Key[T], default: => T) = {
     assert(!defaults.contains(key))
     keys.add(key)
-    defaults(key) = default.asBits
+    defaults(key) = () => default
   }
 
-  def createDecoder() = new Decoder(this)
+  def addDefault[T <: SpinalEnum](
+      key: Key[SpinalEnumCraft[T]],
+      default: SpinalEnumElement[T]
+  ): Unit =
+    addDefault(key, default())
+
+  def checkConflicts() = ()
+
+  def createDecoder() = {
+    checkConflicts()
+    new Decoder(this)
+  }
 }
 
 class Decoder(factory: DecoderFactory) extends Component {
   def width = factory.inputWidth
 
-  private[Decoder] case class IOBundle() extends Bundle {
+  val io = new Bundle {
     val input = in Bits (width bits)
 
     private[Decoder] val outputs =
       HashMap[Key[_ <: Data], Data](((factory.keys map { key =>
-        (key, out(key.`type`()))
+        (key -> out(key.`type`()))
       }).toSeq): _*)
 
     def output[T <: Data](key: Key[T]): T = {
@@ -52,40 +70,35 @@ class Decoder(factory: DecoderFactory) extends Component {
     }
   }
 
-  val io = IOBundle()
-
   val keys = factory.keys.toSeq
 
-  val offsetsAndOutputWidth = (keys
+  val offsets = (keys
     .scanLeft(0) { case (currentOffset, key) =>
       currentOffset + key.`type`.getBitsWidth
     })
-  val offsets = offsetsAndOutputWidth.init zip offsetsAndOutputWidth.tail
-  val outputWidth = offsetsAndOutputWidth.last
+  val outputWidth = offsets.last
 
-  val outputVector = Bits(outputWidth bits)
-  for ((key, offset) <- keys zip offsets) {
-    io.outputs(key) := outputVector(offset._1 to offset._2)
+  val outputVector = B(0, outputWidth bits)
+
+  val outputSegments: HashMap[Key[_ <: Data], Bits] = HashMap(
+    (for (i <- 0 until keys.length)
+      yield (keys(i) -> outputVector(offsets(i) until offsets(i + 1)))): _*
+  )
+
+  for (key <- keys) {
+    io.output(key) assignFromBits outputSegments(key)
   }
 
   // Naive implementation
-  for ((key, offset) <- keys zip offsets) {
-    factory.defaults.get(key) match {
-      case Some(default) =>
-        outputVector(offset._1 to offset._2) := default.asBits
-      case None =>
-    }
+  for ((key, default) <- factory.defaults) {
+    outputSegments(key) := default().asBits
   }
 
   for ((maskedLiteral, map) <- factory.spec) {
     // The === is aware of the mask
     when(maskedLiteral === io.input) {
-      for ((key, offset) <- keys zip offsets) {
-        map.get(key) match {
-          case Some(value) =>
-            outputVector(offset._1 to offset._2) := value.asBits
-          case None =>
-        }
+      for ((key, value) <- map) {
+        outputSegments(key) := value().asBits
       }
     }
   }
