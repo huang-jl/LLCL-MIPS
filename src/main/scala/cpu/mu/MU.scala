@@ -30,7 +30,7 @@ class MU extends Component {
   def signExtend(signal: Bits): Bits = signal.asSInt.resize(32).asBits
 
   sramBus.wr := we
-  sramBus.addr := addr
+  sramBus.addr := addr(28 downto 0).resize(32)
   sramBus.wdata := data_in
   stall := True
 

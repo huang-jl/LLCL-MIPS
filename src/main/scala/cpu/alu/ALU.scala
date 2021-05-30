@@ -8,6 +8,8 @@ class ALU extends Component {
   /// 运算器
 
   // in
+  val e = in Bool
+
   val op = in(ALU_OP)
   val a = in UInt (32 bits)
   val b = in UInt (32 bits)
@@ -27,7 +29,7 @@ class ALU extends Component {
     is(add) {
       val temp = S(a, 33 bits) + S(b, 33 bits)
       c := U(temp(31 downto 0))
-      E.Ov := temp(32) =/= temp(31)
+      E.Ov := e & temp(32) =/= temp(31)
     }
     is(addu) {
       c := a + b
@@ -35,7 +37,7 @@ class ALU extends Component {
     is(sub) {
       val temp = S(a, 33 bits) - S(b, 33 bits)
       c := U(temp(31 downto 0))
-      E.Ov := temp(32) =/= temp(31)
+      E.Ov := e & temp(32) =/= temp(31)
     }
     is(subu) {
       c := a - b

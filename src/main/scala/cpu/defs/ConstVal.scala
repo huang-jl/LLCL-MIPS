@@ -27,7 +27,7 @@ object ConstantVal {
   }
 
   object ALU_B_SRC extends SpinalEnum {
-    val rt, imm = newElement()
+    val imm, rt = newElement()
   }
 
   object MU_EX extends SpinalEnum {
@@ -35,7 +35,7 @@ object ConstantVal {
   }
 
   object HLU_SRC extends SpinalEnum {
-    val rs, alu = newElement()
+    val alu, rs = newElement()
   }
 
   object RFU_RD_SRC extends SpinalEnum {

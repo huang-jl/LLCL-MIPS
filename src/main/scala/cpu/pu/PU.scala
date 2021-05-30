@@ -125,6 +125,8 @@ class PU extends Component {
   }
 
   val ID = new Bundle {
+    val reset = Bool
+
     val du = new Bundle {
       val E = new Bundle {
         val RI, Sys, Bp = in Bool
@@ -136,6 +138,8 @@ class PU extends Component {
   }
 
   val EX = new Bundle {
+    val reset = Bool
+
     val alu = new Bundle {
       val E = new Bundle {
         val Ov = in Bool
@@ -147,6 +151,8 @@ class PU extends Component {
   }
 
   val ME = new Bundle {
+    val reset = Bool
+
     val EX_E = Reg(Bits(NUM_EXCEPTIONS bits))
     val E = Bits(NUM_EXCEPTIONS bits)
   }

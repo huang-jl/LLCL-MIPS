@@ -2,6 +2,7 @@ package cpu.du
 
 import cpu.defs.ConstantVal._
 import spinal.core._
+import spinal.lib.OHToUInt
 
 class DU extends Component {
   /// 解码指令
@@ -42,6 +43,10 @@ class DU extends Component {
   val use_rs = out Bool
   val use_rt = out Bool
 
+  val alu = new Bundle {
+    val e = out Bool
+  }
+
   val E = new Bundle {
     val RI, Sys, Bp = out Bool
   }
@@ -59,29 +64,105 @@ class DU extends Component {
   offset := S(inst(15 downto 0))
   index := U(inst(25 downto 0))
 
-  alu_op.assignFromBits(op(3) ? op(2 downto 0).mux(B"010" -> B"10000", B"011" -> B"10001", B"111" -> B"01001", default -> B"00" ## op(2 downto 0)) | (fn(5) ## fn(3)).mux(B"00" -> B"010" ## fn(1 downto 0), B"01" -> B"011" ## fn(1 downto 0), B"10" -> B"00" ## fn(2 downto 0), B"11" -> B"1000" ## fn(0)))
-  alu_a_src.assignFromBits(B(op(3) ## fn(5 downto 4) ## fn(2) === B"0000"))
-  alu_b_src.assignFromBits(B(op(3)))
+  val is = new Bundle {
+    val special = op === B"000000"
+    val regimm = op === B"000001"
+    val j = op === B"000010"
+    val jal = op === B"000011"
+    val beq = op === B"000100"
+    val bne = op === B"000101"
+    val blez = op === B"000110"
+    val bgtz = op === B"000111"
 
-  dcu_re := op(5) ## op(3) === B"10"
-  dcu_we := op(5) ## op(3) === B"11"
+    val addi = op === B"001000"
+    val addiu = op === B"001001"
+    val slti = op === B"001010"
+    val sltiu = op === B"001011"
+    val andi = op === B"001100"
+    val ori = op === B"001101"
+    val xori = op === B"001110"
+    val lui = op === B"001111"
+
+    val cop0 = op === B"010000"
+
+    val lb = op === B"100000"
+    val lh = op === B"100001"
+    val lw = op === B"100011"
+    val lbu = op === B"100100"
+    val lhu = op === B"100101"
+
+    val sb = op === B"101000"
+    val sh = op === B"101001"
+    val sw = op === B"101011"
+
+    val sll = special & fn === B"000000"
+    val srl = special & fn === B"000010"
+    val sra = special & fn === B"000011"
+    val sllv = special & fn === B"000100"
+    val srlv = special & fn === B"000110"
+    val srav = special & fn === B"000111"
+
+    val jr = special & fn === B"001000"
+    val jalr = special & fn === B"001001"
+    val syscall = special & fn === B"001100"
+    val break = special & fn === B"001101"
+
+    val mfhi = special & fn === B"010000"
+    val mthi = special & fn === B"010001"
+    val mflo = special & fn === B"010010"
+    val mtlo = special & fn === B"010011"
+
+    val mult = special & fn === B"011000"
+    val multu = special & fn === B"011001"
+    val div = special & fn === B"011010"
+    val divu = special & fn === B"011011"
+
+    val add = special & fn === B"100000"
+    val addu = special & fn === B"100001"
+    val sub = special & fn === B"100010"
+    val subu = special & fn === B"100011"
+    val and = special & fn === B"100100"
+    val or = special & fn === B"100101"
+    val xor = special & fn === B"100110"
+    val nor = special & fn === B"100111"
+
+    val slt = special & fn === B"101010"
+    val sltu = special & fn === B"101011"
+
+    val bltz = regimm & rt === B"00000"
+    val bgez = regimm & rt === B"00001"
+    val bltzal = regimm & rt === B"10000"
+    val bgezal = regimm & rt === B"10001"
+
+    val mfc0 = cop0 & rs === B"00000"
+    val mtc0 = cop0 & rs === B"00100"
+    val c0 = cop0 & rs(4)
+
+    val eret = c0 & fn === B"011000"
+  }
+
+  alu_op.assignFromBits(B(OHToUInt((is.sltu | is.sltiu) ## (is.slt | is.slti) ## is.divu ## is.div ## is.multu ## is.mult ## (is.sra | is.srav) ## (is.srl | is.srlv) ## is.lui ## (is.sll | is.sllv) ## is.nor ## is.xor ## is.or ## is.and ## is.subu ## is.sub ## (is.addu | is.addiu) ## (is.add | is.addi))))
+  alu_a_src.assignFromBits(B(is.sll | is.srl | is.sra))
+  alu_b_src.assignFromBits(B(is.special))
+
+  dcu_re := is.lb | is.lh | is.lw | is.lbu | is.lhu
+  dcu_we := is.sb | is.sh | is.sw
   dcu_be := U(op(1 downto 0))
   mu_ex.assignFromBits(B(op(2)))
 
-  rfu_we := rfu_rd =/= 0 & (op(5) ^ op(3) | !op(3) & !op(2) & (op(1) === op(0) | !op(1) & rt(4)))
-  rfu_rd := (op(5) ^ op(3)) ? rt | (op(0) ? U(31) | rd)
-  rfu_rd_src.assignFromBits((op(5) ## op(3) ## op(0) === B"000") ? ((fn(4 downto 3) === B"10") ? (B"01" ## fn(1)) | B"00" ## (fn(5) ## fn(3) =/= B"01")) | op(5 downto 3))
+  hlu_hi_we := is.mult | is.multu | is.div | is.divu | is.mthi
+  hlu_hi_src.assignFromBits(B(is.mthi))
+  hlu_lo_we := is.mult | is.multu | is.div | is.divu | is.mtlo
+  hlu_hi_src.assignFromBits(B(is.mtlo))
 
-  ju_op.assignFromBits((op(5) ## op(3) === B"00") ? op(2 downto 0).mux(B"000" -> ((fn(5 downto 3) === B"001") ? B"011" | B"010"), B"001" -> B"00" ## rt(0), B"010" -> B"011", default -> op(2 downto 0)) | B"010")
-  ju_pc_src.assignFromBits(op(2) ? B"01" | op(1 downto 0))
+//  val rfu_we = out Bool
+//  val rfu_rd = out UInt (5 bits)
+//  val rfu_rd_src = out(RFU_RD_SRC)
+  rfu_we := is.special | ;
+  rfu_rd :=
 
-  use_rs := op(5) ## op(3) === B"01" | op(5) ## op(2) === B"01" | op(5) ## op(1 downto 0) === B"001" | op(5) ## op(1) === B"00" & (fn(2) | fn(3) | fn(5))
-  use_rt := op(5) ## op(3) ## op(2 downto 1) === B"0010" | op(5) ## op(3) ## op(1 downto 0) === B"0000" & (fn(4) === fn(5) | fn(5))
-
-  hlu_hi_we := op(5) ## op(3 downto 0) === B"00000" & (fn(4 downto 3) === B"11" | fn(4) ## fn(1 downto 0) === B"101")
-  hlu_hi_src.assignFromBits(B(fn(3)))
-  hlu_lo_we := op(5) ## op(3 downto 0) === B"00000" & (fn(4 downto 3) === B"11" | fn(4) ## fn(1 downto 0) === B"111")
-  hlu_lo_src.assignFromBits(B(fn(3)))
+  E.Sys := is.syscall
+  E.Bp := is.break
 }
 
 object DU {
