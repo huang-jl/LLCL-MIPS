@@ -1,14 +1,26 @@
 package lib.decoder
 
-import scala.collection.mutable._
+import scala.collection
+import scala.collection.mutable.{HashSet, HashMap}
+import scala.language.existentials
 import spinal.core._
 
 import lib.Key
 
+case class DecoderConfig(
+    inputWidth: Int,
+    keys: Seq[Key[_ <: Data]],
+    defaults: Seq[(Key[T], () => T) forSome { type T <: Data }],
+    encodings: Map[MaskedLiteral, Seq[
+      (Key[T], () => T) forSome { type T <: Data }
+    ]]
+)
+
 class DecoderFactory(val inputWidth: Int) {
+  // Mutable constituents of DecoderConfig
   private[decoder] val keys = HashSet[Key[_ <: Data]]()
   private[decoder] val defaults = HashMap[Key[_ <: Data], () => Data]()
-  private[decoder] val spec =
+  private[decoder] val encodings =
     HashMap[MaskedLiteral, HashMap[Key[_ <: Data], () => Data]]()
 
   class When private[DecoderFactory] (
@@ -28,9 +40,7 @@ class DecoderFactory(val inputWidth: Int) {
 
   def when(mask: MaskedLiteral) = {
     assert(mask.width == inputWidth)
-    new When(
-      spec.getOrElseUpdate(mask, HashMap())
-    )
+    new When(encodings.getOrElseUpdate(mask, HashMap()))
   }
 
   def addDefault[T <: Data](key: Key[T], default: => T) = {
@@ -45,32 +55,40 @@ class DecoderFactory(val inputWidth: Int) {
   ): Unit =
     addDefault(key, default())
 
-  def checkConflicts() = ()
-
-  def createDecoder() = {
-    checkConflicts()
-    new Decoder(this)
-  }
+  def createDecoder() =
+    Decoder(
+      DecoderConfig( // Creates immutable DecoderConfig
+        inputWidth,
+        keys.toSeq,
+        defaults.toSeq
+          .asInstanceOf[Seq[(Key[T], () => T) forSome { type T <: Data }]],
+        encodings.map { case (maskedLiteral, map) =>
+          (maskedLiteral -> (map.toSeq.asInstanceOf[Seq[
+            (Key[T], () => T) forSome { type T <: Data }
+          ]]))
+        }.toMap
+      )
+    )
 }
 
-class Decoder(factory: DecoderFactory) extends Component {
-  def width = factory.inputWidth
-
+case class Decoder(
+    config: DecoderConfig
+) extends Component {
   val io = new Bundle {
-    val input = in Bits (width bits)
+    val input = in Bits (config.inputWidth bits)
 
     private[Decoder] val outputs =
-      HashMap[Key[_ <: Data], Data](((factory.keys map { key =>
+      HashMap[Key[_ <: Data], Data](((config.keys map { key =>
         (key -> out(key.`type`()))
       }).toSeq): _*)
 
     def output[T <: Data](key: Key[T]): T = {
-      assert(factory.keys.contains(key))
+      assert(config.keys.contains(key))
       outputs(key).asInstanceOf[T]
     }
   }
 
-  val keys = factory.keys.toSeq
+  val keys = config.keys
 
   val offsets = (keys
     .scanLeft(0) { case (currentOffset, key) =>
@@ -90,11 +108,11 @@ class Decoder(factory: DecoderFactory) extends Component {
   }
 
   // Naive implementation
-  for ((key, default) <- factory.defaults) {
+  for ((key, default) <- config.defaults) {
     outputSegments(key) := default().asBits
   }
 
-  for ((maskedLiteral, map) <- factory.spec) {
+  for ((maskedLiteral, map) <- config.encodings) {
     // The === is aware of the mask
     when(maskedLiteral === io.input) {
       for ((key, value) <- map) {
