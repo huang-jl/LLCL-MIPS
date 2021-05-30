@@ -24,9 +24,9 @@ class CPU extends Component {
 
   io.iSramBus <> icu.sramBus
   io.dSramBus <> dcu.sramBus
-  io.debug.wb.rf.wen := B(S(rfu.we, 4 bits))
-  io.debug.wb.rf.wdata := rfu.rd_v
-  io.debug.wb.rf.wnum := B(rfu.rd)
+  io.debug.wb.rf.wen := B(4 bits, default -> rfu.io.write.valid)
+  io.debug.wb.rf.wdata := rfu.io.write.data
+  io.debug.wb.rf.wnum := rfu.io.write.index
   io.debug.wb.pc := B(pu.wb_pcu_pc)
 
   pcu.stall := pu.if_stall
@@ -52,9 +52,7 @@ class CPU extends Component {
   ju.offset := inst.offset
   ju.index := inst.index
 
-  alu.op := pu.ex_alu_op
-  alu.a := pu.ex_alu_a
-  alu.b := pu.ex_alu_b
+  alu.io.input := pu.ex_alu_input
 
   dcu.addr := pu.me_dcu_addr
   dcu.data_in := pu.me_dcu_data
@@ -68,16 +66,14 @@ class CPU extends Component {
   hlu.lo_we := pu.me_hlu_lo_we
   hlu.new_lo := pu.me_hlu_new_lo
 
-  rfu.we := pu.wb_rfu_we
-  rfu.rd := pu.wb_rfu_rd
-  rfu.rd_v := pu.wb_rfu_rd_v
-  rfu.ra := inst.rs
-  rfu.rb := inst.rt
+  rfu.io.write := pu.wb_rfu
+  rfu.io.ra.index := inst.rs
+  rfu.io.rb.index := inst.rt
 
   pu.hlu_hi_v := hlu.hi_v
   pu.hlu_lo_v := hlu.lo_v
-  pu.rfu_ra_v := rfu.ra_v
-  pu.rfu_rb_v := rfu.rb_v
+  pu.rfu_ra_v := rfu.io.ra.data
+  pu.rfu_rb_v := rfu.io.rb.data
   pu.if_pcu_pc := pcu.pc
   pu.if_icu_stall := icu.stall
   pu.if_icu_data := icu.data_out

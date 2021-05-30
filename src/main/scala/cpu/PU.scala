@@ -1,7 +1,9 @@
 package cpu
 
-import cpu.defs.ConstantVal._
 import spinal.core._
+import spinal.lib._
+
+import defs.ConstantVal._
 
 class PU extends Component {
   /// 数据流水线
@@ -51,9 +53,7 @@ class PU extends Component {
   val id_du_rs_v = out Bits (32 bits)
   val id_du_rt_v = out Bits (32 bits)
 
-  val ex_alu_op = out(Reg(ALU_OP))
-  val ex_alu_a = out(Reg(UInt(32 bits)))
-  val ex_alu_b = out(Reg(UInt(32 bits)))
+  val ex_alu_input = out(Reg(ALUInput()))
 
   val me_dcu_addr = out(Reg(UInt(32 bits)))
   val me_dcu_data = out(Reg(Bits(32 bits)))
@@ -67,9 +67,8 @@ class PU extends Component {
   val me_hlu_new_lo = out(Reg(Bits(32 bits)))
 
   val wb_pcu_pc = out(Reg(UInt(32 bits)))
-  val wb_rfu_we = out(RegInit(False))
-  val wb_rfu_rd = out(Reg(UInt(5 bits)))
-  val wb_rfu_rd_v = out(Reg(Bits(32 bits)))
+  val wb_rfu = out(Reg(Flow(RegWrite())))
+  wb_rfu.valid init False
 
   val if_stall = out Bool
 
@@ -100,18 +99,26 @@ class PU extends Component {
   val ex_rfu_rd = Reg(UInt(5 bits))
   val ex_rfu_rd_src = Reg(RFU_RD_SRC)
   val ex_id_rfu_rd_v = Reg(Bits(32 bits))
-  val ex_rfu_rd_v = ex_rfu_rd_src.mux(RFU_RD_SRC.alu -> ex_alu_c, RFU_RD_SRC.hi -> ex_hlu_hi_v, RFU_RD_SRC.lo -> ex_hlu_lo_v, default -> ex_id_rfu_rd_v)
+  val ex_rfu_rd_v = ex_rfu_rd_src.mux(
+    RFU_RD_SRC.alu -> ex_alu_c,
+    RFU_RD_SRC.hi -> ex_hlu_hi_v,
+    RFU_RD_SRC.lo -> ex_hlu_lo_v,
+    default -> ex_id_rfu_rd_v
+  )
 
   val me_pcu_pc = Reg(UInt(32 bits))
   val me_rfu_we = RegInit(False)
   val me_rfu_rd = Reg(UInt(5 bits))
   val me_rfu_rd_src = Reg(RFU_RD_SRC)
   val me_ex_rfu_rd_v = Reg(Bits(32 bits))
-  val me_rfu_rd_v = (me_rfu_rd_src === RFU_RD_SRC.mu) ? me_mu_data_out | me_ex_rfu_rd_v
+  val me_rfu_rd_v =
+    (me_rfu_rd_src === RFU_RD_SRC.mu) ? me_mu_data_out | me_ex_rfu_rd_v
 
   val me_stall = me_dcu_stall
   val ex_stall = me_stall
-  val id_stall = ex_stall | ex_rfu_we & B(ex_rfu_rd_src)(2) & (ex_rfu_rd === id_du_rs & id_use_rs | ex_rfu_rd === id_du_rt & id_use_rt) | if_icu_stall & id_ju_jump
+  val id_stall = ex_stall | ex_rfu_we & B(ex_rfu_rd_src)(
+    2
+  ) & (ex_rfu_rd === id_du_rs & id_use_rs | ex_rfu_rd === id_du_rt & id_use_rt) | if_icu_stall & id_ju_jump
   if_stall := id_stall | if_icu_stall
 
   when(!id_stall) {
@@ -132,9 +139,15 @@ class PU extends Component {
       ex_hlu_lo_we := False
     } otherwise {
       ex_pcu_pc := id_pcu_pc
-      ex_alu_op := id_alu_op
-      ex_alu_a := id_alu_a_src.mux(ALU_A_SRC.rs -> U(id_du_rs_v), ALU_A_SRC.sa -> id_du_sa.resize(32))
-      ex_alu_b := id_alu_b_src.mux(ALU_B_SRC.rt -> U(id_du_rt_v), ALU_B_SRC.imm -> id_du_imm)
+      ex_alu_input.op := id_alu_op
+      ex_alu_input.a := id_alu_a_src.mux(
+        ALU_A_SRC.rs -> U(id_du_rs_v),
+        ALU_A_SRC.sa -> id_du_sa.resize(32)
+      )
+      ex_alu_input.b := id_alu_b_src.mux(
+        ALU_B_SRC.rt -> U(id_du_rt_v),
+        ALU_B_SRC.imm -> id_du_imm
+      )
       ex_du_rs := id_du_rs
       ex_du_rt := id_du_rt
       ex_du_offset := id_du_offset
@@ -180,12 +193,12 @@ class PU extends Component {
   }
 
   when(me_stall) {
-    wb_rfu_we := False
+    wb_rfu.valid := False
   } otherwise {
     wb_pcu_pc := me_pcu_pc
-    wb_rfu_we := me_rfu_we
-    wb_rfu_rd := me_rfu_rd
-    wb_rfu_rd_v := me_rfu_rd_v
+    wb_rfu.valid := me_rfu_we
+    wb_rfu.index := me_rfu_rd
+    wb_rfu.data := me_rfu_rd_v
   }
 
   when(me_rfu_we & me_rfu_rd === ex_du_rs) {
@@ -195,13 +208,12 @@ class PU extends Component {
     ex_du_rt_v := me_rfu_rd_v
   }
 
-
   when(ex_rfu_we & ex_rfu_rd === id_du_rs) {
     id_du_rs_v := ex_rfu_rd_v
   } elsewhen (me_rfu_we & me_rfu_rd === id_du_rs) {
     id_du_rs_v := me_rfu_rd_v
-  } elsewhen (wb_rfu_we & wb_rfu_rd === id_du_rs) {
-    id_du_rs_v := wb_rfu_rd_v
+  } elsewhen (wb_rfu.valid & wb_rfu.index === id_du_rs) {
+    id_du_rs_v := wb_rfu.data
   } otherwise {
     id_du_rs_v := rfu_ra_v
   }
@@ -209,8 +221,8 @@ class PU extends Component {
     id_du_rt_v := ex_rfu_rd_v
   } elsewhen (me_rfu_we & me_rfu_rd === id_du_rt) {
     id_du_rt_v := me_rfu_rd_v
-  } elsewhen (wb_rfu_we & wb_rfu_rd === id_du_rt) {
-    id_du_rt_v := wb_rfu_rd_v
+  } elsewhen (wb_rfu.valid & wb_rfu.index === id_du_rt) {
+    id_du_rt_v := wb_rfu.data
   } otherwise {
     id_du_rt_v := rfu_rb_v
   }

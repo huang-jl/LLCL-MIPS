@@ -49,7 +49,7 @@ case class DebugInterface() extends Bundle {
     val pc = out Bits (32 bits)
     val rf = new Bundle {
       val wen = out Bits (4 bits)
-      val wnum = out Bits (5 bits)
+      val wnum = out UInt (5 bits)
       val wdata = out Bits (32 bits)
     }
   }

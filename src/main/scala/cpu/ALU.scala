@@ -4,7 +4,8 @@ import cpu.defs.ConstantVal._
 import spinal.core._
 
 object ALU_OP extends SpinalEnum {
-  val add, addu, sub, subu, and, or, xor, nor, sll, lu, srl, sra, mult, multu, div, divu, slt, sltu = newElement()
+  val add, addu, sub, subu, and, or, xor, nor, sll, lu, srl, sra, mult, multu,
+      div, divu, slt, sltu = newElement()
 }
 
 object ALU_A_SRC extends SpinalEnum {
@@ -15,17 +16,28 @@ object ALU_B_SRC extends SpinalEnum {
   val rt, imm = newElement()
 }
 
+case class ALUInput() extends Bundle {
+  val op = ALU_OP()
+  val a = UInt(32 bits)
+  val b = UInt(32 bits)
+}
+
 class ALU extends Component {
   /// 运算器
 
-  // in
-  val op = in(ALU_OP)
-  val a = in UInt (32 bits)
-  val b = in UInt (32 bits)
+  val io = new Bundle {
+    // in
+    val input = in(ALUInput())
 
-  // out
-  val c = out UInt (32 bits)
-  val d = out UInt (32 bits)
+    // out
+    val c = out UInt (32 bits)
+    val d = out UInt (32 bits)
+  }
+
+  val a = io.input.a
+  val b = io.input.b
+  val c = io.c
+  val d = io.d
 
   val p = U(S(a) * S(b))
   val pu = a * b
@@ -33,7 +45,7 @@ class ALU extends Component {
   //
   import ALU_OP._
 
-  switch(op) {
+  switch(io.input.op) {
     is(add) {
       c := a + b
     }
@@ -90,7 +102,7 @@ class ALU extends Component {
     }
   }
 
-  switch(op) {
+  switch(io.input.op) {
     is(mult) {
       d := p(31 downto 0)
     }

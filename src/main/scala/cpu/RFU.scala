@@ -1,36 +1,48 @@
 package cpu
 
 import spinal.core._
+import spinal.lib._
 
 object RFU_RD_SRC extends SpinalEnum {
   val pc, alu, hi, lo, mu = newElement()
 }
 
+case class RegRead() extends Bundle with IMasterSlave {
+  val index = UInt(5 bits)
+  val data = Bits(32 bits)
+
+  def asMaster = {
+    out(index)
+    in(data)
+  }
+}
+
+case class RegWrite() extends Bundle {
+  val index = UInt(5 bits)
+  val data = Bits(32 bits)
+}
+
 class RFU extends Component {
   /// 读写寄存器
 
-  // in
-  val we = in Bool
-  val rd = in UInt (5 bits)
-  val rd_v = in Bits (32 bits)
+  val io = new Bundle {
+    // in
+    val write = slave Flow(RegWrite())
 
-  val ra = in UInt (5 bits)
-  val rb = in UInt (5 bits)
-
-  // out
-  val ra_v = out Bits (32 bits)
-  val rb_v = out Bits (32 bits)
+    val ra = slave(RegRead())
+    val rb = slave(RegRead())
+  }
 
   // regs
   val regs = Vec(RegInit(B"32'0"), 32)
 
   //
-  when(we) {
-    regs(rd) := rd_v
+  when(io.write.valid) {
+    regs(io.write.index) := io.write.data
   }
 
-  ra_v := regs(ra)
-  rb_v := regs(rb)
+  io.ra.data := regs(io.ra.index)
+  io.rb.data := regs(io.rb.index)
 }
 
 object RFU {

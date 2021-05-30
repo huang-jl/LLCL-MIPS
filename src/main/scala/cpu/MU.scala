@@ -1,10 +1,12 @@
 package cpu
 
-import cpu.defs.ConstantVal._
-import cpu.defs.{SramBus, SramBusConfig}
 import spinal.core._
+import spinal.lib._
 import spinal.lib.fsm._
-import spinal.lib.master
+
+import defs.ConstantVal._
+import defs.{SramBus, SramBusConfig}
+import Utils._
 
 object MU_EX extends SpinalEnum {
   val s, u = newElement()
@@ -29,9 +31,6 @@ class MU extends Component {
 
   //
   val dataReg = Reg(Bits(32 bits)) init (0)
-
-  //concat sign bit
-  def signExtend(signal: Bits): Bits = signal.asSInt.resize(32).asBits
 
   sramBus.wr := we
   sramBus.addr := (B(0, 3 bits) ## addr(28 downto 0)).asUInt
@@ -91,13 +90,13 @@ class MU extends Component {
   switch(be) {
     is(0) {
       signExt := signExtend(dataReg((byteIndex << 3), 8 bits))
-      unsignExt := unsignExtend(dataReg((byteIndex << 3), 8 bits))
+      unsignExt := zeroExtend(dataReg((byteIndex << 3), 8 bits))
       sramBus.size := 0
     }
     is(1) {
       // the byteIndex can only be 0 or 2
       signExt := signExtend(dataReg((byteIndex << 3), 16 bits))
-      unsignExt := unsignExtend(dataReg((byteIndex << 3), 16 bits))
+      unsignExt := zeroExtend(dataReg((byteIndex << 3), 16 bits))
       sramBus.size := 1
     }
     is(3) {
@@ -112,9 +111,6 @@ class MU extends Component {
     }
   }
   data_out := (ex === MU_EX.s) ? signExt | unsignExt
-
-  //concat zero
-  def unsignExtend(signal: Bits): Bits = signal.resize(32)
 
   //  stall := !(MUFsm.isActive(MUFsm.DONE) || (MUFsm.isActive(MUFsm.IDLE) & !re & !we)) //stall when fsm not in DONE
 }
