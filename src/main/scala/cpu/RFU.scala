@@ -4,7 +4,7 @@ import spinal.core._
 import spinal.lib._
 
 object RFU_RD_SRC extends SpinalEnum {
-  val pc, alu, hi, lo, mu = newElement()
+  val pc, alu, hi, lo, mu, cp0 = newElement()
 }
 
 case class RegRead() extends Bundle with IMasterSlave {

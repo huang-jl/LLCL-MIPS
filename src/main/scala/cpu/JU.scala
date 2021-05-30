@@ -8,7 +8,7 @@ object JU_OP extends SpinalEnum {
 }
 
 object JU_PC_SRC extends SpinalEnum {
-  val rs, offset, index1, index2 = newElement()
+  val rs, offset, index = newElement()
 }
 
 class JU extends Component {
@@ -30,7 +30,6 @@ class JU extends Component {
 
   //
   import JU_OP._
-  import JU_PC_SRC.{offset => _, _}
 
   jump := op.mux(
     lz -> (a < 0),
@@ -43,7 +42,7 @@ class JU extends Component {
     e -> (a === b)
   )
   jump_pc := pc_src.mux(
-    rs -> U(a),
+    JU_PC_SRC.rs -> U(a),
     JU_PC_SRC.offset -> U(S(pc) + S(offset ## B"00")),
     default -> U(pc(31 downto 28) ## index ## B"00")
   )

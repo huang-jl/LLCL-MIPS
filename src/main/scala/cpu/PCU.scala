@@ -14,8 +14,14 @@ class PCU extends Component {
   // out
   val pc = out(RegInit(U(INIT_PC)))
 
+  val E = new Bundle {
+    val AdEIL = out Bool
+  }
+
   //
   pc := stall ? pc | (we ? new_pc | pc + 4)
+
+  E.AdEIL := pc(0) | pc(1)
 }
 
 object PCU {
