@@ -46,11 +46,11 @@ class CpuAXIInterface extends BlackBox {
 
 case class DebugInterface() extends Bundle {
   val wb = new Bundle {
-    val pc = out Bits (32 bits)
+    val pc = Bits (32 bits)
     val rf = new Bundle {
-      val wen = out Bits (4 bits)
-      val wnum = out UInt (5 bits)
-      val wdata = out Bits (32 bits)
+      val wen = Bits (4 bits)
+      val wnum = UInt (5 bits)
+      val wdata = Bits (32 bits)
     }
   }
 }

@@ -10,7 +10,7 @@ class CPU extends Component {
   val io = new Bundle {
     val iSramBus = master(SramBus(SramBusConfig(32, 32, 2)))
     val dSramBus = master(SramBus(SramBusConfig(32, 32, 2)))
-    val debug = new DebugInterface
+    val debug = out(DebugInterface())
   }
   val pcu = new PCU
   val icu = new MU

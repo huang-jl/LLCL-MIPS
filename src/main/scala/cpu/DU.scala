@@ -205,13 +205,19 @@ class DU extends Component {
   }
 
   val registerJumps = Set(JR, JALR)
-  val targetJumps   = Set(J, JAL)
   for (inst <- registerJumps) {
     factory
       .when(inst)
       .set(useRs, True)
       .set(juOp, JU_OP.t)
       .set(juPcSrc, JU_PC_SRC.rs)
+  }
+  val targetJumps = Set(J, JAL)
+  for (inst <- targetJumps) {
+    factory
+      .when(inst)
+      .set(juOp, JU_OP.t)
+      .set(juPcSrc, JU_PC_SRC.index)
   }
 
   val linkingJumpsAndBranches = Set(BGEZAL, BLTZAL, JAL, JALR)
@@ -300,13 +306,13 @@ class DU extends Component {
   io.hlu_lo_we := decoder.output(hluLoWe)
   io.hlu_lo_src := decoder.output(hluLoSrc)
 
-  io.rfu_we := decoder.output(rfuRd) =/= RFU_RD.none
   io.rfu_rd := decoder.output(rfuRd) mux (
     RFU_RD.none -> U"00000",
     RFU_RD.rt   -> io.inst.rt,
     RFU_RD.rd   -> io.inst.rd,
     RFU_RD.ra   -> U"11111"
-  )
+    )
+  io.rfu_we := io.rfu_rd =/= 0
   io.rfu_rd_src := decoder.output(rfuRdSrc)
 
   io.ju_op := decoder.output(juOp)

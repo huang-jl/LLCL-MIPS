@@ -80,8 +80,10 @@ case class Decoder(
   assert(input.getBitsWidth == config.inputWidth)
 
   private[Decoder] val outputs =
-    HashMap[Key[_ <: Data], Data](((config.keys map { key =>
-      (key -> out(key.`type`()))
+    Map[Key[_ <: Data], Data](((config.keys map { key =>
+      (key -> key
+        .`type`()
+        .setCompositeName(Decoder.this, s"output_${key.getName}"))
     }).toSeq): _*)
 
   def output[T <: Data](key: Key[T]): T = {
@@ -99,7 +101,7 @@ case class Decoder(
 
   val outputVector = B(0, outputWidth bits)
 
-  val outputSegments: HashMap[Key[_ <: Data], Bits] = HashMap(
+  val outputSegments: Map[Key[_ <: Data], Bits] = Map(
     (for (i <- 0 until keys.length)
       yield (keys(i) -> outputVector(offsets(i) until offsets(i + 1)))): _*
   )

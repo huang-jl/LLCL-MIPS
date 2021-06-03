@@ -67,7 +67,7 @@ class InstructionSpec(val mask: MaskedLiteral = MaskedLiteral("-" * 32)) {
     new InstructionSpec(
       new MaskedLiteral(
         value = mask.value | (value.value << min),
-        careAbout = mask.careAbout | (((BigInt(1) << length) - 1) << min),
+        careAbout = mask.careAbout | (value.careAbout << min),
         width = mask.width
       )
     )
@@ -123,7 +123,7 @@ object InstructionSpec {
   }
 
   val ADD   = special(fn = "100000")
-  val ADDI  = IType(op = "000000")
+  val ADDI  = IType(op = "001000")
   val ADDU  = special(fn = "100001")
   val ADDIU = IType(op = "001001")
   val SUB   = special(fn = "100010")
@@ -147,11 +147,11 @@ object InstructionSpec {
   val XORI = IType(op = "001110")
 
   val SLLV = special(fn = "000100")
-  val SLL  = special(fn = "000000")
+  val SLL  = special(fn = "000000", sa = "-----")
   val SRAV = special(fn = "000111")
-  val SRA  = special(fn = "000011")
+  val SRA  = special(fn = "000011", sa = "-----")
   val SRLV = special(fn = "000110")
-  val SRL  = special(fn = "000010")
+  val SRL  = special(fn = "000010", sa = "-----")
 
   val BEQ    = IType(op = "000100")
   val BNE    = IType(op = "000101")
