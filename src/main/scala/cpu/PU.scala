@@ -16,55 +16,55 @@ class PU extends Component {
   val rfu_ra_v = in Bits (32 bits)
   val rfu_rb_v = in Bits (32 bits)
 
-  val if_pcu_pc = in UInt (32 bits)
+  val if_pcu_pc    = in UInt (32 bits)
   val if_icu_stall = in Bool
-  val if_icu_data = in Bits (32 bits)
+  val if_icu_data  = in Bits (32 bits)
 
-  val id_ju_jump = in Bool
-  val id_alu_op = in(ALU_OP)
-  val id_alu_a_src = in(ALU_A_SRC)
-  val id_alu_b_src = in(ALU_B_SRC)
-  val id_dcu_re = in Bool
-  val id_dcu_we = in Bool
-  val id_dcu_be = in UInt (2 bits)
-  val id_mu_ex = in(MU_EX)
-  val id_hlu_hi_we = in Bool
+  val id_ju_jump    = in Bool
+  val id_alu_op     = in(ALU_OP)
+  val id_alu_a_src  = in(ALU_A_SRC)
+  val id_alu_b_src  = in(ALU_B_SRC)
+  val id_dcu_re     = in Bool
+  val id_dcu_we     = in Bool
+  val id_dcu_be     = in UInt (2 bits)
+  val id_mu_ex      = in(MU_EX)
+  val id_hlu_hi_we  = in Bool
   val id_hlu_hi_src = in(HLU_SRC)
-  val id_hlu_lo_we = in Bool
+  val id_hlu_lo_we  = in Bool
   val id_hlu_lo_src = in(HLU_SRC)
-  val id_rfu_we = in Bool
-  val id_rfu_rd = in UInt (5 bits)
+  val id_rfu_we     = in Bool
+  val id_rfu_rd     = in UInt (5 bits)
   val id_rfu_rd_src = in(RFU_RD_SRC)
-  val id_use_rs = in Bool
-  val id_use_rt = in Bool
+  val id_use_rs     = in Bool
+  val id_use_rt     = in Bool
 
   val ex_alu_c = in Bits (32 bits)
   val ex_alu_d = in Bits (32 bits)
 
-  val me_dcu_stall = in Bool
+  val me_dcu_stall   = in Bool
   val me_mu_data_out = in Bits (32 bits)
 
   // out
-  val id_pcu_pc = out(Reg(UInt(32 bits)) init INIT_PC)
+  val id_pcu_pc  = out(Reg(UInt(32 bits)) init INIT_PC)
   val id_du_inst = out(Reg(Mips32Inst()) init INST_NOP)
   val id_du_rs_v = out Bits (32 bits)
   val id_du_rt_v = out Bits (32 bits)
 
   val ex_alu_input = out(Reg(ALUInput()))
 
-  val me_dcu_addr = out(Reg(UInt(32 bits)))
-  val me_dcu_data = out(Reg(Bits(32 bits)))
-  val me_dcu_re = out(RegInit(False))
-  val me_dcu_we = out(RegInit(False))
-  val me_dcu_be = out(Reg(UInt(2 bits)))
-  val me_dcu_ex = out(Reg(MU_EX))
-  val me_hlu_hi_we = out(RegInit(False))
+  val me_dcu_addr   = out(Reg(UInt(32 bits)))
+  val me_dcu_data   = out(Reg(Bits(32 bits)))
+  val me_dcu_re     = out(RegInit(False))
+  val me_dcu_we     = out(RegInit(False))
+  val me_dcu_be     = out(Reg(UInt(2 bits)))
+  val me_dcu_ex     = out(Reg(MU_EX))
+  val me_hlu_hi_we  = out(RegInit(False))
   val me_hlu_new_hi = out(Reg(Bits(32 bits)))
-  val me_hlu_lo_we = out(RegInit(False))
+  val me_hlu_lo_we  = out(RegInit(False))
   val me_hlu_new_lo = out(Reg(Bits(32 bits)))
 
   val wb_pcu_pc = out(Reg(UInt(32 bits)))
-  val wb_rfu = out(Reg(Flow(RegWrite())))
+  val wb_rfu    = out(Reg(Flow(RegWrite())))
   wb_rfu.valid init False
 
   val if_stall = out Bool
@@ -72,50 +72,53 @@ class PU extends Component {
   //
   val id_rfu_rd_v = B(id_pcu_pc + 8)
 
-  val ex_pcu_pc = Reg(UInt(32 bits))
-  val ex_du_rs = Reg(UInt(5 bits))
-  val ex_du_rt = Reg(UInt(5 bits))
-  val ex_du_offset = Reg(SInt(16 bits))
-  val ex_id_du_rs_v = Reg(Bits(32 bits))
-  val ex_du_rs_v = ex_id_du_rs_v
-  val ex_id_du_rt_v = Reg(Bits(32 bits))
-  val ex_du_rt_v = ex_id_du_rt_v
-  val ex_dcu_addr = U(S(ex_du_rs_v) + ex_du_offset)
-  val ex_dcu_data = ex_du_rt_v
-  val ex_dcu_re = RegInit(False)
-  val ex_dcu_we = RegInit(False)
-  val ex_dcu_be = Reg(UInt(2 bits))
-  val ex_mu_ex = Reg(MU_EX)
-  val ex_hlu_hi_we = RegInit(False)
-  val ex_hlu_hi_src = Reg(HLU_SRC)
-  val ex_hlu_hi_v = me_hlu_hi_we ? me_hlu_new_hi | hlu_hi_v
-  val ex_hlu_lo_we = RegInit(False)
-  val ex_hlu_lo_src = Reg(HLU_SRC)
-  val ex_hlu_lo_v = me_hlu_lo_we ? me_hlu_new_lo | hlu_lo_v
-  val ex_rfu_we = RegInit(False)
-  val ex_rfu_rd = Reg(UInt(5 bits))
-  val ex_rfu_rd_src = Reg(RFU_RD_SRC)
+  val ex_pcu_pc      = Reg(UInt(32 bits))
+  val ex_du_rs       = Reg(UInt(5 bits))
+  val ex_du_rt       = Reg(UInt(5 bits))
+  val ex_du_offset   = Reg(SInt(16 bits))
+  val ex_id_du_rs_v  = Reg(Bits(32 bits))
+  val ex_du_rs_v     = ex_id_du_rs_v
+  val ex_id_du_rt_v  = Reg(Bits(32 bits))
+  val ex_du_rt_v     = ex_id_du_rt_v
+  val ex_dcu_addr    = U(S(ex_du_rs_v) + ex_du_offset)
+  val ex_dcu_data    = ex_du_rt_v
+  val ex_dcu_re      = RegInit(False)
+  val ex_dcu_we      = RegInit(False)
+  val ex_dcu_be      = Reg(UInt(2 bits))
+  val ex_mu_ex       = Reg(MU_EX)
+  val ex_hlu_hi_we   = RegInit(False)
+  val ex_hlu_hi_src  = Reg(HLU_SRC)
+  val ex_hlu_hi_v    = me_hlu_hi_we ? me_hlu_new_hi | hlu_hi_v
+  val ex_hlu_lo_we   = RegInit(False)
+  val ex_hlu_lo_src  = Reg(HLU_SRC)
+  val ex_hlu_lo_v    = me_hlu_lo_we ? me_hlu_new_lo | hlu_lo_v
+  val ex_rfu_we      = RegInit(False)
+  val ex_rfu_rd      = Reg(UInt(5 bits))
+  val ex_rfu_rd_src  = Reg(RFU_RD_SRC)
   val ex_id_rfu_rd_v = Reg(Bits(32 bits))
   val ex_rfu_rd_v = ex_rfu_rd_src.mux(
     RFU_RD_SRC.alu -> ex_alu_c,
-    RFU_RD_SRC.hi -> ex_hlu_hi_v,
-    RFU_RD_SRC.lo -> ex_hlu_lo_v,
-    default -> ex_id_rfu_rd_v
+    RFU_RD_SRC.hi  -> ex_hlu_hi_v,
+    RFU_RD_SRC.lo  -> ex_hlu_lo_v,
+    default        -> ex_id_rfu_rd_v
   )
 
-  val me_pcu_pc = Reg(UInt(32 bits))
-  val me_rfu_we = RegInit(False)
-  val me_rfu_rd = Reg(UInt(5 bits))
-  val me_rfu_rd_src = Reg(RFU_RD_SRC)
+  val me_pcu_pc      = Reg(UInt(32 bits))
+  val me_rfu_we      = RegInit(False)
+  val me_rfu_rd      = Reg(UInt(5 bits))
+  val me_rfu_rd_src  = Reg(RFU_RD_SRC)
   val me_ex_rfu_rd_v = Reg(Bits(32 bits))
   val me_rfu_rd_v =
     (me_rfu_rd_src === RFU_RD_SRC.mu) ? me_mu_data_out | me_ex_rfu_rd_v
 
   val me_stall = me_dcu_stall
   val ex_stall = me_stall
-  val id_stall = ex_stall | ex_rfu_we & B(ex_rfu_rd_src)(
-    2
-  ) & (ex_rfu_rd === id_du_inst.rs & id_use_rs | ex_rfu_rd === id_du_inst.rt & id_use_rt) | if_icu_stall & id_ju_jump
+  val id_stall = ex_stall |
+    (ex_rfu_we &
+      ex_rfu_rd_src === RFU_RD_SRC.mu &
+      (ex_rfu_rd === id_du_inst.rs & id_use_rs |
+        ex_rfu_rd === id_du_inst.rt & id_use_rt)) |
+    if_icu_stall & id_ju_jump
   if_stall := id_stall | if_icu_stall
 
   val IF = new Bundle {
@@ -138,7 +141,7 @@ class PU extends Component {
     }
 
     val IF_E = Reg(Bits(EXCEPTION.elements.size bits))
-    val E = Bits(EXCEPTION.elements.size bits)
+    val E    = Bits(EXCEPTION.elements.size bits)
   }
 
   val EX = new Bundle {
@@ -151,14 +154,14 @@ class PU extends Component {
     }
 
     val ID_E = Reg(Bits(EXCEPTION.elements.size bits))
-    val E = Bits(EXCEPTION.elements.size bits)
+    val E    = Bits(EXCEPTION.elements.size bits)
   }
 
   val ME = new Bundle {
     val reset = Bool
 
     val EX_E = Reg(Bits(EXCEPTION.elements.size bits))
-    val E = Bits(EXCEPTION.elements.size bits)
+    val E    = Bits(EXCEPTION.elements.size bits)
   }
 
   when(!id_stall) {
@@ -191,7 +194,7 @@ class PU extends Component {
         ALU_A_SRC.sa -> id_du_inst.sa.resize(32)
       )
       ex_alu_input.b := id_alu_b_src.mux(
-        ALU_B_SRC.rt -> U(id_du_rt_v),
+        ALU_B_SRC.rt  -> U(id_du_rt_v),
         ALU_B_SRC.imm -> id_du_inst.immExtended.asUInt
       )
       ex_du_rs := id_du_inst.rs

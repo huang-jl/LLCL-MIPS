@@ -158,6 +158,8 @@ class DU extends Component {
     ANDI  -> ALU_OP.and,
     ORI   -> ALU_OP.or,
     XORI  -> ALU_OP.xor
+  ) ++ Map(
+    LUI -> ALU_OP.lu
   )
 
   for ((inst, op) <- ITypeArithmetics) {
@@ -168,6 +170,11 @@ class DU extends Component {
       .set(aluASrc, ALU_A_SRC.rs)
       .set(aluBSrc, ALU_B_SRC.imm)
       .set(aluOp, op)
+
+    if (inst != LUI)
+      factory
+        .when(inst)
+        .set(useRs, True)
   }
 
   // Branches and jumps
@@ -258,6 +265,7 @@ class DU extends Component {
       .set(rfuRdSrc, RFU_RD_SRC.mu)
       .set(muEx, ex)
       .set(dcuBe, be)
+      .set(useRs, True) //手册中对应的是base而不是rs
   }
 
   val stores = Map(
@@ -270,6 +278,7 @@ class DU extends Component {
       .when(inst)
       .set(dcuWe, True)
       .set(dcuBe, be)
+      .set(useRs, True) //手册中对应的是base而不是rs
   }
 
   // Priviledged
