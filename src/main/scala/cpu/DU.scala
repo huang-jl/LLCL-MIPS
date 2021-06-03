@@ -1,100 +1,11 @@
 package cpu
 
+import cpu.defs.InstructionSpec._
+import cpu.defs.Mips32Inst
+import cpu.defs.Mips32InstImplicits._
+import lib.Key
+import lib.decoder.DecoderFactory
 import spinal.core._
-
-import defs.ConstantVal._
-import Utils._
-
-case class Mips32Inst() extends Bundle {
-  val bits = Bits(32 bits)
-
-  def rs = bits(25 downto 21).asUInt // rt is also used for COP0
-  def rt = bits(20 downto 16).asUInt // rt is also used for REGIMM
-  def rd = bits(15 downto 11).asUInt
-  def sa = bits(10 downto 6).asUInt
-  def imm = bits(15 downto 0)
-  def immExtended = op(2) ? zeroExtend(imm) | signExtend(imm)
-  def offset = bits(15 downto 0).asSInt
-  def index = bits(25 downto 0).asUInt
-  def co = bits(25)
-  def op = bits(31 downto 26)
-  def fn = bits(5 downto 0)
-}
-
-object Mips32InstImplicits {
-  implicit def bigIntToInst(bigInt: BigInt): Mips32Inst = {
-    val inst = Mips32Inst()
-    inst.bits := bigInt
-    inst
-  }
-
-  implicit def bitsToInst(bits: Bits): Mips32Inst = {
-    val inst = Mips32Inst()
-    inst.bits := bits
-    inst
-  }
-}
-
-object OP_FIELD_CONST {
-
-  val SPECIAL = B"000000"
-  val REG_IMM = B"000001"
-  val CP0 = B"010000"
-
-  /** beq, bne, blez, bgtz */
-  val BRANCH = B"0001"
-
-  /** andi, lui, ori, xori */
-  val LOGIC_IMM = B"001"
-
-  /** lb, lbu, lh, lhu, lw */
-  val LOAD = B"100"
-
-  /** sb, sh, sw */
-  val STORE = B"101"
-
-  /** jal and j */
-  val JUMP = B"00001"
-}
-
-object FUNC_CONST {
-  //SPECIAL
-  val sll = B"000000"
-  val srl = B"000010"
-  val sra = B"000011"
-  val sllv = B"000100"
-  val srlv = B"000110"
-  val srav = B"000111"
-  val jr = B"001000"
-  val jalr = B"001001"
-  val syscall = B"001100"
-  val break = B"001101"
-  val mfhi = B"010000"
-  val mthi = B"010001"
-  val mflo = B"010010"
-  val mtlo = B"010011"
-  val mult = B"011000"
-  val multu = B"011001"
-  val div = B"011010"
-  val divu = B"011011"
-  val add = B"100000"
-  val addu = B"100001"
-  val sub = B"100010"
-  val subu = B"100011"
-  val and = B"100100"
-  val or = B"100101"
-  val xor = B"100110"
-  val nor = B"100111"
-  val slt = B"101010"
-  val sltu = B"101011"
-}
-
-object REGIMM_RT_CONST { //REGIMM
-  val bltz = B"00000"
-  val bgez = B"00001"
-  val bltzal = B"10000"
-  val bgezal = B"10001"
-}
 
 class DU extends Component {
   /// 解码指令
@@ -104,25 +15,25 @@ class DU extends Component {
     val inst = in(Mips32Inst())
 
     // out
-    val alu_op = out(ALU_OP)
+    val alu_op    = out(ALU_OP)
     val alu_a_src = out(ALU_A_SRC)
     val alu_b_src = out(ALU_B_SRC)
 
     val dcu_re = out Bool
     val dcu_we = out Bool
     val dcu_be = out UInt (2 bits)
-    val mu_ex = out(MU_EX)
+    val mu_ex  = out(MU_EX)
 
-    val hlu_hi_we = out Bool
+    val hlu_hi_we  = out Bool
     val hlu_hi_src = out(HLU_SRC)
-    val hlu_lo_we = out Bool
+    val hlu_lo_we  = out Bool
     val hlu_lo_src = out(HLU_SRC)
 
-    val rfu_we = out Bool
-    val rfu_rd = out UInt (5 bits)
+    val rfu_we     = out Bool
+    val rfu_rd     = out UInt (5 bits)
     val rfu_rd_src = out(RFU_RD_SRC)
 
-    val ju_op = out(JU_OP)
+    val ju_op     = out(JU_OP)
     val ju_pc_src = out(JU_PC_SRC)
 
     val use_rs = out Bool
@@ -131,38 +42,271 @@ class DU extends Component {
 
   // wires
   val inst = io.inst
-  val op = inst.op
-  val fn = inst.fn
+  val op   = inst.op
+  val fn   = inst.fn
 
   //
 
-  //下面是默认值，避免出现Latch
-  val defaults = new Area {
-    io.alu_op := ALU_OP.addu
-    io.alu_a_src := ALU_A_SRC.rs
-    io.alu_b_src := ALU_B_SRC.rt
+  val factory = new DecoderFactory(32)
 
-    io.dcu_re := False
-    io.dcu_we := False
-    io.dcu_be := 0
-    io.mu_ex := MU_EX.s
+  val aluOp   = Key(ALU_OP())
+  val aluASrc = Key(ALU_A_SRC())
+  val aluBSrc = Key(ALU_B_SRC())
 
-    io.rfu_rd := 0 //之后只要rfu_rd不为零，就会写GPR
-    io.rfu_we := io.rfu_rd =/= 0
-    io.rfu_rd_src := RFU_RD_SRC.alu
+  val dcuRe, dcuWe = Key(Bool)
+  val dcuBe        = Key(UInt(2 bits))
+  val muEx         = Key(MU_EX())
 
-    io.hlu_hi_we := False
-    io.hlu_hi_src := HLU_SRC.alu
-    io.hlu_lo_we := False
-    io.hlu_lo_src := HLU_SRC.alu
+  val hluHiWe, hluLoWe   = Key(Bool)
+  val hluHiSrc, hluLoSrc = Key(HLU_SRC())
 
-    io.ju_op := JU_OP.f
-    io.ju_pc_src := JU_PC_SRC.rs
-
-    io.use_rs := False
-    io.use_rt := False
+  object RFU_RD extends SpinalEnum {
+    val none, rt, rd, ra = newElement()
   }
 
+  val rfuRd    = Key(RFU_RD())
+  val rfuRdSrc = Key(RFU_RD_SRC())
+
+  val juOp    = Key(JU_OP())
+  val juPcSrc = Key(JU_PC_SRC())
+
+  val useRs, useRt = Key(Bool)
+
+  //下面是默认值，避免出现Latch
+  factory
+    .addDefault(aluOp, ALU_OP.addu)
+    .addDefault(aluASrc, ALU_A_SRC.rs)
+    .addDefault(aluBSrc, ALU_B_SRC.rt)
+    .addDefault(dcuRe, False)
+    .addDefault(dcuWe, False)
+    .addDefault(dcuBe, U"00")
+    .addDefault(muEx, MU_EX.s)
+    .addDefault(rfuRd, RFU_RD.none)
+    .addDefault(rfuRdSrc, RFU_RD_SRC.alu)
+    .addDefault(hluHiWe, False)
+    .addDefault(hluHiSrc, HLU_SRC.alu)
+    .addDefault(hluLoWe, False)
+    .addDefault(hluLoSrc, HLU_SRC.alu)
+    .addDefault(juOp, JU_OP.f)
+    .addDefault(juPcSrc, JU_PC_SRC.rs)
+    .addDefault(useRs, False)
+    .addDefault(useRt, False)
+
+  // Arithmetics
+  val saShifts = Map(
+    SLL -> ALU_OP.sll,
+    SRL -> ALU_OP.srl,
+    SRA -> ALU_OP.sra
+  )
+  val multDivs = Map(
+    DIV   -> ALU_OP.div,
+    DIVU  -> ALU_OP.divu,
+    MULT  -> ALU_OP.mult,
+    MULTU -> ALU_OP.multu
+  )
+  val RTypeArithmetics = Map(
+    ADD  -> ALU_OP.add,
+    ADDU -> ALU_OP.addu,
+    SUB  -> ALU_OP.sub,
+    SUBU -> ALU_OP.subu,
+    SLT  -> ALU_OP.slt,
+    SLTU -> ALU_OP.sltu
+  ) ++ Map(
+    AND -> ALU_OP.and,
+    NOR -> ALU_OP.nor,
+    OR  -> ALU_OP.or,
+    XOR -> ALU_OP.xor
+  ) ++ Map(
+    SLLV -> ALU_OP.sll,
+    SRLV -> ALU_OP.srl,
+    SRAV -> ALU_OP.sra
+  ) ++ saShifts ++ multDivs
+
+  for ((inst, op) <- RTypeArithmetics) {
+    factory
+      .when(inst)
+      .set(rfuRd, RFU_RD.rd)
+      .set(rfuRdSrc, RFU_RD_SRC.alu)
+      .set(aluBSrc, ALU_B_SRC.rt)
+      .set(aluOp, op)
+      .set(useRt, True)
+
+    if (saShifts contains inst)
+      factory
+        .when(inst)
+        .set(aluASrc, ALU_A_SRC.sa)
+    else
+      factory
+        .when(inst)
+        .set(aluASrc, ALU_A_SRC.rs)
+        .set(useRs, True)
+
+    if (multDivs contains inst)
+      factory
+        .when(inst)
+        .set(hluHiWe, True)
+        .set(hluHiSrc, HLU_SRC.alu)
+        .set(hluLoWe, True)
+        .set(hluLoSrc, HLU_SRC.alu)
+  }
+
+  val ITypeArithmetics = Map(
+    ADDI  -> ALU_OP.add,
+    ADDIU -> ALU_OP.addu,
+    SLTI  -> ALU_OP.slt,
+    SLTIU -> ALU_OP.sltu,
+    ANDI  -> ALU_OP.and,
+    ORI   -> ALU_OP.or,
+    XORI  -> ALU_OP.xor
+  )
+
+  for ((inst, op) <- ITypeArithmetics) {
+    factory
+      .when(inst)
+      .set(rfuRd, RFU_RD.rt)
+      .set(rfuRdSrc, RFU_RD_SRC.alu)
+      .set(aluASrc, ALU_A_SRC.rs)
+      .set(aluBSrc, ALU_B_SRC.imm)
+      .set(aluOp, op)
+  }
+
+  // Branches and jumps
+  val rtBranches = Map(
+    BEQ -> JU_OP.e,
+    BNE -> JU_OP.noe
+  )
+  val branches = Map(
+    BGEZ   -> JU_OP.gez,
+    BLTZ   -> JU_OP.lz,
+    BGEZAL -> JU_OP.gez,
+    BLTZAL -> JU_OP.lz,
+    BGTZ   -> JU_OP.gz,
+    BLEZ   -> JU_OP.lez
+  ) ++ rtBranches
+
+  for ((inst, op) <- branches) {
+    factory
+      .when(inst)
+      .set(useRs, True)
+      .set(juOp, op)
+      .set(juPcSrc, JU_PC_SRC.offset)
+
+    if (rtBranches contains inst)
+      factory
+        .when(inst)
+        .set(useRt, True)
+  }
+
+  val registerJumps = Set(JR, JALR)
+  val targetJumps   = Set(J, JAL)
+  for (inst <- registerJumps) {
+    factory
+      .when(inst)
+      .set(useRs, True)
+      .set(juOp, JU_OP.t)
+      .set(juPcSrc, JU_PC_SRC.rs)
+  }
+
+  val linkingJumpsAndBranches = Set(BGEZAL, BLTZAL, JAL, JALR)
+  for (inst <- linkingJumpsAndBranches) {
+    factory
+      .when(inst)
+      .set(rfuRd, RFU_RD.ra)
+      .set(rfuRdSrc, RFU_RD_SRC.pc)
+  }
+
+  // M(FT)(HI/LO)
+  factory
+    .when(MFHI)
+    .set(rfuRd, RFU_RD.rd)
+    .set(rfuRdSrc, RFU_RD_SRC.hi)
+
+  factory
+    .when(MFLO)
+    .set(rfuRd, RFU_RD.rd)
+    .set(rfuRdSrc, RFU_RD_SRC.lo)
+
+  factory
+    .when(MTHI)
+    .set(hluHiWe, True)
+    .set(hluHiSrc, HLU_SRC.rs)
+    .set(useRs, True)
+
+  factory
+    .when(MTLO)
+    .set(hluLoWe, True)
+    .set(hluLoSrc, HLU_SRC.rs)
+    .set(useRs, True)
+
+  // Traps
+  // TODO
+
+  // Load & Store
+  val loads = Map(
+    LB  -> (MU_EX.s, U"00"),
+    LBU -> (MU_EX.u, U"00"),
+    LH  -> (MU_EX.s, U"01"),
+    LHU -> (MU_EX.u, U"01"),
+    LW  -> (MU_EX.s, U"11") // TODO: 更换 Cache 可能要改成 10
+  )
+
+  for ((inst, (ex, be)) <- loads) {
+    factory
+      .when(inst)
+      .set(dcuRe, True)
+      .set(rfuRd, RFU_RD.rt)
+      .set(rfuRdSrc, RFU_RD_SRC.mu)
+      .set(muEx, ex)
+      .set(dcuBe, be)
+  }
+
+  val stores = Map(
+    SB -> U"00",
+    SH -> U"01",
+    SW -> U"11" // TODO: 更换 Cache 可能要改成 10
+  )
+  for ((inst, be) <- stores) {
+    factory
+      .when(inst)
+      .set(dcuWe, True)
+      .set(dcuBe, be)
+  }
+
+  // Priviledged
+  // TODO
+
+  val decoder = factory.createDecoder(io.inst)
+
+  io.alu_op := decoder.output(aluOp)
+  io.alu_a_src := decoder.output(aluASrc)
+  io.alu_b_src := decoder.output(aluBSrc)
+
+  io.dcu_re := decoder.output(dcuRe)
+  io.dcu_we := decoder.output(dcuWe)
+  io.dcu_be := decoder.output(dcuBe)
+  io.mu_ex := decoder.output(muEx)
+
+  io.hlu_hi_we := decoder.output(hluHiWe)
+  io.hlu_hi_src := decoder.output(hluHiSrc)
+  io.hlu_lo_we := decoder.output(hluLoWe)
+  io.hlu_lo_src := decoder.output(hluLoSrc)
+
+  io.rfu_we := decoder.output(rfuRd) =/= RFU_RD.none
+  io.rfu_rd := decoder.output(rfuRd) mux (
+    RFU_RD.none -> U"00000",
+    RFU_RD.rt   -> io.inst.rt,
+    RFU_RD.rd   -> io.inst.rd,
+    RFU_RD.ra   -> U"11111"
+  )
+  io.rfu_rd_src := decoder.output(rfuRdSrc)
+
+  io.ju_op := decoder.output(juOp)
+  io.ju_pc_src := decoder.output(juPcSrc)
+
+  io.use_rs := decoder.output(useRs)
+  io.use_rt := decoder.output(useRt)
+
+  /*
   when(op === OP_FIELD_CONST.SPECIAL) {
     io.rfu_rd := inst.rd
     io.rfu_rd_src := RFU_RD_SRC.alu
@@ -339,7 +483,7 @@ class DU extends Component {
       }
     }
   }
-
+   */
 }
 
 object DU {

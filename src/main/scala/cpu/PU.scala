@@ -4,7 +4,8 @@ import spinal.core._
 import spinal.lib._
 
 import defs.ConstantVal._
-import Mips32InstImplicits._
+import defs.Mips32InstImplicits._
+import defs.Mips32Inst
 
 class PU extends Component {
   /// 数据流水线

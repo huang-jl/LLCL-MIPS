@@ -32,12 +32,11 @@ object DecoderTest {
     factory.when(M"0---").set(k3, Fruits.Apple)
     factory.when(M"-0-1").set(k2, U(1, 2 bits))
 
-    val decoder = factory.createDecoder()
+    val decoder = factory.createDecoder(io.input)
 
-    decoder.io.input := io.input
-    io.v1 := decoder.io.output(k1)
-    io.v2 := decoder.io.output(k2)
-    io.v3 := decoder.io.output(k3)
+    io.v1 := decoder.output(k1)
+    io.v2 := decoder.output(k2)
+    io.v3 := decoder.output(k3)
   }
 
   def main(args: Array[String]) = {

@@ -18,7 +18,7 @@ case class DecoderConfig(
 
 class DecoderFactory(val inputWidth: Int) {
   // Mutable constituents of DecoderConfig
-  private[decoder] val keys = HashSet[Key[_ <: Data]]()
+  private[decoder] val keys     = HashSet[Key[_ <: Data]]()
   private[decoder] val defaults = HashMap[Key[_ <: Data], () => Data]()
   private[decoder] val encodings =
     HashMap[MaskedLiteral, HashMap[Key[_ <: Data], () => Data]]()
@@ -26,7 +26,7 @@ class DecoderFactory(val inputWidth: Int) {
   class When private[DecoderFactory] (
       map: HashMap[Key[_ <: Data], () => Data]
   ) {
-    def set[T <: Data](key: Key[T], value: => T) = {
+    def set[T <: Data](key: Key[T], value: => T): this.type = {
       keys.add(key)
       map(key) = () => value
       this
@@ -35,7 +35,7 @@ class DecoderFactory(val inputWidth: Int) {
     def set[T <: SpinalEnum](
         key: Key[SpinalEnumCraft[T]],
         value: SpinalEnumElement[T]
-    ): Unit = set(key, value())
+    ): this.type = set(key, value())
   }
 
   def when(mask: MaskedLiteral) = {
@@ -43,19 +43,20 @@ class DecoderFactory(val inputWidth: Int) {
     new When(encodings.getOrElseUpdate(mask, HashMap()))
   }
 
-  def addDefault[T <: Data](key: Key[T], default: => T) = {
+  def addDefault[T <: Data](key: Key[T], default: => T): this.type = {
     assert(!defaults.contains(key))
     keys.add(key)
     defaults(key) = () => default
+    this
   }
 
   def addDefault[T <: SpinalEnum](
       key: Key[SpinalEnumCraft[T]],
       default: SpinalEnumElement[T]
-  ): Unit =
+  ): this.type =
     addDefault(key, default())
 
-  def createDecoder() =
+  def createDecoder(input: Bits) =
     Decoder(
       DecoderConfig( // Creates immutable DecoderConfig
         inputWidth,
@@ -67,25 +68,25 @@ class DecoderFactory(val inputWidth: Int) {
             (Key[T], () => T) forSome { type T <: Data }
           ]]))
         }.toMap
-      )
+      ),
+      input
     )
 }
 
 case class Decoder(
-    config: DecoderConfig
-) extends Component {
-  val io = new Bundle {
-    val input = in Bits (config.inputWidth bits)
+    config: DecoderConfig,
+    input: Bits
+) extends Area {
+  assert(input.getBitsWidth == config.inputWidth)
 
-    private[Decoder] val outputs =
-      HashMap[Key[_ <: Data], Data](((config.keys map { key =>
-        (key -> out(key.`type`()))
-      }).toSeq): _*)
+  private[Decoder] val outputs =
+    HashMap[Key[_ <: Data], Data](((config.keys map { key =>
+      (key -> out(key.`type`()))
+    }).toSeq): _*)
 
-    def output[T <: Data](key: Key[T]): T = {
-      assert(config.keys.contains(key))
-      outputs(key).asInstanceOf[T]
-    }
+  def output[T <: Data](key: Key[T]): T = {
+    assert(config.keys.contains(key))
+    outputs(key).asInstanceOf[T]
   }
 
   val keys = config.keys
@@ -104,7 +105,7 @@ case class Decoder(
   )
 
   for (key <- keys) {
-    io.output(key) assignFromBits outputSegments(key)
+    output(key) assignFromBits outputSegments(key)
   }
 
   // Naive implementation
@@ -114,7 +115,7 @@ case class Decoder(
 
   for ((maskedLiteral, map) <- config.encodings) {
     // The === is aware of the mask
-    when(maskedLiteral === io.input) {
+    when(maskedLiteral === input) {
       for ((key, value) <- map) {
         outputSegments(key) := value().asBits
       }

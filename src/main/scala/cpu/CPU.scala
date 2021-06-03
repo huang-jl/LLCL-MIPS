@@ -3,8 +3,8 @@ package cpu
 import spinal.core._
 import spinal.lib.master
 
-import cpu.defs.{SramBus, SramBusConfig}
-import Mips32InstImplicits._
+import defs.{SramBus, SramBusConfig}
+import defs.Mips32InstImplicits._
 
 class CPU extends Component {
   val io = new Bundle {
