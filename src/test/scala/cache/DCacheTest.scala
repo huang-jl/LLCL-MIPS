@@ -15,7 +15,7 @@ class DCacheTest extends Component {
     val uncache = slave(new CPUDCacheInterface)
   }
   val cpu = new CPUDCacheInterface
-  val dCache = new DCache(CacheRamConfig(32, 7, 4), 8)
+  val dCache = new DCache(CacheRamConfig(32, 7, 4, true), 8)
   val ram = new axi_ram(AXIRamConfig(32, DCacheTest.addrWidth, 4))
   val uncacheRam = new axi_ram(AXIRamConfig(32, DCacheTest.addrWidth, 4))
 

@@ -30,7 +30,7 @@ class CPUICacheInterface extends Bundle with IMasterSlave {
 
 object ICache {
   def main(args: Array[String]): Unit = {
-    SpinalVerilog(new ICache(CacheRamConfig()))
+    SpinalVerilog(new ICache(CacheRamConfig())).printPruned()
   }
 }
 
@@ -53,12 +53,21 @@ class ICache(config: CacheRamConfig) extends Component {
     val wordOffset: UInt = io.cpu.addr(2 until config.offsetWidth)
   }
   val cacheRam = new Area {
-    val tags = Array.fill(config.wayNum)(Mem(Bits(Meta.getBitWidth(config.tagWidth) bits), config.setSize))
-    val datas = Array.fill(config.wayNum)(Mem(Bits(Block.getBitWidth(config.blockSize) bits), config.setSize))
+    //    val tags = Array.fill(config.wayNum)(Mem(Bits(Meta.getBitWidth(config.tagWidth) bits), config.setSize))
+    //    val datas = Array.fill(config.wayNum)(Mem(Bits(Block.getBitWidth(config.blockSize) bits), config.setSize))
+    val tags = if (!config.sim) Array.fill(config.wayNum)(new SinglePortBRAM(config.indexWidth,
+      Meta.getBitWidth(config.tagWidth), "single_port_imeta_ram")) else null
+    val datas = if (!config.sim) Array.fill(config.wayNum)(new SinglePortBRAM(config.indexWidth,
+      Block.getBitWidth(config.blockSize), "single_port_data_ram")) else null
+
+    val simTags = if (config.sim) Array.fill(config.wayNum)(Mem(Bits(Meta.getBitWidth(config.tagWidth) bits), config.setSize)) else null
+    val simDatas = if (config.sim) Array.fill(config.wayNum)(Mem(Bits(Block.getBitWidth(config.blockSize) bits), config.setSize)) else null
     //仿真时初值
-    for (i <- 0 until config.wayNum) {
-      tags(i).init(for (i <- 0 until config.setSize) yield B(0))
-      datas(i).init(for (i <- 0 until config.setSize) yield B(0))
+    if (config.sim) {
+      for (i <- 0 until config.wayNum) {
+        simTags(i).init(for (i <- 0 until config.setSize) yield B(0))
+        simDatas(i).init(for (i <- 0 until config.setSize) yield B(0))
+      }
     }
   }
 
@@ -66,13 +75,27 @@ class ICache(config: CacheRamConfig) extends Component {
     val dataWE = Bits(config.wayNum bits) //写cache.data的使能
     val tagWE = Bits(config.wayNum bits) //写cache.meta的使能
     /*
+     * Cache地址
+     */
+    if (!config.sim) {
+      for (i <- 0 until config.wayNum) {
+        cacheRam.tags(i).io.addra := inputAddr.index
+        cacheRam.datas(i).io.addra := inputAddr.index
+      }
+    }
+    /*
      * Cache读端口
      */
     val rdata = Vec(Block(config.blockSize), config.wayNum)
     val rmeta = Vec(Meta(config.tagWidth), config.wayNum)
     for (i <- 0 until config.wayNum) {
-      rmeta(i).assignFromBits(cacheRam.tags(i).readAsync(inputAddr.index))
-      rdata(i).assignFromBits(cacheRam.datas(i).readAsync(inputAddr.index))
+      if (config.sim) {
+        rmeta(i).assignFromBits(cacheRam.simTags(i).readAsync(inputAddr.index))
+        rdata(i).assignFromBits(cacheRam.simDatas(i).readAsync(inputAddr.index))
+      } else {
+        rmeta(i).assignFromBits(cacheRam.tags(i).io.douta)
+        rdata(i).assignFromBits(cacheRam.datas(i).io.douta)
+      }
     }
     /*
      * Cache写端口
@@ -81,8 +104,15 @@ class ICache(config: CacheRamConfig) extends Component {
     val writeData = Block(config.blockSize) //要写入cache的Block
     //TODO 加入invalidate功能后需要修改tags.valid的逻辑
     for (i <- 0 until config.wayNum) {
-      cacheRam.tags(i).write(inputAddr.index, writeMeta.asBits, enable = tagWE(i))
-      cacheRam.datas(i).write(inputAddr.index, writeData.asBits, enable = dataWE(i))
+      if (config.sim) {
+        cacheRam.simTags(i).write(inputAddr.index, writeMeta.asBits, enable = tagWE(i))
+        cacheRam.simDatas(i).write(inputAddr.index, writeData.asBits, enable = dataWE(i))
+      } else {
+        cacheRam.tags(i).io.wea := tagWE(i)
+        cacheRam.datas(i).io.wea := dataWE(i)
+        cacheRam.tags(i).io.dina := writeMeta.asBits
+        cacheRam.datas(i).io.dina := writeData.asBits
+      }
     }
 
     val hitPerWay: Bits = Bits(config.wayNum bits) //每一路是否命中

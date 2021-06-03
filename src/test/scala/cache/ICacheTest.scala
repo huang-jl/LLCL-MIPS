@@ -17,8 +17,8 @@ class ICacheTest extends Component {
   }
 
   val cpu = new CPUICacheInterface
-  val iCache = new ICache(CacheRamConfig(32, 7, 8))
-  val ram = new axi_ram(AXIRamConfig(dataWidth = 32, addrWidth = 16, idWidth = 4, pipelineOutput = 0))
+  val iCache = new ICache(CacheRamConfig(32, 7, 8, true))
+  val ram = new axi_ram(AXIRamConfig(32, ICacheTest.addrWidth, idWidth = 4))
   io.cpu >> cpu
   cpu >> iCache.io.cpu
   iCache.io.axi >> ram.io.axi
@@ -26,15 +26,32 @@ class ICacheTest extends Component {
 
 object ICacheTest {
   val rand = new Random(2021)
+  val addrWidth = 20
+  val iterNum = 500000
 
-  def getMemInitData: Map[Int, Long] = {
+  def getMapAddr(addr: Long): Long = {
+    addr & ((0x1 << addrWidth) - 1)
+  }
+
+  def getMemInitData: Map[Long, Long] = {
     val source = Source.fromFile("./script/data.txt")
     val lineIterator = source.getLines().zipWithIndex
-    var res = Map[Int, Long]()
+    var res = Map[Long, Long]()
     for ((line, addr) <- lineIterator) {
-      res += (addr * 4 -> java.lang.Long.parseLong(line, 16))
+      res += ((addr * 4).toLong -> java.lang.Long.parseLong(line, 16))
     }
     res
+  }
+
+  //range: 后16位变动的范围
+  def getRandomAddr(range: Int): (Int, Long) = {
+    val baseRange = 1 << (addrWidth - 16)
+    val randomRamAddr = rand.nextInt(range) & 0xfffc
+    var cpuBase = (rand.nextInt(baseRange) & 0xffff) + 0xbfc0
+    cpuBase = Math.min(cpuBase, 0xffff)
+    val cpuAddr = ((cpuBase.toLong << 16) | randomRamAddr)
+    //    println("base = 0x%x, rand = 0x%x, cpu addr = 0x%x".format(cpuBase, randomRamAddr, cpuAddr))
+    (randomRamAddr, cpuAddr)
   }
 
   def main(args: Array[String]): Unit = {
@@ -51,13 +68,15 @@ object ICacheTest {
         var waitCycle = rand.nextInt(3)
         if (index == 0 && waitCycle == 0) waitCycle = 1
         dut.clockDomain.waitRisingEdge(waitCycle)
-        val randomMemAddr = rand.nextInt(0x200) & 0xfffc
-        val randomAddr = (0xbfc00000L + randomMemAddr) & ((0x1L << 32) - 1)
+        val (_, randomAddr) = getRandomAddr(0x1000)
+        if (index % 1000 == 0) {
+          println("randomAddr = 0x%x".format(randomAddr))
+        }
         dut.io.cpu.read #= true
         dut.io.cpu.addr #= randomAddr
         dut.clockDomain.waitFallingEdge()
         while (dut.io.cpu.stall.toBoolean) (dut.clockDomain.waitSampling())
-        assert(dut.io.cpu.data.toLong == memData(randomMemAddr))
+        assert(dut.io.cpu.data.toLong == memData(getMapAddr(randomAddr)))
         dut.io.cpu.read #= false
       }
     }
@@ -70,17 +89,17 @@ object ICacheTest {
       dut.clockDomain.deassertReset()
       val memData = getMemInitData
       dut.io.cpu.read #= false
-      for (index <- 0 to 10000) {
+      for (index <- 0 to iterNum) {
+        if (index % (iterNum / 10) == 0) println("Sim for %d / %d times".format(index, iterNum))
         var waitCycle = rand.nextInt(3)
         if (index == 0 && waitCycle == 0) waitCycle = 1
         dut.clockDomain.waitRisingEdge(waitCycle)
-        val randomMemAddr = rand.nextInt(0xffff) & 0xfffc
-        val randomAddr = (0xbfc00000L + randomMemAddr) & ((0x1L << 32) - 1)
+        val (_, randomAddr) = getRandomAddr(0x1000)
         dut.io.cpu.read #= true
         dut.io.cpu.addr #= randomAddr
         dut.clockDomain.waitFallingEdge()
         while (dut.io.cpu.stall.toBoolean) (dut.clockDomain.waitSampling())
-        assert(dut.io.cpu.data.toLong == memData(randomMemAddr))
+        assert(dut.io.cpu.data.toLong == memData(getMapAddr(randomAddr)))
         dut.io.cpu.read #= false
       }
     }

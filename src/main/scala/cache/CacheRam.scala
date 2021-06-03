@@ -5,7 +5,8 @@ import spinal.core._
 case class CacheRamConfig(
                            blockSize: Int = 32, //数据块的大小, bytes
                            indexWidth: Int = 7, //Index的宽度
-                           wayNum: Int = 2 //路个数
+                           wayNum: Int = 2, //路个数
+                           sim: Boolean = false //是否是仿真，会影响ram的生成
                          ) {
   def tagWidth: Int = 32 - indexWidth - offsetWidth
 
@@ -70,4 +71,23 @@ case class DMeta(tagWidth: Int) extends Bundle {
 
 object DMeta {
   def getBitWidth(tagWidth: Int): Int = tagWidth + 2
+}
+
+/**
+ * addrWidth: 地址宽度，和ram的深度对应
+ * dataWidth: 数据宽度，读出数据和写入数据宽度一致
+ * name: 生成verilog对应原件名称
+ */
+class SinglePortBRAM(addrWidth: Int, dataWidth: Int, name: String) extends BlackBox {
+  setDefinitionName(name)
+  val io = new Bundle {
+    val clka = in Bool
+    val wea = in Bool //write enable
+    val addra = in(UInt(addrWidth bits))
+    val dina = in(Bits(dataWidth bits))
+    val douta = out(Bits(dataWidth bits))
+  }
+
+  noIoPrefix()
+  mapClockDomain(clock = io.clka)
 }
