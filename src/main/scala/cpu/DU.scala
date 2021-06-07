@@ -1,10 +1,10 @@
 package cpu
 
-import cpu.defs.InstructionSpec._
-import cpu.defs.Mips32Inst
-import cpu.defs.Mips32InstImplicits._
+import defs.InstructionSpec._
+import defs.Mips32Inst
+import defs.Mips32InstImplicits._
 import lib.Key
-import lib.decoder.DecoderFactory
+import lib.decoder.{DecoderFactory, NotConsidered}
 import spinal.core._
 
 class DU extends Component {
@@ -18,6 +18,9 @@ class DU extends Component {
     val alu_op    = out(ALU_OP)
     val alu_a_src = out(ALU_A_SRC)
     val alu_b_src = out(ALU_B_SRC)
+
+    val cp0_re = out Bool
+    val cp0_we = out Bool
 
     val dcu_re = out Bool
     val dcu_we = out Bool
@@ -38,6 +41,8 @@ class DU extends Component {
 
     val use_rs = out Bool
     val use_rt = out Bool
+
+    val exception = out(EXCEPTION())
   }
 
   // wires
@@ -47,11 +52,13 @@ class DU extends Component {
 
   //
 
-  val factory = new DecoderFactory(32)
+  val factory = new DecoderFactory(32, enableNotConsidered = true)
 
   val aluOp   = Key(ALU_OP())
   val aluASrc = Key(ALU_A_SRC())
   val aluBSrc = Key(ALU_B_SRC())
+
+  val cp0Re, cp0We = Key(Bool)
 
   val dcuRe, dcuWe = Key(Bool)
   val dcuBe        = Key(UInt(2 bits))
@@ -72,11 +79,15 @@ class DU extends Component {
 
   val useRs, useRt = Key(Bool)
 
+  val exception = Key(EXCEPTION())
+
   //下面是默认值，避免出现Latch
   factory
     .addDefault(aluOp, ALU_OP.addu)
     .addDefault(aluASrc, ALU_A_SRC.rs)
     .addDefault(aluBSrc, ALU_B_SRC.rt)
+    .addDefault(cp0Re, False)
+    .addDefault(cp0We, False)
     .addDefault(dcuRe, False)
     .addDefault(dcuWe, False)
     .addDefault(dcuBe, U"00")
@@ -91,6 +102,7 @@ class DU extends Component {
     .addDefault(juPcSrc, JU_PC_SRC.rs)
     .addDefault(useRs, False)
     .addDefault(useRt, False)
+    .addDefault(exception, EXCEPTION.None)
 
   // Arithmetics
   val saShifts = Map(
@@ -252,7 +264,17 @@ class DU extends Component {
     .set(useRs, True)
 
   // Traps
-  // TODO
+  factory
+    .when(SYSCALL)
+    .set(exception, EXCEPTION.Sys)
+
+  factory
+    .when(BREAK)
+    .set(exception, EXCEPTION.Bp)
+
+  factory
+    .when(ERET)
+    .set(exception, EXCEPTION.Eret)
 
   // Load & Store
   val loads = Map(
@@ -287,7 +309,19 @@ class DU extends Component {
       .set(useRs, True) //手册中对应的是base而不是rs
   }
 
-  // Priviledged
+  // Privileged
+  factory
+    .when(MTC0)
+    .set(cp0Re, True)
+    .set(cp0We, True)
+    .set(useRt, True)
+
+  factory
+    .when(MFC0)
+    .set(cp0Re, True)
+    .set(rfuRd, RFU_RD.rt)
+    .set(rfuRdSrc, RFU_RD_SRC.cp0)
+
   // TODO
 
   val decoder = factory.createDecoder(io.inst)
@@ -295,6 +329,9 @@ class DU extends Component {
   io.alu_op := decoder.output(aluOp)
   io.alu_a_src := decoder.output(aluASrc)
   io.alu_b_src := decoder.output(aluBSrc)
+
+  io.cp0_re := decoder.output(cp0Re)
+  io.cp0_we := decoder.output(cp0We)
 
   io.dcu_re := decoder.output(dcuRe)
   io.dcu_we := decoder.output(dcuWe)
@@ -311,7 +348,7 @@ class DU extends Component {
     RFU_RD.rt   -> io.inst.rt,
     RFU_RD.rd   -> io.inst.rd,
     RFU_RD.ra   -> U"11111"
-    )
+  )
   io.rfu_we := io.rfu_rd =/= 0
   io.rfu_rd_src := decoder.output(rfuRdSrc)
 
@@ -320,6 +357,12 @@ class DU extends Component {
 
   io.use_rs := decoder.output(useRs)
   io.use_rt := decoder.output(useRt)
+
+  when(decoder.output(NotConsidered)) {
+    io.exception := EXCEPTION.RI
+  } otherwise {
+    io.exception := decoder.output(exception)
+  }
 
   /*
   when(op === OP_FIELD_CONST.SPECIAL) {

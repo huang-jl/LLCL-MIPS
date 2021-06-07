@@ -1,11 +1,10 @@
 package lib.decoder
 
-import scala.collection
-import scala.collection.mutable.{HashSet, HashMap}
-import scala.language.existentials
+import lib.Key
 import spinal.core._
 
-import lib.Key
+import scala.collection.mutable.{HashMap, HashSet}
+import scala.language.existentials
 
 case class DecoderConfig(
     inputWidth: Int,
@@ -16,7 +15,12 @@ case class DecoderConfig(
     ]]
 )
 
-class DecoderFactory(val inputWidth: Int) {
+object NotConsidered extends Key(Bool)
+
+class DecoderFactory(
+    val inputWidth: Int,
+    val enableNotConsidered: Boolean = false
+) {
   // Mutable constituents of DecoderConfig
   private[decoder] val keys     = HashSet[Key[_ <: Data]]()
   private[decoder] val defaults = HashMap[Key[_ <: Data], () => Data]()
@@ -40,7 +44,11 @@ class DecoderFactory(val inputWidth: Int) {
 
   def when(mask: MaskedLiteral) = {
     assert(mask.width == inputWidth)
-    new When(encodings.getOrElseUpdate(mask, HashMap()))
+    val result = new When(encodings.getOrElseUpdate(mask, HashMap()))
+    if (enableNotConsidered) {
+      result.set(NotConsidered, False)
+    }
+    result
   }
 
   def addDefault[T <: Data](key: Key[T], default: => T): this.type = {
@@ -55,6 +63,10 @@ class DecoderFactory(val inputWidth: Int) {
       default: SpinalEnumElement[T]
   ): this.type =
     addDefault(key, default())
+
+  if (enableNotConsidered) {
+    addDefault(NotConsidered, True)
+  }
 
   def createDecoder(input: Bits) =
     Decoder(

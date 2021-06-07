@@ -32,7 +32,7 @@ case class Mips32Inst() extends Bundle {
   def op          = bits(Fields.op)
   def fn          = bits(Fields.fn)
   def co          = bits(Fields.co)
-  def sel         = bits(Fields.sel)
+  def sel         = bits(Fields.sel).asUInt
 }
 
 object Mips32InstImplicits {

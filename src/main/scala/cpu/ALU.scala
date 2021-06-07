@@ -1,6 +1,5 @@
 package cpu
 
-import cpu.defs.ConstantVal._
 import spinal.core._
 
 object ALU_OP extends SpinalEnum {
@@ -18,8 +17,8 @@ object ALU_B_SRC extends SpinalEnum {
 
 case class ALUInput() extends Bundle {
   val op = ALU_OP()
-  val a = UInt(32 bits)
-  val b = UInt(32 bits)
+  val a  = UInt(32 bits)
+  val b  = UInt(32 bits)
 }
 
 class ALU extends Component {
@@ -27,34 +26,32 @@ class ALU extends Component {
 
   val io = new Bundle {
     // in
-    val e = in Bool
     val input = in(ALUInput())
 
     // out
     val c = out UInt (32 bits)
     val d = out UInt (32 bits)
+
+    val exception = out(EXCEPTION())
   }
 
-  val e = io.e
   val a = io.input.a
   val b = io.input.b
   val c = io.c
   val d = io.d
 
-  val E = new Bundle {
-    val Ov = out Bool
-  }
-
   //
   import ALU_OP._
 
   d := 0
-  E.Ov := False
+  io.exception := EXCEPTION.None
   switch(io.input.op) {
     is(add) {
       val temp = S(a, 33 bits) + S(b, 33 bits)
       c := U(temp(31 downto 0))
-      E.Ov := e & temp(32) =/= temp(31)
+      when(temp(32) =/= temp(31)) {
+        io.exception := EXCEPTION.Ov
+      }
     }
     is(addu) {
       c := a + b
@@ -62,7 +59,9 @@ class ALU extends Component {
     is(sub) {
       val temp = S(a, 33 bits) - S(b, 33 bits)
       c := U(temp(31 downto 0))
-      E.Ov := e & temp(32) =/= temp(31)
+      when(temp(32) =/= temp(31)) {
+        io.exception := EXCEPTION.Ov
+      }
     }
     is(subu) {
       c := a - b

@@ -1,20 +1,23 @@
 package cpu
 
-import spinal.core._
-import spinal.lib._
-
+import CP0AddrImplicits._
 import defs.ConstantVal._
-import defs.Mips32InstImplicits._
 import defs.Mips32Inst
+import defs.Mips32InstImplicits._
+import spinal.core._
+import spinal.lib.{cpu => _, _}
+
+
 
 class PU extends Component {
   /// 数据流水线
 
   // in
-  val hlu_hi_v = in Bits (32 bits)
-  val hlu_lo_v = in Bits (32 bits)
-  val rfu_ra_v = in Bits (32 bits)
-  val rfu_rb_v = in Bits (32 bits)
+  val hlu_hi_v   = in Bits (32 bits)
+  val hlu_lo_v   = in Bits (32 bits)
+  val rfu_ra_v   = in Bits (32 bits)
+  val rfu_rb_v   = in Bits (32 bits)
+  val cp0_read_v = in Bits (32 bits)
 
   val if_pcu_pc    = in UInt (32 bits)
   val if_icu_stall = in Bool
@@ -24,6 +27,8 @@ class PU extends Component {
   val id_alu_op     = in(ALU_OP)
   val id_alu_a_src  = in(ALU_A_SRC)
   val id_alu_b_src  = in(ALU_B_SRC)
+  val id_cp0_re     = in Bool
+  val id_cp0_we     = in Bool
   val id_dcu_re     = in Bool
   val id_dcu_we     = in Bool
   val id_dcu_be     = in UInt (2 bits)
@@ -37,12 +42,17 @@ class PU extends Component {
   val id_rfu_rd_src = in(RFU_RD_SRC)
   val id_use_rs     = in Bool
   val id_use_rt     = in Bool
+  val id_exception  = in(EXCEPTION())
 
-  val ex_alu_c = in Bits (32 bits)
-  val ex_alu_d = in Bits (32 bits)
+  val ex_alu_c         = in Bits (32 bits)
+  val ex_alu_d         = in Bits (32 bits)
+  val ex_alu_exception = in(EXCEPTION())
 
-  val me_dcu_stall   = in Bool
-  val me_mu_data_out = in Bits (32 bits)
+  val ex_cp0_to_write = in Bits (32 bits)
+
+  val me_dcu_stall     = in Bool
+  val me_mu_data_out   = in Bits (32 bits)
+  val me_dcu_exception = in(EXCEPTION())
 
   // out
   val id_pcu_pc  = out(Reg(UInt(32 bits)) init INIT_PC)
@@ -51,6 +61,7 @@ class PU extends Component {
   val id_du_rt_v = out Bits (32 bits)
 
   val ex_alu_input = out(Reg(ALUInput()))
+  val ex_cp0_input = out(Reg(CP0ExecUnitInput()))
 
   val me_dcu_addr   = out(Reg(UInt(32 bits)))
   val me_dcu_data   = out(Reg(Bits(32 bits)))
@@ -66,11 +77,17 @@ class PU extends Component {
   val wb_pcu_pc = out(Reg(UInt(32 bits)))
   val wb_rfu    = out(Reg(Flow(RegWrite())))
   wb_rfu.valid init False
+  val wb_cp0 = out(Reg(Flow(CP0Write())))
+  wb_cp0.valid init False
 
   val if_stall = out Bool
 
   //
-  val id_rfu_rd_v = B(id_pcu_pc + 8)
+  val id_du_cp0_v = Bits(32 bits)
+  val id_rfu_rd_v = id_rfu_rd_src mux (
+    RFU_RD_SRC.cp0 -> id_du_cp0_v,
+    default        -> B(id_pcu_pc + 8)
+  )
 
   val ex_pcu_pc      = Reg(UInt(32 bits))
   val ex_du_rs       = Reg(UInt(5 bits))
@@ -96,12 +113,15 @@ class PU extends Component {
   val ex_rfu_rd      = Reg(UInt(5 bits))
   val ex_rfu_rd_src  = Reg(RFU_RD_SRC)
   val ex_id_rfu_rd_v = Reg(Bits(32 bits))
-  val ex_rfu_rd_v = ex_rfu_rd_src.mux(
+  val ex_rfu_rd_v = ex_rfu_rd_src mux (
     RFU_RD_SRC.alu -> ex_alu_c,
     RFU_RD_SRC.hi  -> ex_hlu_hi_v,
     RFU_RD_SRC.lo  -> ex_hlu_lo_v,
     default        -> ex_id_rfu_rd_v
   )
+  val ex_cp0_we       = RegInit(False)
+  val ex_cp0_addr     = Reg(CP0Addr())
+  val ex_id_exception = Reg(EXCEPTION())
 
   val me_pcu_pc      = Reg(UInt(32 bits))
   val me_rfu_we      = RegInit(False)
@@ -110,6 +130,10 @@ class PU extends Component {
   val me_ex_rfu_rd_v = Reg(Bits(32 bits))
   val me_rfu_rd_v =
     (me_rfu_rd_src === RFU_RD_SRC.mu) ? me_mu_data_out | me_ex_rfu_rd_v
+  val me_cp0_we       = RegInit(False)
+  val me_cp0_addr     = Reg(CP0Addr())
+  val me_cp0_to_write = Reg(Bits(32 bits))
+  val me_ex_exception = Reg(EXCEPTION())
 
   val me_stall = me_dcu_stall
   val ex_stall = me_stall
@@ -121,59 +145,12 @@ class PU extends Component {
     if_icu_stall & id_ju_jump
   if_stall := id_stall | if_icu_stall
 
-  val IF = new Bundle {
-    val pcu = new Bundle {
-      val E = new Bundle {
-        val AdEIL = in Bool
-      }
-    }
-
-    val E = Bits(EXCEPTION.elements.size bits)
-  }
-
-  val ID = new Bundle {
-    val reset = Bool
-
-    val du = new Bundle {
-      val E = new Bundle {
-        val RI, Sys, Bp = in Bool
-      }
-    }
-
-    val IF_E = Reg(Bits(EXCEPTION.elements.size bits))
-    val E    = Bits(EXCEPTION.elements.size bits)
-  }
-
-  val EX = new Bundle {
-    val reset = Bool
-
-    val alu = new Bundle {
-      val E = new Bundle {
-        val Ov = in Bool
-      }
-    }
-
-    val ID_E = Reg(Bits(EXCEPTION.elements.size bits))
-    val E    = Bits(EXCEPTION.elements.size bits)
-  }
-
-  val ME = new Bundle {
-    val reset = Bool
-
-    val EX_E = Reg(Bits(EXCEPTION.elements.size bits))
-    val E    = Bits(EXCEPTION.elements.size bits)
-  }
-
   when(!id_stall) {
     when(if_stall) {
       id_du_inst := INST_NOP
-
-      ID.IF_E := 0
     } otherwise {
       id_pcu_pc := if_pcu_pc
       id_du_inst := if_icu_data
-
-      ID.IF_E := IF.E
     }
   }
 
@@ -184,8 +161,6 @@ class PU extends Component {
       ex_rfu_we := False
       ex_hlu_hi_we := False
       ex_hlu_lo_we := False
-
-      EX.ID_E := 0
     } otherwise {
       ex_pcu_pc := id_pcu_pc
       ex_alu_input.op := id_alu_op
@@ -197,6 +172,10 @@ class PU extends Component {
         ALU_B_SRC.rt  -> U(id_du_rt_v),
         ALU_B_SRC.imm -> id_du_inst.immExtended.asUInt
       )
+      ex_cp0_input.addr.rd := id_du_inst.rd
+      ex_cp0_input.addr.sel := id_du_inst.sel
+      ex_cp0_input.new_value := id_du_rt_v
+      ex_cp0_input.old_value := id_du_cp0_v
       ex_du_rs := id_du_inst.rs
       ex_du_rt := id_du_inst.rt
       ex_du_offset := id_du_inst.offset
@@ -214,8 +193,10 @@ class PU extends Component {
       ex_rfu_rd := id_rfu_rd
       ex_rfu_rd_src := id_rfu_rd_src
       ex_id_rfu_rd_v := id_rfu_rd_v
-
-      EX.ID_E := ID.E
+      ex_cp0_we := id_cp0_we
+      ex_cp0_addr.rd := id_du_inst.rd
+      ex_cp0_addr.sel := id_du_inst.sel
+      ex_id_exception := id_exception
     }
   }
 
@@ -228,8 +209,6 @@ class PU extends Component {
     me_pcu_pc := ex_pcu_pc
     me_dcu_addr := ex_dcu_addr
     me_dcu_data := ex_dcu_data
-    me_dcu_re := ex_dcu_re
-    me_dcu_we := ex_dcu_we
     me_dcu_be := ex_dcu_be
     me_dcu_ex := ex_mu_ex
     me_hlu_hi_we := ex_hlu_hi_we
@@ -240,60 +219,72 @@ class PU extends Component {
     me_rfu_rd := ex_rfu_rd
     me_rfu_rd_src := ex_rfu_rd_src
     me_ex_rfu_rd_v := ex_rfu_rd_v
+    me_cp0_we := ex_cp0_we
+    me_cp0_addr := ex_cp0_addr
+    me_cp0_to_write := ex_cp0_to_write
 
-    ME.EX_E := EX.E
+    val me_existing_exception =
+      (ex_id_exception === EXCEPTION.None) ? ex_alu_exception | ex_id_exception
+    me_ex_exception := me_existing_exception
+
+    when(me_existing_exception === EXCEPTION.None) {
+      me_dcu_re := ex_dcu_re
+      me_dcu_we := ex_dcu_we
+    } otherwise {
+      me_dcu_re := False
+      me_dcu_we := False
+    }
     //    }
   }
 
   when(me_stall) {
     wb_rfu.valid := False
+    wb_cp0.valid := False
   } otherwise {
     wb_pcu_pc := me_pcu_pc
     wb_rfu.valid := me_rfu_we
     wb_rfu.index := me_rfu_rd
     wb_rfu.data := me_rfu_rd_v
+    wb_cp0.valid := me_cp0_we
+    wb_cp0.addr := me_cp0_addr
+    wb_cp0.data := me_cp0_to_write
   }
 
-  when(me_rfu_we & me_rfu_rd === ex_du_rs) {
+  when(me_rfu_we && me_rfu_rd === ex_du_rs) {
     ex_du_rs_v := me_rfu_rd_v
   }
-  when(me_rfu_we & me_rfu_rd === ex_du_rt) {
+  when(me_rfu_we && me_rfu_rd === ex_du_rt) {
     ex_du_rt_v := me_rfu_rd_v
   }
 
-  when(ex_rfu_we & ex_rfu_rd === id_du_inst.rs) {
+  when(ex_rfu_we && ex_rfu_rd === id_du_inst.rs) {
     id_du_rs_v := ex_rfu_rd_v
-  } elsewhen (me_rfu_we & me_rfu_rd === id_du_inst.rs) {
+  } elsewhen (me_rfu_we && me_rfu_rd === id_du_inst.rs) {
     id_du_rs_v := me_rfu_rd_v
-  } elsewhen (wb_rfu.valid & wb_rfu.index === id_du_inst.rs) {
+  } elsewhen (wb_rfu.valid && wb_rfu.index === id_du_inst.rs) {
     id_du_rs_v := wb_rfu.data
   } otherwise {
     id_du_rs_v := rfu_ra_v
   }
-  when(ex_rfu_we & ex_rfu_rd === id_du_inst.rt) {
+  when(ex_rfu_we && ex_rfu_rd === id_du_inst.rt) {
     id_du_rt_v := ex_rfu_rd_v
-  } elsewhen (me_rfu_we & me_rfu_rd === id_du_inst.rt) {
+  } elsewhen (me_rfu_we && me_rfu_rd === id_du_inst.rt) {
     id_du_rt_v := me_rfu_rd_v
-  } elsewhen (wb_rfu.valid & wb_rfu.index === id_du_inst.rt) {
+  } elsewhen (wb_rfu.valid && wb_rfu.index === id_du_inst.rt) {
     id_du_rt_v := wb_rfu.data
   } otherwise {
     id_du_rt_v := rfu_rb_v
   }
 
-  IF.E := 0
-  IF.E(U(B(EXCEPTION.AdEIL))) := IF.pcu.E.AdEIL
-
-  ID.E := ID.IF_E
-  ID.E(U(B(EXCEPTION.RI))) := ID.du.E.RI
-  ID.E(U(B(EXCEPTION.Sys))) := ID.du.E.Sys
-  ID.E(U(B(EXCEPTION.Bp))) := ID.du.E.Bp
-
-  EX.E := EX.ID_E
-  EX.E(U(B(EXCEPTION.Ov))) := EX.alu.E.Ov
-
-  ME.E := ME.EX_E
-  ME.E(U(B(EXCEPTION.AdEDL))) := False
-  ME.E(U(B(EXCEPTION.AdEDS))) := False
+  when(ex_cp0_we && ex_cp0_addr === id_du_inst.addr) {
+    id_du_cp0_v := ex_cp0_to_write
+  } elsewhen (me_cp0_we && me_cp0_addr === id_du_inst.addr) {
+    id_du_cp0_v := me_cp0_to_write
+  } elsewhen (wb_cp0.valid && wb_cp0.addr === id_du_inst.addr) {
+    id_du_cp0_v := wb_cp0.data
+  } otherwise {
+    id_du_cp0_v := cp0_read_v
+  }
 }
 
 object PU {

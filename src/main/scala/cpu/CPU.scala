@@ -1,29 +1,30 @@
 package cpu
 
+import defs.Mips32InstImplicits._
+import defs.{SramBus, SramBusConfig}
 import spinal.core._
 import spinal.lib.master
-
-import defs.{SramBus, SramBusConfig}
-import defs.Mips32InstImplicits._
 
 class CPU extends Component {
   val io = new Bundle {
     val iSramBus = master(SramBus(SramBusConfig(32, 32, 2)))
     val dSramBus = master(SramBus(SramBusConfig(32, 32, 2)))
-    val debug = out(DebugInterface())
+    val debug    = out(DebugInterface())
   }
-  val pcu = new PCU
-  val icu = new MU
-  val du = new DU
-  val ju = new JU
-  val alu = new ALU
-  val dcu = new MU
-  val hlu = new HLU
-  val rfu = new RFU
-  val pu = new PU
+  val pcu    = new PCU
+  val icu    = new MU
+  val du     = new DU
+  val ju     = new JU
+  val alu    = new ALU
+  val dcu    = new MU
+  val hlu    = new HLU
+  val rfu    = new RFU
+  val pu     = new PU
+  val cp0    = new CP0
+  val cp0exu = new CP0ExecUnit
 
-  io.iSramBus <> icu.sramBus
-  io.dSramBus <> dcu.sramBus
+  io.iSramBus <> icu.io.sramBus
+  io.dSramBus <> dcu.io.sramBus
   io.debug.wb.rf.wen := B(4 bits, default -> rfu.io.write.valid)
   io.debug.wb.rf.wdata := rfu.io.write.data
   io.debug.wb.rf.wnum := rfu.io.write.index
@@ -33,12 +34,12 @@ class CPU extends Component {
   pcu.we := ju.jump
   pcu.new_pc := ju.jump_pc
 
-  icu.addr := pcu.pc
-  icu.data_in := 0
-  icu.re := True
-  icu.we := False
-  icu.be := U"11"
-  icu.ex.assignFromBits(B"0")
+  icu.io.addr := pcu.pc
+  icu.io.data_in := 0
+  icu.io.re := True
+  icu.io.we := False
+  icu.io.be := U"11"
+  icu.io.ex.assignFromBits(B"0")
 
   val inst = pu.id_du_inst
 
@@ -54,12 +55,14 @@ class CPU extends Component {
 
   alu.io.input := pu.ex_alu_input
 
-  dcu.addr := pu.me_dcu_addr
-  dcu.data_in := pu.me_dcu_data
-  dcu.re := pu.me_dcu_re
-  dcu.we := pu.me_dcu_we
-  dcu.be := pu.me_dcu_be
-  dcu.ex := pu.me_dcu_ex
+  cp0exu.io.input := pu.ex_cp0_input
+
+  dcu.io.addr := pu.me_dcu_addr
+  dcu.io.data_in := pu.me_dcu_data
+  dcu.io.re := pu.me_dcu_re
+  dcu.io.we := pu.me_dcu_we
+  dcu.io.be := pu.me_dcu_be
+  dcu.io.ex := pu.me_dcu_ex
 
   hlu.hi_we := pu.me_hlu_hi_we
   hlu.new_hi := pu.me_hlu_new_hi
@@ -70,17 +73,24 @@ class CPU extends Component {
   rfu.io.ra.index := inst.rs
   rfu.io.rb.index := inst.rt
 
+  cp0.io.softwareWrite := pu.wb_cp0
+  cp0.io.read.addr.rd := inst.rd
+  cp0.io.read.addr.sel := inst.sel
+
   pu.hlu_hi_v := hlu.hi_v
   pu.hlu_lo_v := hlu.lo_v
   pu.rfu_ra_v := rfu.io.ra.data
   pu.rfu_rb_v := rfu.io.rb.data
+  pu.cp0_read_v := cp0.io.read.data
   pu.if_pcu_pc := pcu.pc
-  pu.if_icu_stall := icu.stall
-  pu.if_icu_data := icu.data_out
+  pu.if_icu_stall := icu.io.stall
+  pu.if_icu_data := icu.io.data_out
   pu.id_ju_jump := ju.jump
   pu.id_alu_op := du.io.alu_op
   pu.id_alu_a_src := du.io.alu_a_src
   pu.id_alu_b_src := du.io.alu_b_src
+  pu.id_cp0_re := du.io.cp0_re
+  pu.id_cp0_we := du.io.cp0_we
   pu.id_dcu_re := du.io.dcu_re
   pu.id_dcu_we := du.io.dcu_we
   pu.id_dcu_be := du.io.dcu_be
@@ -94,10 +104,14 @@ class CPU extends Component {
   pu.id_rfu_rd_src := du.io.rfu_rd_src
   pu.id_use_rs := du.io.use_rs
   pu.id_use_rt := du.io.use_rt
-  pu.ex_alu_c := B(alu.c)
-  pu.ex_alu_d := B(alu.d)
-  pu.me_dcu_stall := dcu.stall
-  pu.me_mu_data_out := dcu.data_out
+  pu.id_exception := du.io.exception
+  pu.ex_alu_c := B(alu.io.c)
+  pu.ex_alu_d := B(alu.io.d)
+  pu.ex_alu_exception := alu.io.exception
+  pu.ex_cp0_to_write := cp0exu.io.to_write
+  pu.me_dcu_stall := dcu.io.stall
+  pu.me_mu_data_out := dcu.io.data_out
+  pu.me_dcu_exception := dcu.io.exception
 }
 
 object CPU {
