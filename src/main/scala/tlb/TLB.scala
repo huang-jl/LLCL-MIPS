@@ -125,7 +125,8 @@ class TLB(useMask: Boolean) extends Component {
     writeEntry.pfn1 := TLB.getMaskedAddr(addr = io.wdata.pfn1, io.wdata.mask)
   }
   io.probeIndex(0, TLBConfig.tlbIndexWidth bits) := OHToUInt(hit.probeHit).asBits
-  io.probeIndex(31) := hit.probeHit.orR
+  //probeIndex(31)为0表示命中TLB，为1表示未命中TLB
+  io.probeIndex(31) := !hit.probeHit.orR
 }
 
 object TLB {
