@@ -1,6 +1,6 @@
 package lib.decoder
 
-import lib.Key
+import lib.{HardMap, Key}
 import spinal.core._
 
 import scala.collection.mutable.{HashMap, HashSet}
@@ -91,19 +91,8 @@ case class Decoder(
 ) extends Area {
   assert(input.getBitsWidth == config.inputWidth)
 
-  private[Decoder] val outputs =
-    Map[Key[_ <: Data], Data](((config.keys map { key =>
-      (key -> key
-        .`type`()
-        .setCompositeName(Decoder.this, s"output_${key.getName}"))
-    }).toSeq): _*)
-
-  def output[T <: Data](key: Key[T]): T = {
-    assert(config.keys.contains(key))
-    outputs(key).asInstanceOf[T]
-  }
-
   val keys = config.keys
+  val output = HardMap(keys)
 
   val offsets = (keys
     .scanLeft(0) { case (currentOffset, key) =>
@@ -114,7 +103,7 @@ case class Decoder(
   val outputVector = B(0, outputWidth bits)
 
   val outputSegments: Map[Key[_ <: Data], Bits] = Map(
-    (for (i <- 0 until keys.length)
+    (for (i <- keys.indices)
       yield (keys(i) -> outputVector(offsets(i) until offsets(i + 1)))): _*
   )
 
