@@ -19,17 +19,16 @@ class Record extends Bundle {
   def +=[T <: Data](key: Key[T]) = {
     if (!(data contains key)) {
       // Pretend the value was generated in the same scope as the record.
-      GlobalData.get.dslScope.push(parentScope)
-
+      parentScope.push()
       val value = key.`type`().setCompositeName(this, key.getName)
-      val pair  = (key, value)
+      parentScope.pop()
+
+      val pair = (key, value)
       data += pair
 
       for (cb <- addedKeyCallbacks) {
         cb(key, value)
       }
-
-      GlobalData.get.dslScope.pop()
     }
   }
 

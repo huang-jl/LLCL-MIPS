@@ -1,7 +1,7 @@
 package cpu
 
+import lib.{Key, Record}
 import spinal.core._
-import lib.{Record, Key}
 
 class Stage extends Area with ValCallbackRec {
   // Input and output. Automatically connected to StageComponent's,
@@ -14,25 +14,34 @@ class Stage extends Area with ValCallbackRec {
   val output   = Record() // Values output to the next stage
 
   // Arbitration. Note that reset comes from constructor.
-  val prevProducing = True  // Previous stage is passing in a new instruction
-  val stallsBySelf  = False // User settable
-  val stallsByLater = False
-  val stalls        = stallsBySelf || stallsByLater
-  val willReset     = !stalls && !prevProducing
+  val willReset     = Bool
   val reset         = RegNext(willReset) init True
+  val stallsBySelf  = False                   // User settable
+  val stallsByLater = False
   val firing        = !reset
-  val producing     = firing && !stallsBySelf
+  val stalls        = firing && (stallsBySelf || stallsByLater)
+  val producing     = firing && !stallsBySelf // Can pass new inst to next stage
+  val prevProducing = True                    // Previous stage can pass in new inst
+  willReset := !(firing && stalls) && !prevProducing
 
-  // Default linkings between read, input, produced and output.
+  val linkingScope = GlobalData.get.currentScope
+
+  def inLinkingScope(body: => Unit) = {
+    linkingScope.push()
+    val swapContext = linkingScope.swap()
+    body
+    swapContext.appendBack()
+    linkingScope.pop()
+  }
 
   read.whenAddedKey(new Record.AddedKeyCallback {
-    def apply[T <: Data](key: Key[T], value: T) = {
+    def apply[T <: Data](key: Key[T], value: T) = inLinkingScope {
       value.setAsReg()
     }
   })
 
   input.whenAddedKey(new Record.AddedKeyCallback {
-    def apply[T <: Data](key: Key[T], value: T) = {
+    def apply[T <: Data](key: Key[T], value: T) = inLinkingScope {
       value := read(key)
       value.allowOverride
       output += key
@@ -40,13 +49,13 @@ class Stage extends Area with ValCallbackRec {
   })
 
   produced.whenAddedKey(new Record.AddedKeyCallback {
-    def apply[T <: Data](key: Key[T], value: T) = {
+    def apply[T <: Data](key: Key[T], value: T) = inLinkingScope {
       output(key) := value
     }
   })
 
   output.whenAddedKey(new Record.AddedKeyCallback {
-    def apply[T <: Data](key: Key[T], value: T) = {
+    def apply[T <: Data](key: Key[T], value: T) = inLinkingScope {
       value.allowOverride
       if (!(produced contains key)) {
         value := input(key)
@@ -82,6 +91,7 @@ class Stage extends Area with ValCallbackRec {
     }
   }
 
+  // Add every StageComponent defined inside the body of this.
   override def valCallbackRec(obj: Any, name: String) = {
     obj match {
       case stageComponent: StageComponent =>
@@ -90,9 +100,24 @@ class Stage extends Area with ValCallbackRec {
     }
   }
 
-  def setInputReset[T <: Data](key: Key[T], init: T) = {
-    read(key) init init
-    read(key) := init
+  def setInputReset[T <: Data](key: Key[T], resetValue: T) = {
+    read(key) init resetValue
+    when(willReset) {
+      read(key) := resetValue
+    }
+  }
+
+  // Link read, input, produced and output as default.
+  def linkIO() = {
+    input.keys foreach { case key =>
+      input(key) := read(key)
+      if (!(produced contains key)) {
+        output(key) := input(key)
+      }
+    }
+    produced.keys foreach { case key =>
+      output(key) := produced(key)
+    }
   }
 
   def connect(next: Stage) = {

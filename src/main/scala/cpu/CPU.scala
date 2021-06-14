@@ -4,7 +4,7 @@ import spinal.core._
 import spinal.lib.{cpu => _, _}
 import defs.Mips32InstImplicits._
 import defs.{ConstantVal, Mips32Inst, SramBus, SramBusConfig}
-import lib.{Key}
+import lib.{Key, Optional}
 
 class CPU extends Component {
   val io = new Bundle {
@@ -12,7 +12,6 @@ class CPU extends Component {
     val dSramBus = master(SramBus(SramBusConfig(32, 32, 2)))
     val debug    = out(DebugInterface())
   }
-  val pcu = new PCU
   val icu = new MU
   val du  = new DU
   val ju  = new JU
@@ -20,6 +19,8 @@ class CPU extends Component {
   val dcu = new MU
   val hlu = new HLU
   val rfu = new RFU
+
+  val jumpPc = Key(Optional(UInt(32 bits)))
 
   val pc         = Key(UInt(32 bits))
   val inst       = Key(Mips32Inst())
@@ -113,16 +114,16 @@ class CPU extends Component {
 
   val EX = new Stage {
     when(
-      ME.input(rfuWe) &&
-        ME.input(rfuAddr) === input(inst).rs
-    ) {
-      input(rsValue) := ME.produced(rfuData)
+      ME.firing && ME.input(rfuWe) &&
+      ME.input(rfuAddr) === input(inst).rs
+      ) {
+      input(rsValue) := ME.output(rfuData)
     }
     when(
-      ME.input(rfuWe) &&
+      ME.firing && ME.input(rfuWe) &&
         ME.input(rfuAddr) === input(inst).rt
     ) {
-      input(rtValue) := ME.produced(rfuData)
+      input(rtValue) := ME.output(rfuData)
     }
 
     val aluC = new StageComponent {
@@ -147,12 +148,12 @@ class CPU extends Component {
 
     produced(rfuData) := input(rfuRdSrc) mux (
       RFU_RD_SRC.alu -> produced(aluResultC).asBits,
-      RFU_RD_SRC.hi -> (ME.input(hluHiWe) ? ME.produced(
-        hluHiData
-      ) | hlu.hi_v),
-      RFU_RD_SRC.lo -> (ME.input(hluLoWe) ? ME.produced(
-        hluLoData
-      ) | hlu.lo_v),
+      RFU_RD_SRC.hi -> ((ME.firing && ME.input(hluHiWe))
+        ? ME.produced(hluHiData)
+        | hlu.hi_v),
+      RFU_RD_SRC.lo -> ((ME.firing && ME.input(hluLoWe))
+        ? ME.produced(hluLoData)
+        | hlu.lo_v),
       default -> input(rfuData)
     )
   }
@@ -193,35 +194,39 @@ class CPU extends Component {
       ju.a := output(rsValue).asSInt
       ju.b := output(rtValue).asSInt
       ju.pc_src := du.io.ju_pc_src
-      ju.pc := pcu.pc
+      ju.pc := input(pc) + 4
       ju.offset := input(inst).offset
       ju.index := input(inst).index
+
+      when(ju.jump) {
+        produced(jumpPc) := ju.jump_pc
+      } otherwise {
+        produced(jumpPc) := None
+      }
     }
 
-    when(EX.input(rfuWe) && EX.input(rfuAddr) === input(inst).rs) {
+    when(EX.firing && EX.input(rfuWe) && EX.input(rfuAddr) === input(inst).rs) {
       output(rsValue) := EX.produced(rfuData)
-    } elsewhen (ME.input(rfuWe) &&
+    } elsewhen (ME.firing && ME.input(rfuWe) &&
       ME.input(rfuAddr) === input(inst).rs) {
       output(rsValue) := ME.produced(rfuData)
-    } elsewhen (WB.input(rfuWe) && WB.input(rfuAddr) === input(
-      inst
-    ).rs) {
+    } elsewhen (WB.firing && WB.input(rfuWe) &&
+      WB.input(rfuAddr) === input(inst).rs) {
       output(rsValue) := WB.input(rfuData)
     } otherwise {
       output(rsValue) := produced(rsValue)
     }
 
-    when(EX.input(rfuWe) && EX.input(rfuAddr) === input(inst).rt) {
+    when(EX.firing && EX.input(rfuWe) && EX.input(rfuAddr) === input(inst).rt) {
       output(rtValue) := EX.produced(rfuData)
-    } elsewhen (ME
-      .input(rfuWe) && ME.input(rfuAddr) === input(inst).rt) {
+    } elsewhen (ME.firing && ME.input(rfuWe) &&
+      ME.input(rfuAddr) === input(inst).rt) {
       output(rtValue) := ME.produced(rfuData)
-    } elsewhen (WB.input(rfuWe) && WB.input(rfuAddr) === input(
-      inst
-    ).rt) {
+    } elsewhen (WB.firing && WB.input(rfuWe) &&
+      WB.input(rfuAddr) === input(inst).rt) {
       output(rtValue) := WB.input(rfuData)
     } otherwise {
-      output(rtValue) := produced(rsValue)
+      output(rtValue) := produced(rtValue)
     }
 
     produced(rfuData) := produced(rfuRdSrc) mux (
@@ -231,7 +236,7 @@ class CPU extends Component {
     produced(memData) := output(rtValue)
 
     when(
-      (EX.input(rfuWe) &&
+      (EX.firing && EX.input(rfuWe) &&
         EX.input(rfuRdSrc) === RFU_RD_SRC.mu &&
         (EX.input(rfuAddr) === input(inst).rs && produced(useRs) ||
           EX.input(rfuAddr) === input(inst).rt && produced(useRt)))
@@ -244,7 +249,7 @@ class CPU extends Component {
     val icuC = new StageComponent {
       io.iSramBus <> icu.io.sramBus
 
-      icu.io.addr := pcu.pc
+      icu.io.addr := input(pc)
       icu.io.re := True
       icu.io.we := False
       icu.io.be := U"11"
@@ -255,16 +260,30 @@ class CPU extends Component {
         stalls := True
       }
 
-      produced(pc) := pcu.pc
       produced(inst) := icu.io.data_out
     }
-
-    pcu.we := ju.jump
-    pcu.new_pc := ju.jump_pc
-    pcu.stall := stalls
   }
 
-  val stages = Seq(IF, ID, EX, ME, WB)
+  // Pseudo-stage for producing PCU.
+  val PC = new Stage {
+    val pcValue     = UInt(32 bits)
+    val pcValuePrev = RegNext(pcValue) init ConstantVal.INIT_PC
+    pcValue := pcValuePrev
+
+    val IFWasStalling = RegNext(IF.firing && IF.stalls)
+    when(IF.firing && !IFWasStalling) { // Starting a new instruction
+      pcValue := IF.input(pc) + 4
+    }
+    when(ID.firing) {
+      ID.output(jumpPc).whenIsDefined { jumpPc =>
+        pcValue := jumpPc
+      }
+    }
+
+    produced(pc) := pcValue
+  }
+
+  val stages = Seq(PC, IF, ID, EX, ME, WB)
   for ((prev, next) <- (stages zip stages.tail).reverse) {
     prev connect next
   }
