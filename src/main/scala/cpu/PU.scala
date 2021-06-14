@@ -1,290 +1,533 @@
 package cpu
 
-import CP0AddrImplicits._
-import defs.ConstantVal._
-import defs.Mips32Inst
-import defs.Mips32InstImplicits._
+import cpu.defs.ConstantVal._
+import cpu.defs.Mips32Inst
+import cpu.defs.Mips32InstImplicits._
+import lib.{Key, Record}
 import spinal.core._
 import spinal.lib.{cpu => _, _}
 
+class Stage extends Area {
+  @dontName protected implicit val stage = this
 
+  // Input and output. Automatically connected to StageComponent's,
+  // but actual connection user configurable.
+  // read and output are interfaces of the stage,
+  // while input and produced are linked to StageComponent's.
+  val read               = Record() // Values read from last stage
+  val input              = Record() // Values serving as StageComponent input
+  val produced           = Record() // Values produced by current stage
+  val output             = Record() // Values output to the next stage
+  private val inputReset = Record() // Reset values for input
+
+  // Arbitration. Note that reset comes from constructor.
+  val prevProducing = True  // Previous stage is passing in a new instruction
+  val stallsBySelf  = False // User settable
+  val stallsByLater = False
+  val stalls        = stallsBySelf || stallsByLater
+  val willReset     = !stalls && !prevProducing
+  val reset         = RegNext(willReset) init True
+  val firing        = !reset
+  val producing     = firing && !stallsBySelf
+
+  def ensureReadKey[T <: Data](key: Key[T]) = {
+    if (!(read contains key)) {
+      read += key
+      read(key).setAsReg()
+    }
+  }
+
+  def ensureInputKey[T <: Data](key: Key[T]) = {
+    if (!(input contains key)) {
+      input += key
+      ensureReadKey(key)
+      input(key) := read(key)
+      input(key).allowOverride
+      if (!(output contains key)) {
+        output += key
+        output(key) := input(key)
+      }
+    }
+  }
+
+  def ensureProducedKey[T <: Data](key: Key[T]) = {
+    if (!(produced contains key)) {
+      produced += key
+      ensureOutputKey(key)
+      output(key) := produced(key)
+      output(key).allowOverride
+    }
+  }
+
+  def ensureOutputKey[T <: Data](key: Key[T]) = {
+    if (!(output contains key)) {
+      output += key
+    }
+  }
+
+  /** Called at initialization of StageComponent.
+    */
+  def addComponent(component: StageComponent) = {
+    component.input.keys foreach { case key =>
+      ensureInputKey(key)
+      component.input(key) := input(key)
+    }
+
+    component.produced.keys foreach { case key =>
+      ensureProducedKey(key)
+      produced(key) := component.produced(key)
+    }
+
+    when(component.stalls) {
+      stallsBySelf := True
+    }
+  }
+
+  def setInputReset[T <: Data](key: Key[T], init: T) = {
+    ensureInputKey(key)
+    inputReset(key) = init
+//    read(key) init init Unnecessary for the assignment below?
+    read(key) := init
+  }
+
+  def connect(next: Stage) = {
+    when(!this.producing) {
+      next.prevProducing := False
+    }
+
+    next.read.keys foreach { case key =>
+      if (!(output contains key)) {
+        ensureInputKey(key)
+      }
+    }
+    when(next.stalls) {
+      stallsByLater := True
+    } elsewhen(producing) {
+      next.read.keys foreach { case key =>
+        next.read(key) := output(key)
+      }
+    }
+  }
+}
+
+class StageComponent(
+    inputKeys: Seq[Key[_ <: Data]] = Seq(),
+    producedKeys: Seq[Key[_ <: Data]] = Seq(),
+    val stalls: Bool = False
+)(implicit stage: Stage)
+    extends Area {
+  val input    = Record(inputKeys)
+  val produced = Record(producedKeys)
+
+  stage.addComponent(this)
+}
 
 class PU extends Component {
   /// 数据流水线
 
   // in
-  val hlu_hi_v   = in Bits (32 bits)
-  val hlu_lo_v   = in Bits (32 bits)
-  val rfu_ra_v   = in Bits (32 bits)
-  val rfu_rb_v   = in Bits (32 bits)
-  val cp0_read_v = in Bits (32 bits)
+  val hlu_hi_v   = in Bits (32 bits) // reads
+  val hlu_lo_v   = in Bits (32 bits) // reads
+  val rfu_ra_v   = in Bits (32 bits) // reads
+  val rfu_rb_v   = in Bits (32 bits) // reads
+  val cp0_read_v = in Bits (32 bits) // reads
 
-  val if_pcu_pc    = in UInt (32 bits)
-  val if_icu_stall = in Bool
-  val if_icu_data  = in Bits (32 bits)
+  val if_pcu_pc    = in UInt (32 bits) // inc
+  val if_icu_stall = in Bool           // inc
+  val if_icu_inst  = in(Mips32Inst())  // inc
 
   val id_ju_jump    = in Bool
-  val id_alu_op     = in(ALU_OP)
-  val id_alu_a_src  = in(ALU_A_SRC)
-  val id_alu_b_src  = in(ALU_B_SRC)
-  val id_cp0_re     = in Bool
-  val id_cp0_we     = in Bool
-  val id_dcu_re     = in Bool
-  val id_dcu_we     = in Bool
-  val id_dcu_be     = in UInt (2 bits)
-  val id_mu_ex      = in(MU_EX)
-  val id_hlu_hi_we  = in Bool
-  val id_hlu_hi_src = in(HLU_SRC)
-  val id_hlu_lo_we  = in Bool
-  val id_hlu_lo_src = in(HLU_SRC)
-  val id_rfu_we     = in Bool
-  val id_rfu_rd     = in UInt (5 bits)
-  val id_rfu_rd_src = in(RFU_RD_SRC)
-  val id_use_rs     = in Bool
-  val id_use_rt     = in Bool
-  val id_exception  = in(EXCEPTION())
+  val id_alu_op     = in(ALU_OP)       // inc
+  val id_alu_a_src  = in(ALU_A_SRC)    // inc
+  val id_alu_b_src  = in(ALU_B_SRC)    // inc
+  val id_cp0_re     = in Bool          // inc
+  val id_cp0_we     = in Bool          // inc
+  val id_dcu_re     = in Bool          // inc
+  val id_dcu_we     = in Bool          // inc
+  val id_dcu_be     = in UInt (2 bits) // inc
+  val id_mu_ex      = in(MU_EX)        // inc
+  val id_hlu_hi_we  = in Bool          // inc
+  val id_hlu_hi_src = in(HLU_SRC)      // inc
+  val id_hlu_lo_we  = in Bool          // inc
+  val id_hlu_lo_src = in(HLU_SRC)      // inc
+  val id_rfu_we     = in Bool          // inc
+  val id_rfu_rd     = in UInt (5 bits) // inc
+  val id_rfu_rd_src = in(RFU_RD_SRC)   // inc
+  val id_use_rs     = in Bool          // inc
+  val id_use_rt     = in Bool          // inc
+  val id_exception  = in(EXCEPTION())  // inc
 
   val ex_alu_c         = in Bits (32 bits)
   val ex_alu_d         = in Bits (32 bits)
-  val ex_alu_exception = in(EXCEPTION())
+  val ex_alu_exception = in(EXCEPTION()) // inc
 
   val ex_cp0_to_write = in Bits (32 bits)
 
-  val me_dcu_stall     = in Bool
+  val me_dcu_stall     = in Bool         // inc
   val me_mu_data_out   = in Bits (32 bits)
-  val me_dcu_exception = in(EXCEPTION())
+  val me_dcu_exception = in(EXCEPTION()) // inc
 
   // out
-  val id_pcu_pc  = out(Reg(UInt(32 bits)) init INIT_PC)
-  val id_du_inst = out(Reg(Mips32Inst()) init INST_NOP)
-  val id_du_rs_v = out Bits (32 bits)
-  val id_du_rt_v = out Bits (32 bits)
+  val id_du_inst = out(Mips32Inst())  // inc
+  val id_du_rs_v = out Bits (32 bits) // reads
+  val id_du_rt_v = out Bits (32 bits) // reads
 
-  val ex_alu_input = out(Reg(ALUInput()))
+  val ex_alu_input = out(ALUInput())
   val ex_cp0_input = out(Reg(CP0ExecUnitInput()))
 
-  val me_dcu_addr   = out(Reg(UInt(32 bits)))
-  val me_dcu_data   = out(Reg(Bits(32 bits)))
-  val me_dcu_re     = out(RegInit(False))
-  val me_dcu_we     = out(RegInit(False))
-  val me_dcu_be     = out(Reg(UInt(2 bits)))
-  val me_dcu_ex     = out(Reg(MU_EX))
-  val me_hlu_hi_we  = out(RegInit(False))
-  val me_hlu_new_hi = out(Reg(Bits(32 bits)))
-  val me_hlu_lo_we  = out(RegInit(False))
-  val me_hlu_new_lo = out(Reg(Bits(32 bits)))
+  val me_dcu_addr   = out(UInt(32 bits))
+  val me_dcu_data   = out(Bits(32 bits))
+  val me_dcu_re     = out(Bool)
+  val me_dcu_we     = out(Bool)
+  val me_dcu_be     = out(UInt(2 bits))
+  val me_dcu_ex     = out(MU_EX)
+  val me_hlu_hi_we  = out(Bool)
+  val me_hlu_new_hi = out(Bits(32 bits))
+  val me_hlu_lo_we  = out(Bool)
+  val me_hlu_new_lo = out(Bits(32 bits))
 
-  val wb_pcu_pc = out(Reg(UInt(32 bits)))
-  val wb_rfu    = out(Reg(Flow(RegWrite())))
-  wb_rfu.valid init False
-  val wb_cp0 = out(Reg(Flow(CP0Write())))
+  val wb_pcu_pc = out(UInt(32 bits))
+  val wb_rfu    = out(Flow(RegWrite()))
+  val wb_cp0    = out(Reg(Flow(CP0Write())))
   wb_cp0.valid init False
 
   val if_stall = out Bool
 
   //
   val id_du_cp0_v = Bits(32 bits)
-  val id_rfu_rd_v = id_rfu_rd_src mux (
-    RFU_RD_SRC.cp0 -> id_du_cp0_v,
-    default        -> B(id_pcu_pc + 8)
-  )
+  id_du_cp0_v := 0 // TODO
 
-  val ex_pcu_pc      = Reg(UInt(32 bits))
-  val ex_du_rs       = Reg(UInt(5 bits))
-  val ex_du_rt       = Reg(UInt(5 bits))
-  val ex_du_offset   = Reg(SInt(16 bits))
-  val ex_id_du_rs_v  = Reg(Bits(32 bits))
-  val ex_du_rs_v     = ex_id_du_rs_v
-  val ex_id_du_rt_v  = Reg(Bits(32 bits))
-  val ex_du_rt_v     = ex_id_du_rt_v
-  val ex_dcu_addr    = U(S(ex_du_rs_v) + ex_du_offset)
-  val ex_dcu_data    = ex_du_rt_v
-  val ex_dcu_re      = RegInit(False)
-  val ex_dcu_we      = RegInit(False)
-  val ex_dcu_be      = Reg(UInt(2 bits))
-  val ex_mu_ex       = Reg(MU_EX)
-  val ex_hlu_hi_we   = RegInit(False)
-  val ex_hlu_hi_src  = Reg(HLU_SRC)
-  val ex_hlu_hi_v    = me_hlu_hi_we ? me_hlu_new_hi | hlu_hi_v
-  val ex_hlu_lo_we   = RegInit(False)
-  val ex_hlu_lo_src  = Reg(HLU_SRC)
-  val ex_hlu_lo_v    = me_hlu_lo_we ? me_hlu_new_lo | hlu_lo_v
-  val ex_rfu_we      = RegInit(False)
-  val ex_rfu_rd      = Reg(UInt(5 bits))
-  val ex_rfu_rd_src  = Reg(RFU_RD_SRC)
-  val ex_id_rfu_rd_v = Reg(Bits(32 bits))
-  val ex_rfu_rd_v = ex_rfu_rd_src mux (
-    RFU_RD_SRC.alu -> ex_alu_c,
-    RFU_RD_SRC.hi  -> ex_hlu_hi_v,
-    RFU_RD_SRC.lo  -> ex_hlu_lo_v,
-    default        -> ex_id_rfu_rd_v
-  )
-  val ex_cp0_we       = RegInit(False)
-  val ex_cp0_addr     = Reg(CP0Addr())
-  val ex_id_exception = Reg(EXCEPTION())
+  val ex_cp0_we   = RegInit(False)
+  val ex_cp0_addr = Reg(CP0Addr())
 
-  val me_pcu_pc      = Reg(UInt(32 bits))
-  val me_rfu_we      = RegInit(False)
-  val me_rfu_rd      = Reg(UInt(5 bits))
-  val me_rfu_rd_src  = Reg(RFU_RD_SRC)
-  val me_ex_rfu_rd_v = Reg(Bits(32 bits))
-  val me_rfu_rd_v =
-    (me_rfu_rd_src === RFU_RD_SRC.mu) ? me_mu_data_out | me_ex_rfu_rd_v
   val me_cp0_we       = RegInit(False)
   val me_cp0_addr     = Reg(CP0Addr())
   val me_cp0_to_write = Reg(Bits(32 bits))
-  val me_ex_exception = Reg(EXCEPTION())
 
-  val me_stall = me_dcu_stall
-  val ex_stall = me_stall
-  val id_stall = ex_stall |
-    (ex_rfu_we &
-      ex_rfu_rd_src === RFU_RD_SRC.mu &
-      (ex_rfu_rd === id_du_inst.rs & id_use_rs |
-        ex_rfu_rd === id_du_inst.rt & id_use_rt)) |
-    if_icu_stall & id_ju_jump
-  if_stall := id_stall | if_icu_stall
+  // PC to provide as input of IF
+//  val nextPc = Reg(UInt(32 bits)) init INIT_PC
 
-  when(!id_stall) {
-    when(if_stall) {
-      id_du_inst := INST_NOP
-    } otherwise {
-      id_pcu_pc := if_pcu_pc
-      id_du_inst := if_icu_data
+  val pc        = Key(UInt(32 bits))
+  val inst      = Key(Mips32Inst())
+  val exception = Key(EXCEPTION())
+  val aluOp     = Key(ALU_OP())
+  val aluASrc   = Key(ALU_A_SRC())
+  val aluBSrc   = Key(ALU_B_SRC())
+  val memRe     = Key(Bool)
+  val memWe     = Key(Bool)
+  val memBe     = Key(UInt(2 bits))
+  val memEx     = Key(MU_EX())
+  val memAddr   = Key(UInt(32 bits))
+  val memData   = Key(Bits(32 bits))
+  val hluHiWe   = Key(Bool)
+  val hluHiSrc  = Key(HLU_SRC())
+  val hluLoWe   = Key(Bool)
+  val hluLoSrc  = Key(HLU_SRC())
+  val hluHiData = Key(Bits(32 bits))
+  val hluLoData = Key(Bits(32 bits))
+  val cp0Re     = Key(Bool)
+  val cp0We     = Key(Bool)
+  val rfuWe     = Key(Bool)
+  val rfuAddr   = Key(UInt(5 bits))
+  val rfuRdSrc  = Key(RFU_RD_SRC())
+  val rfuData   = Key(Bits(32 bits))
+  val useRs     = Key(Bool)
+  val useRt     = Key(Bool)
+  val rsValue   = Key(Bits(32 bits))
+  val rtValue   = Key(Bits(32 bits))
+
+  // Later stages may depend on earlier stages, so stages are list in reversed order.
+
+  val WB = new Stage {
+    val rfu = new StageComponent(inputKeys = Seq(rfuWe, rfuAddr, rfuData)) {
+      wb_rfu.valid := input(rfuWe)
+      wb_rfu.index := input(rfuAddr)
+      wb_rfu.data := input(rfuData)
+      setInputReset(rfuWe, False)
+    }
+
+    val pc_debug = new StageComponent(inputKeys = Seq(pc)) {
+      wb_pcu_pc := input(pc)
     }
   }
 
-  when(!ex_stall) {
-    when(id_stall) {
-      ex_dcu_re := False
-      ex_dcu_we := False
-      ex_rfu_we := False
-      ex_hlu_hi_we := False
-      ex_hlu_lo_we := False
-    } otherwise {
-      ex_pcu_pc := id_pcu_pc
-      ex_alu_input.op := id_alu_op
-      ex_alu_input.a := id_alu_a_src.mux(
-        ALU_A_SRC.rs -> U(id_du_rs_v),
-        ALU_A_SRC.sa -> id_du_inst.sa.resize(32)
+  val ME = new Stage {
+    val dcu = new StageComponent(
+      inputKeys = Seq(memRe, memWe, memBe, memEx, memAddr, memData),
+      producedKeys = Seq(rfuData, exception),
+      stalls = me_dcu_stall
+    ) {
+      me_dcu_re := input(memRe)
+      me_dcu_we := input(memWe)
+      me_dcu_be := input(memBe)
+      me_dcu_ex := input(memEx)
+      me_dcu_addr := input(memAddr)
+      me_dcu_data := input(memData)
+      setInputReset(memRe, False)
+      setInputReset(memWe, False)
+
+      produced(exception) := me_dcu_exception
+      produced(rfuData) := me_mu_data_out
+    }
+
+    val hlu = new StageComponent(
+      inputKeys = Seq(hluHiWe, hluHiSrc, hluLoWe, hluLoSrc, rsValue),
+      producedKeys = Seq(hluHiData, hluLoData)
+    ) {
+      me_hlu_hi_we := input(hluHiWe)
+      produced(hluHiData) := (input(hluHiSrc) === HLU_SRC.rs) ? input(
+        rsValue
+      ) | ex_alu_c
+      me_hlu_new_hi := produced(hluHiData)
+      me_hlu_lo_we := input(hluLoWe)
+      produced(hluLoData) := (input(hluLoSrc) === HLU_SRC.rs) ? input(
+        rsValue
+      ) | ex_alu_d
+      me_hlu_new_lo := produced(hluLoData)
+
+      setInputReset(hluHiWe, False)
+      setInputReset(hluLoWe, False)
+    }
+
+    val cp0 = new StageComponent(inputKeys = Seq(cp0Re, cp0We)) {
+      wb_cp0.valid := input(cp0We)
+      setInputReset(cp0We, False)
+    }
+
+    ensureInputKey(rfuRdSrc)
+    ensureInputKey(rfuData)
+    output(rfuData) := ((input(rfuRdSrc) === RFU_RD_SRC.mu)
+      ? produced(rfuData)
+      | input(rfuData))
+  }
+
+  val EX = new Stage {
+    ensureInputKey(rsValue)
+    ensureInputKey(rtValue)
+    ensureInputKey(inst)
+
+    ME.ensureInputKey(rfuWe)
+    ME.ensureInputKey(rfuAddr)
+    when(
+      ME.input(rfuWe) && ME.input(rfuAddr) === input(
+        inst
+      ).rs
+    ) {
+      input(rsValue) := ME.produced(rfuData)
+    }
+    when(
+      ME.input(rfuWe) && ME.input(rfuAddr) === input(
+        inst
+      ).rt
+    ) {
+      input(rtValue) := ME.produced(rfuData)
+    }
+
+    val alu = new StageComponent(
+      inputKeys = Seq(aluOp, aluASrc, aluBSrc, rsValue, rtValue, inst),
+      producedKeys = Seq(exception)
+    ) {
+      ex_alu_input.op := input(aluOp)
+      ex_alu_input.a := input(aluASrc).mux(
+        ALU_A_SRC.rs -> U(input(rsValue)),
+        ALU_A_SRC.sa -> input(inst).sa.resize(32)
       )
-      ex_alu_input.b := id_alu_b_src.mux(
-        ALU_B_SRC.rt  -> U(id_du_rt_v),
-        ALU_B_SRC.imm -> id_du_inst.immExtended.asUInt
+      ex_alu_input.b := input(aluBSrc).mux(
+        ALU_B_SRC.rt  -> U(input(rtValue)),
+        ALU_B_SRC.imm -> input(inst).immExtended.asUInt
       )
-      ex_cp0_input.addr.rd := id_du_inst.rd
-      ex_cp0_input.addr.sel := id_du_inst.sel
-      ex_cp0_input.new_value := id_du_rt_v
-      ex_cp0_input.old_value := id_du_cp0_v
-      ex_du_rs := id_du_inst.rs
-      ex_du_rt := id_du_inst.rt
-      ex_du_offset := id_du_inst.offset
-      ex_id_du_rs_v := id_du_rs_v
-      ex_id_du_rt_v := id_du_rt_v
-      ex_dcu_re := id_dcu_re
-      ex_dcu_we := id_dcu_we
-      ex_dcu_be := id_dcu_be
-      ex_mu_ex := id_mu_ex
-      ex_hlu_hi_we := id_hlu_hi_we
-      ex_hlu_hi_src := id_hlu_hi_src
-      ex_hlu_lo_we := id_hlu_lo_we
-      ex_hlu_lo_src := id_hlu_lo_src
-      ex_rfu_we := id_rfu_we
-      ex_rfu_rd := id_rfu_rd
-      ex_rfu_rd_src := id_rfu_rd_src
-      ex_id_rfu_rd_v := id_rfu_rd_v
-      ex_cp0_we := id_cp0_we
-      ex_cp0_addr.rd := id_du_inst.rd
-      ex_cp0_addr.sel := id_du_inst.sel
-      ex_id_exception := id_exception
+
+      produced(exception) := ex_alu_exception
+    }
+
+    val agu = new StageComponent(
+      inputKeys = Seq(inst, rsValue),
+      producedKeys = Seq(memAddr)
+    ) {
+      produced(memAddr) := U(S(input(rsValue)) + input(inst).offset)
+    }
+
+    ensureInputKey(rfuRdSrc)
+    ensureInputKey(rfuData)
+    ensureProducedKey(rfuData)
+    produced(rfuData) := input(rfuRdSrc) mux (
+      RFU_RD_SRC.alu -> ex_alu_c,
+      RFU_RD_SRC.hi -> (ME.input(hluHiWe) ? ME.produced(
+        hluHiData
+      ) | hlu_hi_v),
+      RFU_RD_SRC.lo -> (ME.input(hluLoWe) ? ME.produced(
+        hluLoData
+      ) | hlu_lo_v),
+      default -> input(rfuData)
+    )
+  }
+
+  val ID = new Stage {
+    val du = new StageComponent(
+      inputKeys = Seq(inst),
+      producedKeys = Seq(
+        aluOp,
+        aluASrc,
+        aluBSrc,
+        memRe,
+        memWe,
+        memBe,
+        memEx,
+        hluHiWe,
+        hluHiSrc,
+        hluLoWe,
+        hluLoSrc,
+        cp0Re,
+        cp0We,
+        rfuWe,
+        rfuAddr,
+        rfuRdSrc,
+        useRs,
+        useRt,
+        exception
+      )
+    ) {
+      id_du_inst := input(inst)
+      setInputReset(inst, INST_NOP)
+
+      produced(aluOp) := id_alu_op
+      produced(aluASrc) := id_alu_a_src
+      produced(aluBSrc) := id_alu_b_src
+      produced(cp0Re) := id_cp0_re
+      produced(cp0We) := id_cp0_we
+      produced(memRe) := id_dcu_re
+      produced(memWe) := id_dcu_we
+      produced(memBe) := id_dcu_be
+      produced(memEx) := id_mu_ex
+      produced(hluHiWe) := id_hlu_hi_we
+      produced(hluHiSrc) := id_hlu_hi_src
+      produced(hluLoWe) := id_hlu_lo_we
+      produced(hluLoSrc) := id_hlu_lo_src
+      produced(rfuWe) := id_rfu_we
+      produced(rfuAddr) := id_rfu_rd
+      produced(rfuRdSrc) := id_rfu_rd_src
+      produced(useRs) := id_use_rs
+      produced(useRt) := id_use_rt
+      produced(exception) := id_exception
+    }
+
+    val rfuRead = new StageComponent(
+      inputKeys = Seq(inst),
+      producedKeys = Seq(rsValue, rtValue)
+    ) {
+      EX.ensureInputKey(rfuWe)
+      EX.ensureInputKey(rfuAddr)
+      when(EX.input(rfuWe) && EX.input(rfuAddr) === input(inst).rs) {
+        produced(rsValue) := EX.produced(rfuData)
+      } elsewhen (ME.input(rfuWe) &&
+        ME.input(rfuAddr) === input(inst).rs) {
+        produced(rsValue) := ME.produced(rfuData)
+      } elsewhen (WB.input(rfuWe) && WB.input(rfuAddr) === input(
+        inst
+      ).rs) {
+        produced(rsValue) := wb_rfu.data
+      } otherwise {
+        produced(rsValue) := rfu_ra_v
+      }
+
+      when(EX.input(rfuWe) && EX.input(rfuAddr) === input(inst).rt) {
+        produced(rtValue) := EX.produced(rfuData)
+      } elsewhen (ME
+        .input(rfuWe) && ME.input(rfuAddr) === input(inst).rt) {
+        produced(rtValue) := ME.produced(rfuData)
+      } elsewhen (WB.input(rfuWe) && WB.input(rfuAddr) === input(
+        inst
+      ).rt) {
+        produced(rtValue) := wb_rfu.data
+      } otherwise {
+        produced(rtValue) := rfu_rb_v
+      }
+    }
+
+    id_du_rs_v := output(rsValue)
+    id_du_rt_v := output(rtValue)
+
+    ensureProducedKey(rfuData)
+    ensureInputKey(pc)
+    produced(rfuData) := produced(rfuRdSrc) mux (
+      RFU_RD_SRC.cp0 -> id_du_cp0_v,
+      default        -> B(input(pc) + 8)
+    )
+    ensureProducedKey(memData)
+    produced(memData) := produced(rtValue)
+
+    EX.ensureInputKey(rfuWe)
+    EX.ensureInputKey(rfuRdSrc)
+    EX.ensureInputKey(rfuAddr)
+    when(
+      (EX.input(rfuWe) &&
+        EX.input(rfuRdSrc) === RFU_RD_SRC.mu &&
+        (EX.input(rfuAddr) === input(inst).rs && produced(useRs) ||
+          EX.input(rfuAddr) === input(inst).rt && produced(useRt)))
+    ) {
+      stallsBySelf := True
     }
   }
 
-  when(!me_stall) {
-    //    when(ex_stall) {
-    //      me_dcu_re := False
-    //      me_dcu_we := False
-    //      me_rfu_we := False
-    //    } otherwise {
-    me_pcu_pc := ex_pcu_pc
-    me_dcu_addr := ex_dcu_addr
-    me_dcu_data := ex_dcu_data
-    me_dcu_be := ex_dcu_be
-    me_dcu_ex := ex_mu_ex
-    me_hlu_hi_we := ex_hlu_hi_we
-    me_hlu_new_hi := (ex_hlu_hi_src === HLU_SRC.rs) ? ex_du_rs_v | ex_alu_c
-    me_hlu_lo_we := ex_hlu_lo_we
-    me_hlu_new_lo := (ex_hlu_lo_src === HLU_SRC.rs) ? ex_du_rs_v | ex_alu_d
-    me_rfu_we := ex_rfu_we
-    me_rfu_rd := ex_rfu_rd
-    me_rfu_rd_src := ex_rfu_rd_src
-    me_ex_rfu_rd_v := ex_rfu_rd_v
-    me_cp0_we := ex_cp0_we
-    me_cp0_addr := ex_cp0_addr
-    me_cp0_to_write := ex_cp0_to_write
-
-    val me_existing_exception =
-      (ex_id_exception === EXCEPTION.None) ? ex_alu_exception | ex_id_exception
-    me_ex_exception := me_existing_exception
-
-    when(me_existing_exception === EXCEPTION.None) {
-      me_dcu_re := ex_dcu_re
-      me_dcu_we := ex_dcu_we
-    } otherwise {
-      me_dcu_re := False
-      me_dcu_we := False
+  val IF = new Stage {
+    val icu = new StageComponent(
+      producedKeys = Seq(pc, inst, exception),
+      stalls = if_icu_stall
+    ) {
+      produced(pc) := if_pcu_pc
+      produced(inst) := if_icu_inst
     }
-    //    }
+
+    if_stall := stalls
   }
 
-  when(me_stall) {
-    wb_rfu.valid := False
-    wb_cp0.valid := False
-  } otherwise {
-    wb_pcu_pc := me_pcu_pc
-    wb_rfu.valid := me_rfu_we
-    wb_rfu.index := me_rfu_rd
-    wb_rfu.data := me_rfu_rd_v
-    wb_cp0.valid := me_cp0_we
-    wb_cp0.addr := me_cp0_addr
-    wb_cp0.data := me_cp0_to_write
+  // Pseudo stage that provides pc to IF.
+//  val PC = new Stage {
+//    val pcu = new StageComponent(
+//      producedKeys = Seq(pc)
+//    ) {
+//      produced(pc) := nextPc
+//    }
+//  }
+
+  val stages = Seq(IF, ID, EX, ME, WB)
+  for ((prev, next) <- (stages zip stages.tail).reverse) {
+    prev connect next
   }
 
-  when(me_rfu_we && me_rfu_rd === ex_du_rs) {
-    ex_du_rs_v := me_rfu_rd_v
-  }
-  when(me_rfu_we && me_rfu_rd === ex_du_rt) {
-    ex_du_rt_v := me_rfu_rd_v
-  }
+//  when(!ex_stall) {
+//    when(!id_stall) {
+//      ex_cp0_input.addr.rd := id_du_inst.rd
+//      ex_cp0_input.addr.sel := id_du_inst.sel
+//      ex_cp0_input.new_value := id_du_rt_v
+//      ex_cp0_input.old_value := id_du_cp0_v
+//      ex_cp0_we := id_cp0_we
+//      ex_cp0_addr.rd := id_du_inst.rd
+//      ex_cp0_addr.sel := id_du_inst.sel
+//    }
+//  }
 
-  when(ex_rfu_we && ex_rfu_rd === id_du_inst.rs) {
-    id_du_rs_v := ex_rfu_rd_v
-  } elsewhen (me_rfu_we && me_rfu_rd === id_du_inst.rs) {
-    id_du_rs_v := me_rfu_rd_v
-  } elsewhen (wb_rfu.valid && wb_rfu.index === id_du_inst.rs) {
-    id_du_rs_v := wb_rfu.data
-  } otherwise {
-    id_du_rs_v := rfu_ra_v
-  }
-  when(ex_rfu_we && ex_rfu_rd === id_du_inst.rt) {
-    id_du_rt_v := ex_rfu_rd_v
-  } elsewhen (me_rfu_we && me_rfu_rd === id_du_inst.rt) {
-    id_du_rt_v := me_rfu_rd_v
-  } elsewhen (wb_rfu.valid && wb_rfu.index === id_du_inst.rt) {
-    id_du_rt_v := wb_rfu.data
-  } otherwise {
-    id_du_rt_v := rfu_rb_v
-  }
+//  when(!me_stall) {
+//    me_cp0_we := ex_cp0_we
+//    me_cp0_addr := ex_cp0_addr
+//    me_cp0_to_write := ex_cp0_to_write
+//  }
+//
+//  when(!me_stall) {
+//    wb_cp0.valid := me_cp0_we
+//    wb_cp0.addr := me_cp0_addr
+//    wb_cp0.data := me_cp0_to_write
+//  }
 
-  when(ex_cp0_we && ex_cp0_addr === id_du_inst.addr) {
-    id_du_cp0_v := ex_cp0_to_write
-  } elsewhen (me_cp0_we && me_cp0_addr === id_du_inst.addr) {
-    id_du_cp0_v := me_cp0_to_write
-  } elsewhen (wb_cp0.valid && wb_cp0.addr === id_du_inst.addr) {
-    id_du_cp0_v := wb_cp0.data
-  } otherwise {
-    id_du_cp0_v := cp0_read_v
-  }
+//  when(ex_cp0_we && ex_cp0_addr === id_du_inst.addr) {
+//    id_du_cp0_v := ex_cp0_to_write
+//  } elsewhen (me_cp0_we && me_cp0_addr === id_du_inst.addr) {
+//    id_du_cp0_v := me_cp0_to_write
+//  } elsewhen (wb_cp0.valid && wb_cp0.addr === id_du_inst.addr) {
+//    id_du_cp0_v := wb_cp0.data
+//  } otherwise {
+//    id_du_cp0_v := cp0_read_v
+//  }
 }
 
 object PU {

@@ -84,7 +84,7 @@ class CPU extends Component {
   pu.cp0_read_v := cp0.io.read.data
   pu.if_pcu_pc := pcu.pc
   pu.if_icu_stall := icu.io.stall
-  pu.if_icu_data := icu.io.data_out
+  pu.if_icu_inst := icu.io.data_out
   pu.id_ju_jump := ju.jump
   pu.id_alu_op := du.io.alu_op
   pu.id_alu_a_src := du.io.alu_a_src

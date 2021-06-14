@@ -12,7 +12,7 @@ class PCU extends Component {
   val new_pc = in UInt (32 bits)
 
   // out
-  val pc = out(RegInit(U(INIT_PC)))
+  val pc = out(RegInit(INIT_PC))
 
   val E = new Bundle {
     val AdEIL = out Bool

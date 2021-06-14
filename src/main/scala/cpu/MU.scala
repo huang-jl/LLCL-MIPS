@@ -53,7 +53,9 @@ class MU extends Component {
   val byteIndex: UInt = io.addr(1 downto 0)
 
   //
-  val dataReg = Reg(Bits(32 bits)) init (0)
+  val data = Bits(32 bits)
+  val dataPrev = RegNext(data)
+  data := dataPrev
 
   io.sramBus.wr := we
   io.sramBus.addr := io.addr(28 downto 0).resize(32)
@@ -62,10 +64,10 @@ class MU extends Component {
 
   val addrByteIndex = io.addr(0, 2 bits)
   switch(io.sramBus.size) {
-    is(B"2'b00")(
+    is(B"00")(
       io.sramBus.wdata(addrByteIndex << 3, 8 bits) := io.data_in(0, 8 bits)
     )
-    is(B"2'b01")(
+    is(B"01")(
       io.sramBus.wdata(addrByteIndex << 3, 16 bits) := io.data_in(0, 16 bits)
     )
   }
@@ -85,8 +87,8 @@ class MU extends Component {
     val READ = new State {
       whenIsActive {
         when(io.sramBus.dataOk) {
-          dataReg := io.sramBus.rdata
-          goto(DONE)
+          data := io.sramBus.rdata
+          goto(IDLE)
         }
       }
     }
@@ -106,25 +108,25 @@ class MU extends Component {
 
   switch(io.be) {
     is(0) {
-      signExt := signExtend(dataReg((byteIndex << 3), 8 bits))
-      unsignExt := zeroExtend(dataReg((byteIndex << 3), 8 bits))
+      signExt := signExtend(data((byteIndex << 3), 8 bits))
+      unsignExt := zeroExtend(data((byteIndex << 3), 8 bits))
       io.sramBus.size := 0
     }
     is(1) {
       // the byteIndex can only be 0 or 2
-      signExt := signExtend(dataReg((byteIndex << 3), 16 bits))
-      unsignExt := zeroExtend(dataReg((byteIndex << 3), 16 bits))
+      signExt := signExtend(data((byteIndex << 3), 16 bits))
+      unsignExt := zeroExtend(data((byteIndex << 3), 16 bits))
       io.sramBus.size := 1
     }
     is(3) {
-      signExt := dataReg
-      unsignExt := dataReg
+      signExt := data
+      unsignExt := data
       io.sramBus.size := 2
     }
     default {
       io.sramBus.size := 0
-      signExt := dataReg
-      unsignExt := dataReg
+      signExt := data
+      unsignExt := data
     }
   }
   io.data_out := (io.ex === MU_EX.s) ? signExt | unsignExt
