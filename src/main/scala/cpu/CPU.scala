@@ -1,9 +1,10 @@
 package cpu
 
-import defs.Mips32InstImplicits._
-import defs.{SramBus, SramBusConfig}
 import spinal.core._
-import spinal.lib.master
+import spinal.lib.{cpu => _, _}
+import defs.Mips32InstImplicits._
+import defs.{ConstantVal, Mips32Inst, SramBus, SramBusConfig}
+import lib.{Key}
 
 class CPU extends Component {
   val io = new Bundle {
@@ -11,107 +12,321 @@ class CPU extends Component {
     val dSramBus = master(SramBus(SramBusConfig(32, 32, 2)))
     val debug    = out(DebugInterface())
   }
-  val pcu    = new PCU
-  val icu    = new MU
-  val du     = new DU
-  val ju     = new JU
-  val alu    = new ALU
-  val dcu    = new MU
-  val hlu    = new HLU
-  val rfu    = new RFU
-  val pu     = new PU
-  val cp0    = new CP0
-  val cp0exu = new CP0ExecUnit
+  val pcu = new PCU
+  val icu = new MU
+  val du  = new DU
+  val ju  = new JU
+  val alu = new ALU
+  val dcu = new MU
+  val hlu = new HLU
+  val rfu = new RFU
 
   io.iSramBus <> icu.io.sramBus
   io.dSramBus <> dcu.io.sramBus
   io.debug.wb.rf.wen := B(4 bits, default -> rfu.io.write.valid)
   io.debug.wb.rf.wdata := rfu.io.write.data
   io.debug.wb.rf.wnum := rfu.io.write.index
-  io.debug.wb.pc := B(pu.wb_pcu_pc)
 
-  pcu.stall := pu.if_stall
-  pcu.we := ju.jump
-  pcu.new_pc := ju.jump_pc
+  val pc         = Key(UInt(32 bits))
+  val inst       = Key(Mips32Inst())
+  val exception  = Key(EXCEPTION())
+  val aluOp      = Key(ALU_OP())
+  val aluASrc    = Key(ALU_A_SRC())
+  val aluBSrc    = Key(ALU_B_SRC())
+  val aluResultC = Key(UInt(32 bits))
+  val aluResultD = Key(UInt(32 bits))
+  val memRe      = Key(Bool)
+  val memWe      = Key(Bool)
+  val memBe      = Key(UInt(2 bits))
+  val memEx      = Key(MU_EX())
+  val memAddr    = Key(UInt(32 bits))
+  val memData    = Key(Bits(32 bits))
+  val hluHiWe    = Key(Bool)
+  val hluHiSrc   = Key(HLU_SRC())
+  val hluLoWe    = Key(Bool)
+  val hluLoSrc   = Key(HLU_SRC())
+  val hluHiData  = Key(Bits(32 bits))
+  val hluLoData  = Key(Bits(32 bits))
+  val rfuWe      = Key(Bool)
+  val rfuAddr    = Key(UInt(5 bits))
+  val rfuRdSrc   = Key(RFU_RD_SRC())
+  val rfuData    = Key(Bits(32 bits))
+  val useRs      = Key(Bool)
+  val useRt      = Key(Bool)
+  val rsValue    = Key(Bits(32 bits))
+  val rtValue    = Key(Bits(32 bits))
 
-  icu.io.addr := pcu.pc
-  icu.io.data_in := 0
-  icu.io.re := True
-  icu.io.we := False
-  icu.io.be := U"11"
-  icu.io.ex.assignFromBits(B"0")
+  // Later stages may depend on earlier stages, so stages are list in reversed order.
 
-  val inst = pu.id_du_inst
+  val WB = new Stage {
+    val rfuC = new StageComponent(inputKeys = Seq(rfuWe, rfuAddr, rfuData)) {
+      rfu.io.write.valid := input(rfuWe)
+      rfu.io.write.index := input(rfuAddr)
+      rfu.io.write.data := input(rfuData)
+      setInputReset(rfuWe, False)
+    }
 
-  du.io.inst := inst
+    val pcDebug = new StageComponent(inputKeys = Seq(pc)) {
+      io.debug.wb.pc := input(pc)
+    }
+  }
 
-  ju.op := du.io.ju_op
-  ju.pc_src := du.io.ju_pc_src
-  ju.a := S(pu.id_du_rs_v)
-  ju.b := S(pu.id_du_rt_v)
-  ju.pc := pcu.pc
-  ju.offset := inst.offset
-  ju.index := inst.index
+  val ME = new Stage {
+    val dcuC = new StageComponent(
+      inputKeys = Seq(memRe, memWe, memBe, memEx, memAddr, memData),
+      producedKeys = Seq(rfuData, exception),
+      stalls = dcu.io.stall
+    ) {
+      dcu.io.re := input(memRe)
+      dcu.io.we := input(memWe)
+      dcu.io.be := input(memBe)
+      dcu.io.ex := input(memEx)
+      dcu.io.addr := input(memAddr)
+      dcu.io.data_in := input(memData)
+      setInputReset(memRe, False)
+      setInputReset(memWe, False)
 
-  alu.io.input := pu.ex_alu_input
+      produced(exception) := dcu.io.exception
+      produced(rfuData) := dcu.io.data_out
+    }
 
-  cp0exu.io.input := pu.ex_cp0_input
+    val hluC = new StageComponent(
+      inputKeys = Seq(
+        hluHiWe,
+        hluHiSrc,
+        hluLoWe,
+        hluLoSrc,
+        rsValue,
+        aluResultC,
+        aluResultD
+      ),
+      producedKeys = Seq(hluHiData, hluLoData)
+    ) {
+      hlu.hi_we := input(hluHiWe)
+      produced(hluHiData) := ((input(hluHiSrc) === HLU_SRC.rs)
+        ? input(rsValue)
+        | input(aluResultC).asBits)
+      hlu.new_hi := produced(hluHiData)
+      hlu.lo_we := input(hluLoWe)
+      produced(hluLoData) := ((input(hluLoSrc) === HLU_SRC.rs)
+        ? input(rsValue)
+        | input(aluResultD).asBits)
+      hlu.new_lo := produced(hluLoData)
 
-  dcu.io.addr := pu.me_dcu_addr
-  dcu.io.data_in := pu.me_dcu_data
-  dcu.io.re := pu.me_dcu_re
-  dcu.io.we := pu.me_dcu_we
-  dcu.io.be := pu.me_dcu_be
-  dcu.io.ex := pu.me_dcu_ex
+      setInputReset(hluHiWe, False)
+      setInputReset(hluLoWe, False)
+    }
 
-  hlu.hi_we := pu.me_hlu_hi_we
-  hlu.new_hi := pu.me_hlu_new_hi
-  hlu.lo_we := pu.me_hlu_lo_we
-  hlu.new_lo := pu.me_hlu_new_lo
+    ensureInputKey(rfuRdSrc)
+    ensureInputKey(rfuData)
+    output(rfuData) := ((input(rfuRdSrc) === RFU_RD_SRC.mu)
+      ? produced(rfuData)
+      | input(rfuData))
+  }
 
-  rfu.io.write := pu.wb_rfu
-  rfu.io.ra.index := inst.rs
-  rfu.io.rb.index := inst.rt
+  val EX = new Stage {
+    ensureInputKey(rsValue)
+    ensureInputKey(rtValue)
+    ensureInputKey(inst)
 
-  cp0.io.softwareWrite := pu.wb_cp0
-  cp0.io.read.addr.rd := inst.rd
-  cp0.io.read.addr.sel := inst.sel
+    ME.ensureInputKey(rfuWe)
+    ME.ensureInputKey(rfuAddr)
+    when(
+      ME.input(rfuWe) &&
+        ME.input(rfuAddr) === input(inst).rs
+    ) {
+      input(rsValue) := ME.produced(rfuData)
+    }
+    when(
+      ME.input(rfuWe) &&
+        ME.input(rfuAddr) === input(inst).rt
+    ) {
+      input(rtValue) := ME.produced(rfuData)
+    }
 
-  pu.hlu_hi_v := hlu.hi_v
-  pu.hlu_lo_v := hlu.lo_v
-  pu.rfu_ra_v := rfu.io.ra.data
-  pu.rfu_rb_v := rfu.io.rb.data
-  pu.cp0_read_v := cp0.io.read.data
-  pu.if_pcu_pc := pcu.pc
-  pu.if_icu_stall := icu.io.stall
-  pu.if_icu_inst := icu.io.data_out
-  pu.id_ju_jump := ju.jump
-  pu.id_alu_op := du.io.alu_op
-  pu.id_alu_a_src := du.io.alu_a_src
-  pu.id_alu_b_src := du.io.alu_b_src
-  pu.id_cp0_re := du.io.cp0_re
-  pu.id_cp0_we := du.io.cp0_we
-  pu.id_dcu_re := du.io.dcu_re
-  pu.id_dcu_we := du.io.dcu_we
-  pu.id_dcu_be := du.io.dcu_be
-  pu.id_mu_ex := du.io.mu_ex
-  pu.id_hlu_hi_we := du.io.hlu_hi_we
-  pu.id_hlu_hi_src := du.io.hlu_hi_src
-  pu.id_hlu_lo_we := du.io.hlu_lo_we
-  pu.id_hlu_lo_src := du.io.hlu_lo_src
-  pu.id_rfu_we := du.io.rfu_we
-  pu.id_rfu_rd := du.io.rfu_rd
-  pu.id_rfu_rd_src := du.io.rfu_rd_src
-  pu.id_use_rs := du.io.use_rs
-  pu.id_use_rt := du.io.use_rt
-  pu.id_exception := du.io.exception
-  pu.ex_alu_c := B(alu.io.c)
-  pu.ex_alu_d := B(alu.io.d)
-  pu.ex_alu_exception := alu.io.exception
-  pu.ex_cp0_to_write := cp0exu.io.to_write
-  pu.me_dcu_stall := dcu.io.stall
-  pu.me_mu_data_out := dcu.io.data_out
-  pu.me_dcu_exception := dcu.io.exception
+    val aluC = new StageComponent(
+      inputKeys = Seq(aluOp, aluASrc, aluBSrc, rsValue, rtValue, inst),
+      producedKeys = Seq(aluResultC, aluResultD, exception)
+    ) {
+      alu.io.input.op := input(aluOp)
+      alu.io.input.a := input(aluASrc).mux(
+        ALU_A_SRC.rs -> U(input(rsValue)),
+        ALU_A_SRC.sa -> input(inst).sa.resize(32)
+      )
+      alu.io.input.b := input(aluBSrc).mux(
+        ALU_B_SRC.rt  -> U(input(rtValue)),
+        ALU_B_SRC.imm -> input(inst).immExtended.asUInt
+      )
+
+      produced(aluResultC) := alu.io.c
+      produced(aluResultD) := alu.io.d
+      produced(exception) := alu.io.exception
+    }
+
+    val aguC = new StageComponent(
+      inputKeys = Seq(inst, rsValue),
+      producedKeys = Seq(memAddr)
+    ) {
+      produced(memAddr) := U(S(input(rsValue)) + input(inst).offset)
+    }
+
+    ensureInputKey(rfuRdSrc)
+    ensureInputKey(rfuData)
+    ensureProducedKey(rfuData)
+    produced(rfuData) := input(rfuRdSrc) mux (
+      RFU_RD_SRC.alu -> produced(aluResultC).asBits,
+      RFU_RD_SRC.hi -> (ME.input(hluHiWe) ? ME.produced(
+        hluHiData
+      ) | hlu.hi_v),
+      RFU_RD_SRC.lo -> (ME.input(hluLoWe) ? ME.produced(
+        hluLoData
+      ) | hlu.lo_v),
+      default -> input(rfuData)
+    )
+  }
+
+  val ID = new Stage {
+    val duC = new StageComponent(
+      inputKeys = Seq(inst),
+      producedKeys = Seq(
+        aluOp,
+        aluASrc,
+        aluBSrc,
+        memRe,
+        memWe,
+        memBe,
+        memEx,
+        hluHiWe,
+        hluHiSrc,
+        hluLoWe,
+        hluLoSrc,
+        rfuWe,
+        rfuAddr,
+        rfuRdSrc,
+        useRs,
+        useRt,
+        exception
+      )
+    ) {
+      du.io.inst := input(inst)
+      setInputReset(inst, ConstantVal.INST_NOP)
+
+      produced(aluOp) := du.io.alu_op
+      produced(aluASrc) := du.io.alu_a_src
+      produced(aluBSrc) := du.io.alu_b_src
+      produced(memRe) := du.io.dcu_re
+      produced(memWe) := du.io.dcu_we
+      produced(memBe) := du.io.dcu_be
+      produced(memEx) := du.io.mu_ex
+      produced(hluHiWe) := du.io.hlu_hi_we
+      produced(hluHiSrc) := du.io.hlu_hi_src
+      produced(hluLoWe) := du.io.hlu_lo_we
+      produced(hluLoSrc) := du.io.hlu_lo_src
+      produced(rfuWe) := du.io.rfu_we
+      produced(rfuAddr) := du.io.rfu_rd
+      produced(rfuRdSrc) := du.io.rfu_rd_src
+      produced(useRs) := du.io.use_rs
+      produced(useRt) := du.io.use_rt
+      produced(exception) := du.io.exception
+    }
+
+    val rfuRead = new StageComponent(
+      inputKeys = Seq(inst),
+      producedKeys = Seq(rsValue, rtValue)
+    ) {
+      rfu.io.ra.index := input(inst).rs
+      rfu.io.rb.index := input(inst).rt
+      produced(rsValue) := rfu.io.ra.data
+      produced(rtValue) := rfu.io.rb.data
+    }
+
+    val juC = new StageComponent(
+      inputKeys = Seq(inst)
+    ) {
+      ju.op := du.io.ju_op
+      ju.a := output(rsValue).asSInt
+      ju.b := output(rtValue).asSInt
+      ju.pc_src := du.io.ju_pc_src
+      ju.pc := pcu.pc
+      ju.offset := input(inst).offset
+      ju.index := input(inst).index
+    }
+
+    EX.ensureInputKey(rfuWe)
+    EX.ensureInputKey(rfuAddr)
+    when(EX.input(rfuWe) && EX.input(rfuAddr) === input(inst).rs) {
+      output(rsValue) := EX.produced(rfuData)
+    } elsewhen (ME.input(rfuWe) &&
+      ME.input(rfuAddr) === input(inst).rs) {
+      output(rsValue) := ME.produced(rfuData)
+    } elsewhen (WB.input(rfuWe) && WB.input(rfuAddr) === input(
+      inst
+    ).rs) {
+      output(rsValue) := WB.input(rfuData)
+    } otherwise {
+      output(rsValue) := produced(rsValue)
+    }
+
+    when(EX.input(rfuWe) && EX.input(rfuAddr) === input(inst).rt) {
+      output(rtValue) := EX.produced(rfuData)
+    } elsewhen (ME
+      .input(rfuWe) && ME.input(rfuAddr) === input(inst).rt) {
+      output(rtValue) := ME.produced(rfuData)
+    } elsewhen (WB.input(rfuWe) && WB.input(rfuAddr) === input(
+      inst
+    ).rt) {
+      output(rtValue) := WB.input(rfuData)
+    } otherwise {
+      output(rtValue) := produced(rsValue)
+    }
+
+    ensureProducedKey(rfuData)
+    ensureInputKey(pc)
+    produced(rfuData) := produced(rfuRdSrc) mux (
+      default -> B(input(pc) + 8)
+    )
+
+    ensureProducedKey(memData)
+    produced(memData) := output(rtValue)
+
+    EX.ensureInputKey(rfuWe)
+    EX.ensureInputKey(rfuRdSrc)
+    EX.ensureInputKey(rfuAddr)
+    when(
+      (EX.input(rfuWe) &&
+        EX.input(rfuRdSrc) === RFU_RD_SRC.mu &&
+        (EX.input(rfuAddr) === input(inst).rs && produced(useRs) ||
+          EX.input(rfuAddr) === input(inst).rt && produced(useRt)))
+    ) {
+      stallsBySelf := True
+    }
+  }
+
+  val IF = new Stage {
+    val icuC = new StageComponent(
+      producedKeys = Seq(pc, inst, exception),
+      stalls = icu.io.stall
+    ) {
+      icu.io.addr := pcu.pc
+      icu.io.re := True
+      icu.io.we := False
+      icu.io.be := U"11"
+      icu.io.data_in.assignDontCare()
+      icu.io.ex.assignDontCare()
+
+      produced(pc) := pcu.pc
+      produced(inst) := icu.io.data_out
+    }
+
+    pcu.we := ju.jump
+    pcu.new_pc := ju.jump_pc
+    pcu.stall := stalls
+  }
+
+  val stages = Seq(IF, ID, EX, ME, WB)
+  for ((prev, next) <- (stages zip stages.tail).reverse) {
+    prev connect next
+  }
 }
 
 object CPU {
