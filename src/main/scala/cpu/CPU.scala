@@ -21,12 +21,6 @@ class CPU extends Component {
   val hlu = new HLU
   val rfu = new RFU
 
-  io.iSramBus <> icu.io.sramBus
-  io.dSramBus <> dcu.io.sramBus
-  io.debug.wb.rf.wen := B(4 bits, default -> rfu.io.write.valid)
-  io.debug.wb.rf.wdata := rfu.io.write.data
-  io.debug.wb.rf.wnum := rfu.io.write.index
-
   val pc         = Key(UInt(32 bits))
   val inst       = Key(Mips32Inst())
   val exception  = Key(EXCEPTION())
@@ -59,24 +53,26 @@ class CPU extends Component {
   // Later stages may depend on earlier stages, so stages are list in reversed order.
 
   val WB = new Stage {
-    val rfuC = new StageComponent(inputKeys = Seq(rfuWe, rfuAddr, rfuData)) {
+    val rfuC = new StageComponent {
+      io.debug.wb.rf.wen := B(4 bits, default -> rfu.io.write.valid)
+      io.debug.wb.rf.wdata := rfu.io.write.data
+      io.debug.wb.rf.wnum := rfu.io.write.index
+
       rfu.io.write.valid := input(rfuWe)
       rfu.io.write.index := input(rfuAddr)
       rfu.io.write.data := input(rfuData)
       setInputReset(rfuWe, False)
     }
 
-    val pcDebug = new StageComponent(inputKeys = Seq(pc)) {
+    val pcDebug = new StageComponent {
       io.debug.wb.pc := input(pc)
     }
   }
 
   val ME = new Stage {
-    val dcuC = new StageComponent(
-      inputKeys = Seq(memRe, memWe, memBe, memEx, memAddr, memData),
-      producedKeys = Seq(rfuData, exception),
-      stalls = dcu.io.stall
-    ) {
+    val dcuC = new StageComponent {
+      io.dSramBus <> dcu.io.sramBus
+
       dcu.io.re := input(memRe)
       dcu.io.we := input(memWe)
       dcu.io.be := input(memBe)
@@ -86,22 +82,15 @@ class CPU extends Component {
       setInputReset(memRe, False)
       setInputReset(memWe, False)
 
+      when(dcu.io.stall) {
+        stalls := True
+      }
+
       produced(exception) := dcu.io.exception
       produced(rfuData) := dcu.io.data_out
     }
 
-    val hluC = new StageComponent(
-      inputKeys = Seq(
-        hluHiWe,
-        hluHiSrc,
-        hluLoWe,
-        hluLoSrc,
-        rsValue,
-        aluResultC,
-        aluResultD
-      ),
-      producedKeys = Seq(hluHiData, hluLoData)
-    ) {
+    val hluC = new StageComponent {
       hlu.hi_we := input(hluHiWe)
       produced(hluHiData) := ((input(hluHiSrc) === HLU_SRC.rs)
         ? input(rsValue)
@@ -117,20 +106,12 @@ class CPU extends Component {
       setInputReset(hluLoWe, False)
     }
 
-    ensureInputKey(rfuRdSrc)
-    ensureInputKey(rfuData)
     output(rfuData) := ((input(rfuRdSrc) === RFU_RD_SRC.mu)
       ? produced(rfuData)
       | input(rfuData))
   }
 
   val EX = new Stage {
-    ensureInputKey(rsValue)
-    ensureInputKey(rtValue)
-    ensureInputKey(inst)
-
-    ME.ensureInputKey(rfuWe)
-    ME.ensureInputKey(rfuAddr)
     when(
       ME.input(rfuWe) &&
         ME.input(rfuAddr) === input(inst).rs
@@ -144,10 +125,7 @@ class CPU extends Component {
       input(rtValue) := ME.produced(rfuData)
     }
 
-    val aluC = new StageComponent(
-      inputKeys = Seq(aluOp, aluASrc, aluBSrc, rsValue, rtValue, inst),
-      producedKeys = Seq(aluResultC, aluResultD, exception)
-    ) {
+    val aluC = new StageComponent {
       alu.io.input.op := input(aluOp)
       alu.io.input.a := input(aluASrc).mux(
         ALU_A_SRC.rs -> U(input(rsValue)),
@@ -163,16 +141,10 @@ class CPU extends Component {
       produced(exception) := alu.io.exception
     }
 
-    val aguC = new StageComponent(
-      inputKeys = Seq(inst, rsValue),
-      producedKeys = Seq(memAddr)
-    ) {
+    val aguC = new StageComponent {
       produced(memAddr) := U(S(input(rsValue)) + input(inst).offset)
     }
 
-    ensureInputKey(rfuRdSrc)
-    ensureInputKey(rfuData)
-    ensureProducedKey(rfuData)
     produced(rfuData) := input(rfuRdSrc) mux (
       RFU_RD_SRC.alu -> produced(aluResultC).asBits,
       RFU_RD_SRC.hi -> (ME.input(hluHiWe) ? ME.produced(
@@ -186,28 +158,7 @@ class CPU extends Component {
   }
 
   val ID = new Stage {
-    val duC = new StageComponent(
-      inputKeys = Seq(inst),
-      producedKeys = Seq(
-        aluOp,
-        aluASrc,
-        aluBSrc,
-        memRe,
-        memWe,
-        memBe,
-        memEx,
-        hluHiWe,
-        hluHiSrc,
-        hluLoWe,
-        hluLoSrc,
-        rfuWe,
-        rfuAddr,
-        rfuRdSrc,
-        useRs,
-        useRt,
-        exception
-      )
-    ) {
+    val duC = new StageComponent {
       du.io.inst := input(inst)
       setInputReset(inst, ConstantVal.INST_NOP)
 
@@ -230,19 +181,14 @@ class CPU extends Component {
       produced(exception) := du.io.exception
     }
 
-    val rfuRead = new StageComponent(
-      inputKeys = Seq(inst),
-      producedKeys = Seq(rsValue, rtValue)
-    ) {
+    val rfuRead = new StageComponent {
       rfu.io.ra.index := input(inst).rs
       rfu.io.rb.index := input(inst).rt
       produced(rsValue) := rfu.io.ra.data
       produced(rtValue) := rfu.io.rb.data
     }
 
-    val juC = new StageComponent(
-      inputKeys = Seq(inst)
-    ) {
+    val juC = new StageComponent {
       ju.op := du.io.ju_op
       ju.a := output(rsValue).asSInt
       ju.b := output(rtValue).asSInt
@@ -252,8 +198,6 @@ class CPU extends Component {
       ju.index := input(inst).index
     }
 
-    EX.ensureInputKey(rfuWe)
-    EX.ensureInputKey(rfuAddr)
     when(EX.input(rfuWe) && EX.input(rfuAddr) === input(inst).rs) {
       output(rsValue) := EX.produced(rfuData)
     } elsewhen (ME.input(rfuWe) &&
@@ -280,18 +224,12 @@ class CPU extends Component {
       output(rtValue) := produced(rsValue)
     }
 
-    ensureProducedKey(rfuData)
-    ensureInputKey(pc)
     produced(rfuData) := produced(rfuRdSrc) mux (
       default -> B(input(pc) + 8)
     )
 
-    ensureProducedKey(memData)
     produced(memData) := output(rtValue)
 
-    EX.ensureInputKey(rfuWe)
-    EX.ensureInputKey(rfuRdSrc)
-    EX.ensureInputKey(rfuAddr)
     when(
       (EX.input(rfuWe) &&
         EX.input(rfuRdSrc) === RFU_RD_SRC.mu &&
@@ -303,16 +241,19 @@ class CPU extends Component {
   }
 
   val IF = new Stage {
-    val icuC = new StageComponent(
-      producedKeys = Seq(pc, inst, exception),
-      stalls = icu.io.stall
-    ) {
+    val icuC = new StageComponent {
+      io.iSramBus <> icu.io.sramBus
+
       icu.io.addr := pcu.pc
       icu.io.re := True
       icu.io.we := False
       icu.io.be := U"11"
       icu.io.data_in.assignDontCare()
       icu.io.ex.assignDontCare()
+
+      when(icu.io.stall) {
+        stalls := True
+      }
 
       produced(pc) := pcu.pc
       produced(inst) := icu.io.data_out

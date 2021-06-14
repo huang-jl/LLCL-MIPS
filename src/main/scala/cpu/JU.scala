@@ -1,7 +1,7 @@
 package cpu
 
-import cpu.defs.ConstantVal._
 import spinal.core._
+import defs.ConstantVal._
 
 object JU_OP extends SpinalEnum {
   val lz, gez, f, t, e, noe, lez, gz = newElement()
