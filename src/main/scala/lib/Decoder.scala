@@ -1,6 +1,6 @@
 package lib.decoder
 
-import lib.{HardMap, Key}
+import lib.{Record, Key}
 import spinal.core._
 
 import scala.collection.mutable.{HashMap, HashSet}
@@ -92,7 +92,7 @@ case class Decoder(
   assert(input.getBitsWidth == config.inputWidth)
 
   val keys = config.keys
-  val output = HardMap(keys)
+  val output = Record(keys)
 
   val offsets = (keys
     .scanLeft(0) { case (currentOffset, key) =>
