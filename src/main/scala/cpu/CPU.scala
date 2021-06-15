@@ -1,10 +1,10 @@
 package cpu
 
-import spinal.core._
-import spinal.lib.{cpu => _, _}
 import defs.Mips32InstImplicits._
 import defs.{ConstantVal, Mips32Inst, SramBus, SramBusConfig}
 import lib.{Key, Optional}
+import spinal.core._
+import spinal.lib.{cpu => _, _}
 
 class CPU extends Component {
   val io = new Bundle {
@@ -19,12 +19,14 @@ class CPU extends Component {
   val dcu = new MU
   val hlu = new HLU
   val rfu = new RFU
+  val cp0 = new CP0
 
   val jumpPc = Key(Optional(UInt(32 bits)))
 
   val pc         = Key(UInt(32 bits))
+  val bd         = Key(Bool)
   val inst       = Key(Mips32Inst())
-  val exception  = Key(EXCEPTION())
+  val exception  = Key(Optional(EXCEPTION()))
   val aluOp      = Key(ALU_OP())
   val aluASrc    = Key(ALU_A_SRC())
   val aluBSrc    = Key(ALU_B_SRC())
@@ -35,13 +37,13 @@ class CPU extends Component {
   val memBe      = Key(UInt(2 bits))
   val memEx      = Key(MU_EX())
   val memAddr    = Key(UInt(32 bits))
-  val memData    = Key(Bits(32 bits))
   val hluHiWe    = Key(Bool)
   val hluHiSrc   = Key(HLU_SRC())
   val hluLoWe    = Key(Bool)
   val hluLoSrc   = Key(HLU_SRC())
   val hluHiData  = Key(Bits(32 bits))
   val hluLoData  = Key(Bits(32 bits))
+  val cp0We      = Key(Bool)
   val rfuWe      = Key(Bool)
   val rfuAddr    = Key(UInt(5 bits))
   val rfuRdSrc   = Key(RFU_RD_SRC())
@@ -79,7 +81,7 @@ class CPU extends Component {
       dcu.io.be := input(memBe)
       dcu.io.ex := input(memEx)
       dcu.io.addr := input(memAddr)
-      dcu.io.data_in := input(memData)
+      dcu.io.data_in := input(rtValue)
       setInputReset(memRe, False)
       setInputReset(memWe, False)
 
@@ -87,8 +89,8 @@ class CPU extends Component {
         stalls := True
       }
 
-      produced(exception) := dcu.io.exception
       produced(rfuData) := dcu.io.data_out
+      exceptionBySelf := dcu.io.exception
     }
 
     val hluC = new StageComponent {
@@ -107,16 +109,27 @@ class CPU extends Component {
       setInputReset(hluLoWe, False)
     }
 
+    val cp0C = new StageComponent {
+      cp0.io.softwareWrite.valid := input(cp0We)
+      cp0.io.softwareWrite.addr.rd := input(inst).rd
+      cp0.io.softwareWrite.addr.sel := input(inst).sel
+      cp0.io.softwareWrite.data := input(rtValue)
+    }
+
     output(rfuData) := ((input(rfuRdSrc) === RFU_RD_SRC.mu)
       ? produced(rfuData)
       | input(rfuData))
+
+    when(firing && exceptionBySelf.isDefined || exceptionByPrev.isDefined) {
+      flushBySelf := True
+    }
   }
 
   val EX = new Stage {
     when(
       ME.firing && ME.input(rfuWe) &&
-      ME.input(rfuAddr) === input(inst).rs
-      ) {
+        ME.input(rfuAddr) === input(inst).rs
+    ) {
       input(rsValue) := ME.output(rfuData)
     }
     when(
@@ -139,7 +152,7 @@ class CPU extends Component {
 
       produced(aluResultC) := alu.io.c
       produced(aluResultD) := alu.io.d
-      produced(exception) := alu.io.exception
+      exceptionBySelf := alu.io.exception
     }
 
     val aguC = new StageComponent {
@@ -174,12 +187,13 @@ class CPU extends Component {
       produced(hluHiSrc) := du.io.hlu_hi_src
       produced(hluLoWe) := du.io.hlu_lo_we
       produced(hluLoSrc) := du.io.hlu_lo_src
+      produced(cp0We) := du.io.cp0_we
       produced(rfuWe) := du.io.rfu_we
       produced(rfuAddr) := du.io.rfu_rd
       produced(rfuRdSrc) := du.io.rfu_rd_src
       produced(useRs) := du.io.use_rs
       produced(useRt) := du.io.use_rt
-      produced(exception) := du.io.exception
+      exceptionBySelf := du.io.exception
     }
 
     val rfuRead = new StageComponent {
@@ -187,6 +201,12 @@ class CPU extends Component {
       rfu.io.rb.index := input(inst).rt
       produced(rsValue) := rfu.io.ra.data
       produced(rtValue) := rfu.io.rb.data
+    }
+
+    val cp0Read = new StageComponent {
+      cp0.io.read.addr.rd := input(inst).rd
+      cp0.io.read.addr.sel := input(inst).sel
+      produced(rfuData) := cp0.io.read.data
     }
 
     val juC = new StageComponent {
@@ -230,10 +250,9 @@ class CPU extends Component {
     }
 
     produced(rfuData) := produced(rfuRdSrc) mux (
+      cp0     -> cp0Read.produced(rfuData),
       default -> B(input(pc) + 8)
     )
-
-    produced(memData) := output(rtValue)
 
     when(
       (EX.firing && EX.input(rfuWe) &&
@@ -270,23 +289,43 @@ class CPU extends Component {
     val pcValuePrev = RegNext(pcValue) init ConstantVal.INIT_PC
     pcValue := pcValuePrev
 
+    val bdValue     = Bool
+    val bdValuePrev = RegNext(bdValue) init False
+    bdValue := bdValuePrev
+    val bdNextInst = Reg(Bool) init False
+
     val IFWasStalling = RegNext(IF.firing && IF.stalls)
     when(IF.firing && !IFWasStalling) { // Starting a new instruction
       pcValue := IF.input(pc) + 4
+      bdValue := bdNextInst
+      bdNextInst := False
     }
     when(ID.firing) {
       ID.output(jumpPc).whenIsDefined { jumpPc =>
         pcValue := jumpPc
+        bdNextInst := True
+      }
+    }
+    when(ME.firing) {
+      (ME.exceptionByPrev orElse ME.exceptionBySelf).whenIsDefined {
+        exception =>
+          pcValue := U"hBFC00380"
+          bdValue := False
+          bdNextInst := False
       }
     }
 
     produced(pc) := pcValue
+    produced(bd) := bdValue
   }
 
   val stages = Seq(PC, IF, ID, EX, ME, WB)
   for ((prev, next) <- (stages zip stages.tail).reverse) {
     prev connect next
   }
+
+  PC.flush.allowOverride
+  PC.flush := False
 }
 
 object CPU {

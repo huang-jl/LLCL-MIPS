@@ -16,12 +16,12 @@ object EIU_RD_SEL extends SpinalEnum {
 }
 
 object EXCEPTION extends SpinalEnum {
-  val None, Int, // Interrupt
-  AdEIL,         // Address Error - Instruction fetch
-  RI,            // Instruction Validity Exceptions
-  Sys, Bp, Ov,   // Execution Exception
-  AdEDL, AdEDS,  // Address error - Data access
-  Eret           // ERET
+  val Int,      // Interrupt
+  AdEIL,        // Address Error - Instruction fetch
+  RI,           // Instruction Validity Exceptions
+  Sys, Bp, Ov,  // Execution Exception
+  AdEDL, AdEDS, // Address error - Data access
+  Eret          // ERET
   = newElement()
 }
 
@@ -117,7 +117,7 @@ class EIU extends Component {
   val exc = EXCEPTION()
   exc.assignFromBits(B(OHToUInt(OHMasking.first(E))))
 
-  when(exc =/= EXCEPTION.None) {
+  when(exc =/= EXCEPTION.Int) { // None
     when(!Status.EXL) {
       EPC := B(pcu.in_slot ? (pcu.pc - 4) | pcu.pc)
       Cause.BD := pcu.in_slot

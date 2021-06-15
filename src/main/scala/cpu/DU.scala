@@ -3,7 +3,7 @@ package cpu
 import defs.InstructionSpec._
 import defs.Mips32Inst
 import defs.Mips32InstImplicits._
-import lib.Key
+import lib.{Key, Optional}
 import lib.decoder.{DecoderFactory, NotConsidered}
 import spinal.core._
 
@@ -42,7 +42,7 @@ class DU extends Component {
     val use_rs = out Bool
     val use_rt = out Bool
 
-    val exception = out(EXCEPTION())
+    val exception = out(Optional(EXCEPTION()))
   }
 
   // wires
@@ -79,7 +79,7 @@ class DU extends Component {
 
   val useRs, useRt = Key(Bool)
 
-  val exception = Key(EXCEPTION())
+  val exception = Key(Optional(EXCEPTION()))
 
   //下面是默认值，避免出现Latch
   factory
@@ -102,7 +102,7 @@ class DU extends Component {
     .addDefault(juPcSrc, JU_PC_SRC.rs)
     .addDefault(useRs, False)
     .addDefault(useRt, False)
-    .addDefault(exception, EXCEPTION.None)
+    .addDefault(exception, Optional.fromNone(EXCEPTION()))
 
   // Arithmetics
   val saShifts = Map(
@@ -266,15 +266,15 @@ class DU extends Component {
   // Traps
   factory
     .when(SYSCALL)
-    .set(exception, EXCEPTION.Sys)
+    .set(exception, Optional.from(EXCEPTION(), EXCEPTION.Sys()))
 
   factory
     .when(BREAK)
-    .set(exception, EXCEPTION.Bp)
+    .set(exception, Optional.from(EXCEPTION(), EXCEPTION.Bp()))
 
   factory
     .when(ERET)
-    .set(exception, EXCEPTION.Eret)
+    .set(exception, Optional.from(EXCEPTION(), EXCEPTION.Eret()))
 
   // Load & Store
   val loads = Map(
@@ -312,7 +312,6 @@ class DU extends Component {
   // Privileged
   factory
     .when(MTC0)
-    .set(cp0Re, True)
     .set(cp0We, True)
     .set(useRt, True)
 

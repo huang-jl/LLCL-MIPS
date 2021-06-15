@@ -1,6 +1,6 @@
 package cpu
 
-import lib.{Key, Record}
+import lib.{Key, Optional, Record}
 import spinal.core._
 
 class Stage extends Area with ValCallbackRec {
@@ -13,16 +13,23 @@ class Stage extends Area with ValCallbackRec {
   val produced = Record() // Values produced by current stage
   val output   = Record() // Values output to the next stage
 
-  // Arbitration. Note that reset comes from constructor.
+  // Arbitration.
   val willReset     = Bool
   val reset         = RegNext(willReset) init True
-  val stallsBySelf  = False                   // User settable
+  val stallsBySelf  = False // User settable
   val stallsByLater = False
-  val firing        = !reset
-  val stalls        = firing && (stallsBySelf || stallsByLater)
-  val producing     = firing && !stallsBySelf // Can pass new inst to next stage
-  val prevProducing = True                    // Previous stage can pass in new inst
-  willReset := !(firing && stalls) && !prevProducing
+  val exceptionBySelf =
+    Optional.fromNone(EXCEPTION()).allowOverride // User settable
+  val exceptionByPrev = Optional.fromNone(EXCEPTION()).allowOverride
+  val exception       = exceptionByPrev orElse exceptionBySelf
+  val flushBySelf     = False // User settable
+  val flushByLater    = False
+  val flush           = flushBySelf || flushByLater
+  val firing          = !reset
+  val stalls          = firing && ((!flush && stallsBySelf) || stallsByLater)
+  val producing       = firing && !flush && !stallsBySelf
+  val prevProducing   = True.allowOverride
+  willReset := !stalls && !prevProducing
 
   val linkingScope = GlobalData.get.currentScope
 
@@ -121,10 +128,12 @@ class Stage extends Area with ValCallbackRec {
   }
 
   def connect(next: Stage) = {
-    when(!this.producing) {
-      next.prevProducing := False
-    }
+    next.prevProducing := this.producing
+    next.exceptionByPrev := this.exception
 
+    when(next.flush) {
+      flushByLater := True
+    }
     when(next.stalls) {
       stallsByLater := True
     } elsewhen (producing) {

@@ -1,10 +1,11 @@
 package cpu
 
-import _root_.cpu.Utils._
-import _root_.cpu.defs.{SramBus, SramBusConfig}
 import spinal.core._
-import spinal.lib._
+import spinal.lib.{cpu => _, _}
 import spinal.lib.fsm._
+import defs.{SramBus, SramBusConfig}
+import lib.Optional
+import Utils._
 
 object MU_EX extends SpinalEnum {
   val s, u = newElement()
@@ -22,7 +23,7 @@ class MU extends Component {
     // out
     val data_out  = out Bits (32 bits)
     val stall     = out Bool
-    val exception = out(EXCEPTION())
+    val exception = out(Optional(EXCEPTION()))
 
     //sram-like bus
     val sramBus = master(SramBus(SramBusConfig(32, 32, 2)))
@@ -36,7 +37,7 @@ class MU extends Component {
     default -> False
   )
 
-  io.exception := EXCEPTION.None
+  io.exception := None
   when (!addrValid) {
     when (io.we) {
       io.exception := EXCEPTION.AdEDS

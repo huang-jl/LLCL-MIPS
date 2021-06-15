@@ -1,6 +1,7 @@
 package cpu
 
 import spinal.core._
+import lib.Optional
 
 object ALU_OP extends SpinalEnum {
   val add, addu, sub, subu, and, or, xor, nor, sll, lu, srl, sra, mult, multu,
@@ -32,7 +33,7 @@ class ALU extends Component {
     val c = out UInt (32 bits)
     val d = out UInt (32 bits)
 
-    val exception = out(EXCEPTION())
+    val exception = out(Optional(EXCEPTION()))
   }
 
   val a = io.input.a
@@ -44,7 +45,7 @@ class ALU extends Component {
   import ALU_OP._
 
   d := 0
-  io.exception := EXCEPTION.None
+  io.exception := None
   switch(io.input.op) {
     is(add) {
       val temp = S(a, 33 bits) + S(b, 33 bits)

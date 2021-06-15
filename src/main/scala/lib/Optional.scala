@@ -68,6 +68,18 @@ class Optional[T <: Data](val `type`: HardType[T]) extends Bundle {
 object Optional {
   def apply[T <: Data](`type`: HardType[T]) = new Optional(`type`)
 
+  def fromNone[T <: Data](`type`: HardType[T]) = {
+    val optional = new Optional(`type`)
+    optional := None
+    optional
+  }
+
+  def from[T <: Data](`type`: HardType[T], value: T) = {
+    val optional = new Optional(`type`)
+    optional := value
+    optional
+  }
+
   def fromFlow[T <: Data](flow: Flow[T]) = {
     val optional = Optional(flow.payloadType)
     when(flow.valid) {
