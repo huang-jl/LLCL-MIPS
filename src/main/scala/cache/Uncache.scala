@@ -1,10 +1,22 @@
 package cache
+//
 
 import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.amba4.axi.{Axi4, Axi4Config}
-import spinal.lib.fsm.{EntryPoint, State, StateMachine}
+import spinal.lib.fsm._
 
+//
+//object Test {
+//  def main(args:Array[String]): Unit ={
+//    SpinalVerilog(new Test)
+//  }
+//}
+//class Test extends Component {
+//  val data = Vec(Bits(32 bits), 8)
+//  val addr = UInt(3 bits)
+//  data(addr)(0, 8 bits) := B(0, 8 bits)
+//}
 object Uncache {
   val axiConfig = Axi4Config(
     addressWidth = 32, dataWidth = 32, idWidth = 4,
@@ -69,52 +81,50 @@ class Uncache extends Component {
   io.axi.b.ready := True
 
   val uncacheFSM = new StateMachine {
-    val IDLE: State = new State with EntryPoint {
-      whenIsActive {
-        when(io.cpu.write)(goto(WRITE_START))
-          .elsewhen(io.cpu.read)(goto(READ_START))
+    val readWaitAXIReady = new State
+    val writeWaitAXIReady = new State
+    val readMem = new State
+    val writeMem = new State
+    val waitAXIBValid = new State
+    val done = new State
+    setEntry(stateBoot)
+    disableAutoStart()
+
+    stateBoot.whenIsActive {
+      when(io.cpu.write)(goto(writeWaitAXIReady))
+        .elsewhen(io.cpu.read)(goto(readWaitAXIReady))
+    }
+    readWaitAXIReady.whenIsActive {
+      io.axi.ar.valid := True
+      when(io.axi.ar.ready)(goto(readMem))
+    }
+
+    readMem.whenIsActive {
+      when(io.axi.r.last & io.axi.r.valid) {
+        io.axi.r.ready := True
+        recv := io.axi.r.data
+        goto(done)
       }
     }
-    val READ_START: State = new State {
-      whenIsActive {
-        io.axi.ar.valid := True
-        when(io.axi.ar.ready)(goto(READ))
-      }
+
+    writeWaitAXIReady.whenIsActive {
+      io.axi.aw.valid := True
+      when(io.axi.aw.ready)(goto(writeMem))
     }
-    val READ: State = new State {
-      whenIsActive {
-        when(io.axi.r.last & io.axi.r.valid) {
-          io.axi.r.ready := True
-          recv := io.axi.r.data
-          goto(DONE)
-        }
-      }
+
+    writeMem.whenIsActive {
+      io.axi.w.last := True
+      io.axi.w.valid := True
+      when(io.axi.w.ready)(goto(waitAXIBValid))
     }
-    val WRITE_START: State = new State {
-      whenIsActive {
-        io.axi.aw.valid := True
-        when(io.axi.aw.ready)(goto(WRITE))
-      }
+    waitAXIBValid.whenIsActive {
+      when(io.axi.b.valid)(goto(done))
     }
-    val WRITE: State = new State {
-      whenIsActive {
-        io.axi.w.last := True
-        io.axi.w.valid := True
-        when(io.axi.w.ready)(goto(WAIT_B))
-      }
-    }
-    val WAIT_B: State = new State {
-      whenIsActive {
-        when(io.axi.b.valid)(goto(DONE))
-      }
-    }
-    val DONE: State = new State {
-      whenIsActive(goto(IDLE))
-    }
+    done.whenIsActive(goto(stateBoot))
   }
 
   //cpu send uncached request have to wait one cycle
-  io.cpu.stall := !(uncacheFSM.isActive(uncacheFSM.DONE) ||
-    (uncacheFSM.isActive(uncacheFSM.IDLE) && !io.cpu.read && !io.cpu.write))
+  io.cpu.stall := !(uncacheFSM.isActive(uncacheFSM.done) ||
+    (uncacheFSM.isActive(uncacheFSM.stateBoot) && !io.cpu.read && !io.cpu.write))
   io.cpu.rdata := recv
 }
