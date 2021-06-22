@@ -117,7 +117,7 @@ object InstructionSpec {
   private def cop0co(fn: String, fillZeros: Boolean = true) = {
     val spec = InstructionSpec()
       .force(Fields.op, "010000")
-      .force(Fields.co, "0")
+      .force(Fields.co, "1")
       .force(Fields.fn, fn)
     if (fillZeros) spec.force(24 downto 6, "0" * 19) else spec
   }

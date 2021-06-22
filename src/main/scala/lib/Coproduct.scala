@@ -26,9 +26,21 @@ case class Coproduct(hardTypes: HardType[_ <: Data]*) extends Bundle {
       }
       .get
 
-  def assignFrom[T <: Data](data: T) = {
+  def :=[T <: Data](data: T) = {
     `type` := find(data)
     bits := data.asBits.resized
+  }
+
+  def init[T <: Data](data: T): this.type = {
+    val that = copy()
+    that := data
+    this init that
+  }
+
+  def default[T <: Data](data: T): this.type = {
+    val that = copy()
+    that := data
+    this default data
   }
 
   def is[T <: Data](target: HardType[T]) = `type` === find(target())
@@ -43,7 +55,7 @@ case class Coproduct(hardTypes: HardType[_ <: Data]*) extends Bundle {
   def asType[T <: Data](target: HardType[T]): T = {
     assert(`type` === find(target()))
     val result = target()
-    result assignFromBits bits.resize(target.getBitsWidth)
+    result assignFromBits bits.resize(widthOf(target))
     result
   }
 }

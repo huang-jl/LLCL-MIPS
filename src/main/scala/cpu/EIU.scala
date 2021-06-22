@@ -16,13 +16,21 @@ object EIU_RD_SEL extends SpinalEnum {
 }
 
 object EXCEPTION extends SpinalEnum {
-  val Int,      // Interrupt
-  AdEIL,        // Address Error - Instruction fetch
-  RI,           // Instruction Validity Exceptions
-  Sys, Bp, Ov,  // Execution Exception
-  AdEDL, AdEDS, // Address error - Data access
-  Eret          // ERET
+  val Int,    // Interrupt
+  AdEL, AdES, // Address Error
+  RI,         // Instruction Validity Exceptions
+  Sys, Bp, Ov // Execution Exception
   = newElement()
+
+  defaultEncoding = SpinalEnumEncoding("ExcCode")(
+    Int   -> 0x00,
+    RI    -> 0x0a,
+    Sys   -> 0x08,
+    Bp    -> 0x09,
+    Ov    -> 0x0c,
+    AdEL -> 0x04,
+    AdES -> 0x05
+  )
 }
 
 class EIU extends Component {
@@ -130,9 +138,6 @@ class EIU extends Component {
     is(EXCEPTION.Int) {
       Cause.ExcCode := 0x00
     }
-    is(EXCEPTION.AdEIL) {
-      Cause.ExcCode := 0x04
-    }
     is(EXCEPTION.RI) {
       Cause.ExcCode := 0x0a
     }
@@ -145,10 +150,10 @@ class EIU extends Component {
     is(EXCEPTION.Ov) {
       Cause.ExcCode := 0x0c
     }
-    is(EXCEPTION.AdEDL) {
+    is(EXCEPTION.AdEL) {
       Cause.ExcCode := 0x04
     }
-    is(EXCEPTION.AdEDS) {
+    is(EXCEPTION.AdES) {
       Cause.ExcCode := 0x05
     }
   }

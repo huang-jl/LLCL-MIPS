@@ -89,14 +89,14 @@ case class Decoder(
     config: DecoderConfig,
     input: Bits
 ) extends Area {
-  assert(input.getBitsWidth == config.inputWidth)
+  assert(widthOf(input) == config.inputWidth)
 
   val keys = config.keys
   val output = Record(keys)
 
   val offsets = (keys
     .scanLeft(0) { case (currentOffset, key) =>
-      currentOffset + key.`type`.getBitsWidth
+      currentOffset + widthOf(key.`type`)
     })
   val outputWidth = offsets.last
 

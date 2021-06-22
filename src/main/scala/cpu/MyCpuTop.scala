@@ -85,6 +85,7 @@ class MyCPUTop extends Component {
     io.wid := cpuAxiInterface.io.wid
 
     val cpu = new CPU
+    cpu.io.externalInterrupt := io.ext_int
     cpu.io.iSramBus >> cpuAxiInterface.io.inst
     cpu.io.dSramBus >> cpuAxiInterface.io.data
     io.debug := cpu.io.debug

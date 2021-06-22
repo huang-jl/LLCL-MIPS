@@ -43,6 +43,7 @@ class DU extends Component {
     val use_rt = out Bool
 
     val exception = out(Optional(EXCEPTION()))
+    val eret      = out Bool
   }
 
   // wires
@@ -80,6 +81,7 @@ class DU extends Component {
   val useRs, useRt = Key(Bool)
 
   val exception = Key(Optional(EXCEPTION()))
+  val eret      = Key(Bool)
 
   //下面是默认值，避免出现Latch
   factory
@@ -103,6 +105,7 @@ class DU extends Component {
     .addDefault(useRs, False)
     .addDefault(useRt, False)
     .addDefault(exception, Optional.fromNone(EXCEPTION()))
+    .addDefault(eret, False)
 
   // Arithmetics
   val saShifts = Map(
@@ -266,15 +269,15 @@ class DU extends Component {
   // Traps
   factory
     .when(SYSCALL)
-    .set(exception, Optional.from(EXCEPTION(), EXCEPTION.Sys()))
+    .set(exception, Optional.from(EXCEPTION())(EXCEPTION.Sys()))
 
   factory
     .when(BREAK)
-    .set(exception, Optional.from(EXCEPTION(), EXCEPTION.Bp()))
+    .set(exception, Optional.from(EXCEPTION())(EXCEPTION.Bp()))
 
   factory
     .when(ERET)
-    .set(exception, Optional.from(EXCEPTION(), EXCEPTION.Eret()))
+    .set(eret, True)
 
   // Load & Store
   val loads = Map(
@@ -362,6 +365,7 @@ class DU extends Component {
   } otherwise {
     io.exception := decoder.output(exception)
   }
+  io.eret := decoder.output(eret)
 
   /*
   when(op === OP_FIELD_CONST.SPECIAL) {

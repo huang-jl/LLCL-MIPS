@@ -40,9 +40,9 @@ class MU extends Component {
   io.exception := None
   when (!addrValid) {
     when (io.we) {
-      io.exception := EXCEPTION.AdEDS
+      io.exception := EXCEPTION.AdES
     } elsewhen(io.re) {
-      io.exception := EXCEPTION.AdEDL
+      io.exception := EXCEPTION.AdEL
     }
   }
 

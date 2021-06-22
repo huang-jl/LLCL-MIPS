@@ -2,11 +2,12 @@ package lib
 
 import spinal.core._
 import spinal.lib._
+import spinal.core.internals.BitsLiteral
 
 class Optional[T <: Data](val `type`: HardType[T]) extends Bundle {
   // If necessary, may apply Rust-like niche optimization to this?
   val isDefined = Bool
-  val bits      = Bits(`type`.getBitsWidth bits)
+  val bits      = Bits(widthOf(`type`) bits)
 
   def copy() = Optional(`type`)
 
@@ -14,10 +15,31 @@ class Optional[T <: Data](val `type`: HardType[T]) extends Bundle {
     bits := data.asBits
     isDefined := True
   }
+  def init(data: T) = {
+    bits init data.asBits
+    isDefined init True
+    this
+  }
+  def default(data: T): Optional[T] = {
+    bits default data.asBits
+    isDefined default True
+    this
+  }
 
   def :=(none: None.type) = {
     bits.assignDontCare()
     isDefined := False
+  }
+  def init(none: None.type) = {
+    isDefined init False
+    this
+  }
+  def default(none: None.type) = {
+    val defaultValue = cloneOf(bits)
+    defaultValue.assignDontCare()
+    bits default defaultValue
+    isDefined default False
+    this
   }
 
   def whenIsDefined(block: T => Unit) = {
@@ -33,7 +55,7 @@ class Optional[T <: Data](val `type`: HardType[T]) extends Bundle {
     t
   }
 
-  def isEmpty = !isDefined
+  def isEmpty  = !isDefined
   def nonEmpty = isDefined
 
   def getOrElse(other: T) = {
@@ -50,7 +72,7 @@ class Optional[T <: Data](val `type`: HardType[T]) extends Bundle {
     val result = Optional(`type`)
     when(isDefined) {
       result := this
-    } elsewhen(other.isDefined) {
+    } elsewhen (other.isDefined) {
       result := other
     } otherwise {
       result := None
@@ -62,6 +84,7 @@ class Optional[T <: Data](val `type`: HardType[T]) extends Bundle {
     val flow = Flow(`type`)
     flow.valid := isDefined
     flow.payload assignFromBits bits
+    flow
   }
 }
 
@@ -74,7 +97,7 @@ object Optional {
     optional
   }
 
-  def from[T <: Data](`type`: HardType[T], value: T) = {
+  def from[T <: Data](`type`: HardType[T])(value: T) = {
     val optional = new Optional(`type`)
     optional := value
     optional
