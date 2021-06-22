@@ -253,11 +253,10 @@ class CPU extends Component {
     when(finishing) {
       bdValue := du.io.ju_op =/= JU_OP.f
     }
-    produced(bd) := bdValue
-
     when(wantsFlush) {
       bdValue := False
     }
+    produced(bd) := bdValue
 
     when(
       EX.valid && EX.currentInput(rfuWe) &&

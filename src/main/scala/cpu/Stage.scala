@@ -12,23 +12,31 @@ class Stage extends Area with ValCallbackRec {
   val input                = Record() // Values serving as StageComponent input
   val produced             = Record() // Values produced by current stage
   val output               = Record() // Values output to the next stage
-  private val inputStored  = Record()
-  private val outputStored = Record()
-  val currentInput         = Record()
-  val currentOutput        = Record()
 
-  val exceptionToRaise = Optional(EXCEPTION()) default None
+  // Additional I/O Records for being referenced from other stages.
+  // currentInput does not reset even after the stage finishes its work.
+  // currentOutput keeps its value even after the input resets, when the stage
+  // can not reproduce the output.
+  val currentInput         = Record() // Input for the inst, not reset
+  val currentOutput        = Record() // Output of the inst, kept unchanged
+  private val inputStored  = Record() // Aux regs to implement currentInput
+  private val outputStored = Record() // Aux regs to implement currentOutput
+
+  // Exceptions.
+  val exceptionToRaise = Optional(EXCEPTION()) default None // User settable
   val prevException    = Reg(Optional(EXCEPTION())) init None
   val exception =
     Updating(Optional(EXCEPTION())) init Optional.fromNone(EXCEPTION())
 
   // Start of arbitration.
   // States
-  val empty   = Updating(Bool) init True
-  val idle    = Updating(Bool) init True
+  val empty   = Updating(Bool) init True // Contains no instruction
+  val idle    = Updating(Bool) init True // The current instruction is finished
   val toFlush = Reg(Bool) init False
+  // Immediate flushing might not be possible,
+  // so the will to flush is stored until "flushable".
 
-  // Signals, user settable
+  // Signals, user settable.
   val stalls       = False.allowOverride
   val signalsFlush = False.allowOverride
   val flushable    = True.allowOverride
@@ -54,14 +62,20 @@ class Stage extends Area with ValCallbackRec {
   empty.next := !receiving && waitingInput
   idle.next := !empty.prev && !receiving && !sending && (idle.prev || finishing) && !doesFlush
 
+  // Makes this stage reset its input in the next cycle.
+  // Though might not be a designated use,
+  // this can be used to force an instruction to be finished in one cycle.
   val willReset = empty.next || idle.next
-  val valid     = !empty.prev
+
+  val valid = !empty.prev
 
   when(firing) {
     exception.next := exception.prev orElse exceptionToRaise
   }
 
   // End of arbitration.
+
+  // Default linkings between I/O Records.
 
   val currentScope = GlobalData.get.currentScope
 
@@ -130,8 +144,7 @@ class Stage extends Area with ValCallbackRec {
     }
   })
 
-  /** Called at initialization of StageComponent.
-    */
+  // Called at initialization of StageComponent.
   def addComponent(component: StageComponent) = {
     component.input.keys foreach { case key =>
       component.input(key) := input(key)
@@ -163,6 +176,8 @@ class Stage extends Area with ValCallbackRec {
     }
   }
 
+  // Set reset value for a specific input key.
+  // If not set, then that input is preserved een when willReset.
   def setInputReset[T <: Data](key: Key[T], resetValue: T) = {
     read(key) init resetValue
     when(willReset) {
