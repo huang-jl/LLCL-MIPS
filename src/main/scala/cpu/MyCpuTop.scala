@@ -5,6 +5,7 @@ import spinal.lib._
 import spinal.lib.bus.amba4.axi._
 
 import defs.{SramBus, ConstantVal}
+import ip.CrossBarIP
 
 class CpuAXIInterface extends BlackBox {
   setDefinitionName("cpu_axi_interface")
@@ -46,14 +47,15 @@ class CpuAXIInterface extends BlackBox {
 
 case class DebugInterface() extends Bundle {
   val wb = new Bundle {
-    val pc = UInt (32 bits)
+    val pc = UInt(32 bits)
     val rf = new Bundle {
-      val wen = Bits (4 bits)
-      val wnum = UInt (5 bits)
-      val wdata = Bits (32 bits)
+      val wen = Bits(4 bits)
+      val wnum = UInt(5 bits)
+      val wdata = Bits(32 bits)
     }
   }
 }
+
 
 class MyCPUTop extends Component {
   setDefinitionName("mycpu_top")
@@ -80,15 +82,14 @@ class MyCPUTop extends Component {
   )
 
   val clockingArea = new ClockingArea(aClockDomain) {
-    val cpuAxiInterface = new CpuAXIInterface
-    io.axi << cpuAxiInterface.io.axi
-    io.wid := cpuAxiInterface.io.wid
-
     val cpu = new CPU
+    val crossbar = CrossBarIP(3, 1) //3 x 1 AXI4 CrossBar
+    CrossBarIP.connect(crossbar,
+      Array(cpu.io.icacheAXI, cpu.io.dcacheAXI, cpu.io.uncacheAXI),
+      Array(io.axi))
     cpu.io.externalInterrupt := io.ext_int
-    cpu.io.iSramBus >> cpuAxiInterface.io.inst
-    cpu.io.dSramBus >> cpuAxiInterface.io.data
     io.debug := cpu.io.debug
+    io.wid := 0
   }
 
   noIoPrefix()

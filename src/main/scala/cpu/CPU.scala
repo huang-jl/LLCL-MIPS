@@ -1,23 +1,27 @@
 package cpu
 
 import defs.Mips32InstImplicits._
-import defs.{ConstantVal, Mips32Inst, SramBus, SramBusConfig}
+import defs.{ConstantVal, Mips32Inst}
+import cache.CacheRamConfig
 import lib.{Key, Optional, Updating}
+
 import spinal.core._
 import spinal.lib.{cpu => _, _}
+import spinal.lib.bus.amba4.axi._
 
 class CPU extends Component {
   val io = new Bundle {
     val externalInterrupt = in Bits (6 bits)
-    val iSramBus          = master(SramBus(SramBusConfig(32, 32, 2)))
-    val dSramBus          = master(SramBus(SramBusConfig(32, 32, 2)))
+    val icacheAXI         = master(Axi4(ConstantVal.AXI_BUS_CONFIG))
+    val dcacheAXI         = master(Axi4(ConstantVal.AXI_BUS_CONFIG))
+    val uncacheAXI        = master(Axi4(ConstantVal.AXI_BUS_CONFIG))
     val debug             = out(DebugInterface())
   }
-  val icu = new MU
+  val icu = new ICU(CacheRamConfig(sim=true))
   val du  = new DU
   val ju  = new JU
   val alu = new ALU
-  val dcu = new MU
+  val dcu = new DCU(CacheRamConfig(sim=true), 8)
   val hlu = new HLU
   val rfu = new RFU
   val cp0 = new CP0
@@ -76,14 +80,18 @@ class CPU extends Component {
 
   val ME = new Stage {
     val dcuC = new StageComponent {
-      io.dSramBus <> dcu.io.sramBus
+      io.dcacheAXI <> dcu.io.axi
+      io.uncacheAXI <> dcu.io.uncacheAXI
 
-      dcu.io.re := input(memRe)
-      dcu.io.we := input(memWe)
-      dcu.io.be := input(memBe)
-      dcu.io.ex := input(memEx)
+      dcu.io.read := input(memRe)
+      dcu.io.write := input(memWe)
+      dcu.io.byteEnable := input(memBe)
+      dcu.io.extend := input(memEx)
       dcu.io.addr := input(memAddr)
-      dcu.io.data_in := input(rtValue)
+      dcu.io.wdata := input(rtValue)
+      when(input(memAddr) <= U"32'hBFFF_FFFF" & input(memAddr) >= U"32'hA000_0000") {
+        dcu.io.uncache := True
+      }.otherwise(dcu.io.uncache := False)
       setInputReset(memRe, False)
       setInputReset(memWe, False)
 
@@ -92,7 +100,7 @@ class CPU extends Component {
         flushable := False
       }
 
-      produced(rfuData) := dcu.io.data_out
+      produced(rfuData) := dcu.io.rdata
       exceptionToRaise := dcu.io.exception
     }
 
@@ -314,21 +322,17 @@ class CPU extends Component {
 
   val IF = new Stage {
     val icuC = new StageComponent {
-      io.iSramBus <> icu.io.sramBus
+      io.icacheAXI <> icu.io.axi
 
-      icu.io.addr := input(pc)
-      icu.io.re := True
-      icu.io.we := False
-      icu.io.be := U"11"
-      icu.io.data_in.assignDontCare()
-      icu.io.ex.assignDontCare()
+      icu.io.ibus.addr := input(pc)
+      icu.io.ibus.read := True
 
-      when(icu.io.stall) {
+      when(icu.io.ibus.stall) {
         stalls := True
         flushable := False
       }
 
-      produced(inst) := icu.io.data_out
+      produced(inst) := icu.io.ibus.data
       exceptionToRaise := icu.io.exception
     }
   }
