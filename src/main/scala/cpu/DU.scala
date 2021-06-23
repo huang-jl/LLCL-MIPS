@@ -3,6 +3,7 @@ package cpu
 import defs.InstructionSpec._
 import defs.Mips32Inst
 import defs.Mips32InstImplicits._
+import defs.ConstantVal
 import lib.{Key, Optional}
 import lib.decoder.{DecoderFactory, NotConsidered}
 import spinal.core._
@@ -44,6 +45,16 @@ class DU extends Component {
 
     val exception = out(Optional(EXCEPTION()))
     val eret      = out Bool
+
+    //tlb相关
+    //读tlb到CP0
+    val tlbr  = Utils.instantiateWhen(Bool, ConstantVal.USE_TLB, out)
+    //CP0写到tlb
+    val tlbw  = Utils.instantiateWhen(Bool, ConstantVal.USE_TLB, out)
+    //probe tlb
+    val tlbp  = Utils.instantiateWhen(Bool, ConstantVal.USE_TLB, out)
+    //tlbw index src
+    val tlbIndexSrc = Utils.instantiateWhen(TLBIndexSrc(), ConstantVal.USE_TLB, out)
   }
 
   // wires
@@ -83,6 +94,9 @@ class DU extends Component {
   val exception = Key(Optional(EXCEPTION()))
   val eret      = Key(Bool)
 
+  val tlbr, tlbw, tlbp = Key(Bool)
+  val tlbIndexSrc = Key(TLBIndexSrc())
+
   //下面是默认值，避免出现Latch
   factory
     .addDefault(aluOp, ALU_OP.addu)
@@ -106,6 +120,10 @@ class DU extends Component {
     .addDefault(useRt, False)
     .addDefault(exception, Optional.fromNone(EXCEPTION()))
     .addDefault(eret, False)
+    .addDefault(tlbr, False)
+    .addDefault(tlbw, False)
+    .addDefault(tlbp, False)
+    .addDefault(tlbIndexSrc, TLBIndexSrc.Index)
 
   // Arithmetics
   val saShifts = Map(
@@ -324,6 +342,23 @@ class DU extends Component {
     .set(rfuRd, RFU_RD.rt)
     .set(rfuRdSrc, RFU_RD_SRC.cp0)
 
+  //TLB
+  if(ConstantVal.USE_TLB) {
+    factory
+      .when(TLBR)
+      .set(tlbr, True)
+    factory
+      .when(TLBWI)
+      .set(tlbw, True)
+      .set(tlbIndexSrc, TLBIndexSrc.Index)
+    factory
+      .when(TLBWR)
+      .set(tlbw, True)
+      .set(tlbIndexSrc, TLBIndexSrc.Random)
+    factory
+      .when(TLBP)
+      .set(tlbp, True)
+  }
   // TODO
 
   val decoder = factory.createDecoder(io.inst)
@@ -367,6 +402,12 @@ class DU extends Component {
   }
   io.eret := decoder.output(eret)
 
+  if(ConstantVal.USE_TLB){
+    io.tlbr := decoder.output(tlbr)
+    io.tlbw := decoder.output(tlbw)
+    io.tlbp := decoder.output(tlbp)
+    io.tlbIndexSrc := decoder.output(tlbIndexSrc)
+  }
   /*
   when(op === OP_FIELD_CONST.SPECIAL) {
     io.rfu_rd := inst.rd
@@ -551,4 +592,5 @@ object DU {
   def main(args: Array[String]): Unit = {
     SpinalVerilog(new DU)
   }
+
 }

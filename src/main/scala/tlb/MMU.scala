@@ -9,8 +9,8 @@ import spinal.lib._
 /** useTLB: 是否使用TLB进行地址转换，useMask：是否在TLB中使用mask（是否实现了PageMask） */
 class CPUMMUInterface(useTLB: Boolean, useMask: Boolean) extends Bundle with IMasterSlave {
   val asid = Bits(TLBConfig.asidWidth bits) //当前EntryHi对应的ASID
-  val instVaddr = Bits(32 bits) //指令对应虚拟地址
-  val dataVaddr = Bits(32 bits) //数据对应虚拟地址
+  val instVaddr = UInt(32 bits) //指令对应虚拟地址
+  val dataVaddr = UInt(32 bits) //数据对应虚拟地址
   val instRes = new TLBTranslationRes
   val dataRes = new TLBTranslationRes
   val instCached = Bool //inst取指是否需要经过cache
@@ -33,8 +33,8 @@ class CPUMMUInterface(useTLB: Boolean, useMask: Boolean) extends Bundle with IMa
       in(instRes, dataRes, rdata, probeIndex, instCached, dataCached)
       out(asid, instVaddr, dataVaddr, index, wdata, write, probeVPN2, probeASID)
     } else {
-      in(instRes, dataRes, instCached)
-      out(asid, instVaddr, dataVaddr, dataCached)
+      in(instRes, dataRes, instCached, dataCached)
+      out(asid, instVaddr, dataVaddr)
     }
   }
 }
@@ -72,11 +72,11 @@ class MMU(useTLB: Boolean, useMask: Boolean) extends Component {
     dataMapped := !MMU.isUnmappedSection(io.dataVaddr)
     when(!instMapped) {
       io.instRes.miss := False
-      io.instRes.paddr := B(0, 3 bits) ## io.instVaddr(0, 29 bits)
+      io.instRes.paddr := (B(0, 3 bits) ## io.instVaddr(0, 29 bits)).asUInt
     }
     when(!dataMapped) {
       io.dataRes.miss := False
-      io.dataRes.paddr := B(0, 3 bits) ## io.dataVaddr(0, 29 bits)
+      io.dataRes.paddr := (B(0, 3 bits) ## io.dataVaddr(0, 29 bits)).asUInt
     }
   } else {
     //miss已经默认为False了
@@ -84,8 +84,8 @@ class MMU(useTLB: Boolean, useMask: Boolean) extends Component {
     io.dataRes.assignFromBits(B(0, io.dataRes.getBitsWidth bits))
     io.instRes.allowOverride
     io.dataRes.allowOverride
-    io.instRes.paddr := B(0, 3 bits) ## io.instVaddr(0, 29 bits)
-    io.dataRes.paddr := B(0, 3 bits) ## io.dataVaddr(0, 29 bits)
+    io.instRes.paddr := (B(0, 3 bits) ## io.instVaddr(0, 29 bits)).asUInt
+    io.dataRes.paddr := (B(0, 3 bits) ## io.dataVaddr(0, 29 bits)).asUInt
 
     io.instCached := !MMU.isUncachedSection(io.instVaddr)
     io.dataCached := !MMU.isUncachedSection(io.dataVaddr)
@@ -97,11 +97,11 @@ object MMU {
     SpinalVerilog(new MMU(true, false))
   }
 
-  def isUncachedSection(vaddr: Bits): Bool = {
-    vaddr(29, 3 bits) === B"3'b101"
+  def isUncachedSection(vaddr: UInt): Bool = {
+    vaddr(29, 3 bits) === U"3'b101"
   }
 
-  def isUnmappedSection(vaddr: Bits): Bool = {
-    vaddr(30, 2 bits) === B"2'b10"
+  def isUnmappedSection(vaddr: UInt): Bool = {
+    vaddr(30, 2 bits) === U"2'b10"
   }
 }

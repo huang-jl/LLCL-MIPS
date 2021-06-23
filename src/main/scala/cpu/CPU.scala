@@ -4,13 +4,13 @@ import defs.Mips32InstImplicits._
 import defs.{ConstantVal, Mips32Inst}
 import cache.CacheRamConfig
 import lib.{Key, Optional, Updating}
+import tlb.{MMU, CPUMMUInterface}
 
 import spinal.core._
 import spinal.lib.{cpu => _, _}
 import spinal.lib.bus.amba4.axi._
 
-/** sim: 表明是否是仿真，会对cache和fifo做初始化 */
-class CPU(sim: Boolean = true) extends Component {
+class CPU extends Component {
   val io = new Bundle {
     val externalInterrupt = in Bits (6 bits)
     val icacheAXI         = master(Axi4(ConstantVal.AXI_BUS_CONFIG))
@@ -18,14 +18,18 @@ class CPU(sim: Boolean = true) extends Component {
     val uncacheAXI        = master(Axi4(ConstantVal.AXI_BUS_CONFIG))
     val debug             = out(DebugInterface())
   }
-  val icu = new ICU(CacheRamConfig(sim=sim))
+  val icu = new ICU(CacheRamConfig(blockSize = ConstantVal.IcacheLineSize,
+    indexWidth = ConstantVal.IcacheIndexWIdth, wayNum = ConstantVal.IcacheWayNum, sim = ConstantVal.SIM))
   val du  = new DU
   val ju  = new JU
   val alu = new ALU
-  val dcu = new DCU(CacheRamConfig(sim=sim), 8)
+  val dcu = new DCU(CacheRamConfig(blockSize = ConstantVal.DcacheLineSize,
+    indexWidth = ConstantVal.DcacheIndexWIdth, wayNum = ConstantVal.DcacheWayNum, sim = ConstantVal.SIM),
+    fifoDepth = ConstantVal.DcacheFifoDepth)
   val hlu = new HLU
   val rfu = new RFU
   val cp0 = new CP0
+  val mmu = new MMU(useTLB = ConstantVal.USE_TLB, useMask = ConstantVal.USE_MASK)
 
   val jumpPc = Key(Optional(UInt(32 bits)))
 
@@ -60,6 +64,20 @@ class CPU(sim: Boolean = true) extends Component {
   val rsValue    = Key(Bits(32 bits))
   val rtValue    = Key(Bits(32 bits))
 
+  //TODO 实现CP0后需要做额外的连线
+  //MMU input signal
+  if(!ConstantVal.USE_TLB) {
+    mmu.io.asid.assignDontCare()
+  }else{
+    mmu.io.asid := cp0.io.tlbBus.cp0.asid
+    mmu.io.index := cp0.io.tlbBus.index
+    mmu.io.wdata := cp0.io.tlbBus.cp0
+    mmu.io.probeVPN2 := cp0.io.tlbBus.cp0.vpn2
+    mmu.io.probeASID := cp0.io.tlbBus.cp0.asid
+    //used for TLBR
+    cp0.io.tlbBus.tlbrEntry := mmu.io.rdata
+  }
+
   // Later stages may depend on earlier stages, so stages are list in reversed order.
 
   val WB = new Stage {
@@ -83,17 +101,16 @@ class CPU(sim: Boolean = true) extends Component {
     val dcuC = new StageComponent {
       io.dcacheAXI <> dcu.io.axi
       io.uncacheAXI <> dcu.io.uncacheAXI
-
+      //dbus
       dcu.io.read := input(memRe)
       dcu.io.write := input(memWe)
       dcu.io.byteEnable := input(memBe)
       dcu.io.extend := input(memEx)
-      dcu.io.addr := input(memAddr)
+      dcu.io.addr := mmu.io.dataRes.paddr
+      dcu.io.uncache := !mmu.io.dataCached
       dcu.io.wdata := input(rtValue)
-      when(input(memAddr) <= U"32'hBFFF_FFFF" & input(memAddr) >= U"32'hA000_0000") {
-        dcu.io.uncache := True
-        dcu.io.addr := (B(0, 3 bits) ## input(memAddr)(0, 29 bits)).asUInt
-      }.otherwise(dcu.io.uncache := False)
+      // MMU
+      mmu.io.dataVaddr := input(memAddr)
       setInputReset(memRe, False)
       setInputReset(memWe, False)
 
@@ -325,10 +342,11 @@ class CPU(sim: Boolean = true) extends Component {
   val IF = new Stage {
     val icuC = new StageComponent {
       io.icacheAXI <> icu.io.axi
-
-      icu.io.ibus.addr := (B(0, 3 bits) ## input(pc)(0, 29 bits)).asUInt
+      //ibus
+      icu.io.ibus.addr := mmu.io.instRes.paddr
       icu.io.ibus.read := True
-
+      //mmu
+      mmu.io.instVaddr := input(pc)
       when(icu.io.ibus.stall) {
         stalls := True
         flushable := False

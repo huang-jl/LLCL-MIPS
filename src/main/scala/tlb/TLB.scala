@@ -3,25 +3,24 @@ package tlb
 import spinal.core._
 import spinal.lib.OHToUInt
 
-//目前仅支持4KiB的页
+import cpu.defs.ConstantVal
+
+//R1仅支持4KiB的页
 
 object TLBConfig {
-  /** TLB表项的个数 */
-  val tlbEntryNum = 16
-
   // 常量
   val maskWidth = 16
   val vpn2Width = 19
   val asidWidth = 8
-  val pfnWidth = 36 - 12 //可修改
+  val pfnWidth = ConstantVal.PABITS - 12
   val cacheAttrWidth = 3
-  val tlbIndexWidth = log2Up(tlbEntryNum)
+  val tlbIndexWidth = log2Up(ConstantVal.TLBEntryNum)
 }
 
 /** TLB翻译的结果 */
 class TLBTranslationRes extends Bundle {
   /** 翻译得到的物理地址 */
-  val paddr = Bits(32 bits)
+  val paddr = UInt(32 bits)
   /** TLB Entry中对应的Cacheability and Coherency Attribute */
   val cacheAttr = Bits(TLBConfig.cacheAttrWidth bits)
   /** 是否查到TLB，dirty位是否是1，valid位是否是1 */
@@ -31,19 +30,19 @@ class TLBTranslationRes extends Bundle {
 
   //根据每一个表项hit的情况，来对TLBTranslationRes进行赋值
   def assignFromHit(hit: Bits, evenOddBit: Bool, entry: Vec[TLBEntry]): Unit = {
-    assert(entry.length == TLBConfig.tlbEntryNum)
-    assert(hit.getBitsWidth == TLBConfig.tlbEntryNum)
+    assert(entry.length == ConstantVal.TLBEntryNum)
+    assert(hit.getBitsWidth == ConstantVal.TLBEntryNum)
     this.miss := hit.orR
     this.index := OHToUInt(hit)
     when(evenOddBit) {
       //evenOddBit为1，选择pfn1
-      this.paddr(12, 20 bits) := entry(this.index).pfn1(0, 20 bits)
+      this.paddr(12, 20 bits) := entry(this.index).pfn1(0, 20 bits).asUInt
       this.dirty := entry(this.index).D1
       this.valid := entry(this.index).V1
       this.cacheAttr := entry(this.index).C1
     }.otherwise {
       //evenOddBit为0，选择pfn0
-      this.paddr(12, 20 bits) := entry(this.index).pfn0(0, 20 bits)
+      this.paddr(12, 20 bits) := entry(this.index).pfn0(0, 20 bits).asUInt
       this.dirty := entry(this.index).D0
       this.valid := entry(this.index).V0
       this.cacheAttr := entry(this.index).C0
@@ -63,8 +62,8 @@ class TLBEntry(useMask: Boolean = true) extends Bundle {
 class TLB(useMask: Boolean) extends Component {
   val io = new Bundle {
     val asid = in Bits (TLBConfig.asidWidth bits) //当前EntryHi对应的ASID
-    val instVaddr = in Bits (32 bits) //指令对应虚拟地址
-    val dataVaddr = in Bits (32 bits) //数据对应虚拟地址
+    val instVaddr = in UInt (32 bits) //指令对应虚拟地址
+    val dataVaddr = in UInt (32 bits) //数据对应虚拟地址
     val instRes = out(new TLBTranslationRes)
     val dataRes = out(new TLBTranslationRes)
 
@@ -81,26 +80,26 @@ class TLB(useMask: Boolean) extends Component {
   }
 
   val addr = new Area {
-    val instVPN2 = io.instVaddr(13, TLBConfig.vpn2Width bits) //31 downto 13
-    val dataVPN2 = io.dataVaddr(13, TLBConfig.vpn2Width bits)
+    val instVPN2 = io.instVaddr(13, TLBConfig.vpn2Width bits).asBits //31 downto 13
+    val dataVPN2 = io.dataVaddr(13, TLBConfig.vpn2Width bits).asBits
     val instEvenOddBit = io.instVaddr(12)
     val dataEvenOddBit = io.dataVaddr(12)
     val instOffset = io.instVaddr(0, 12 bits)
     val dataOffset = io.dataVaddr(0, 12 bits)
   }
 
-  val entryRam = Mem(new TLBEntry(useMask), TLBConfig.tlbEntryNum)
-  val entry = Vec(new TLBEntry(useMask), TLBConfig.tlbEntryNum)
+  val entryRam = Mem(new TLBEntry(useMask), ConstantVal.TLBEntryNum)
+  val entry = Vec(new TLBEntry(useMask), ConstantVal.TLBEntryNum)
   //读端口
-  for (i <- 0 until TLBConfig.tlbEntryNum) entry(i) := entryRam.readAsync(U(i, TLBConfig.tlbIndexWidth bits))
+  for (i <- 0 until ConstantVal.TLBEntryNum) entry(i) := entryRam.readAsync(U(i, TLBConfig.tlbIndexWidth bits))
   io.rdata := entryRam.readAsync(io.index)
   //写端口
   val writeEntry = new TLBEntry(useMask)
   entryRam.write(io.index, writeEntry, io.write)
 
   val hit = new Area {
-    val instHit, dataHit, probeHit = Bits(TLBConfig.tlbEntryNum bits)
-    for (i <- 0 until TLBConfig.tlbEntryNum) {
+    val instHit, dataHit, probeHit = Bits(ConstantVal.TLBEntryNum bits)
+    for (i <- 0 until ConstantVal.TLBEntryNum) {
       instHit(i) := TLB.VPN2Match(entry(i), addr.instVPN2, useMask) & (entry(i).asid === io.asid | entry(i).G)
       dataHit(i) := TLB.VPN2Match(entry(i), addr.dataVPN2, useMask) & (entry(i).asid === io.asid | entry(i).G)
       probeHit(i) := TLB.VPN2Match(entry(i), io.probeVPN2, useMask) & (entry(i).asid === io.probeASID | entry(i).G)
@@ -128,6 +127,7 @@ class TLB(useMask: Boolean) extends Component {
   //probeIndex(31)为0表示命中TLB，为1表示未命中TLB
   io.probeIndex(31) := !hit.probeHit.orR
 }
+
 
 object TLB {
   def main(args: Array[String]): Unit = {

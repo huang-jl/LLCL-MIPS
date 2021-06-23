@@ -1,11 +1,46 @@
 package cpu
 
 import defs.Mips32Inst
+import defs.ConstantVal
+import tlb.{TLBEntry, TLBConfig}
 import spinal.core._
 import spinal.lib.{cpu => _, _}
 import lib.{Optional, Updating}
 
 import scala.collection.mutable
+
+
+/**
+ * TLBR, TLBWI: 来源是Index寄存器
+ * TLBWR: 来源是Random寄存器
+ * */
+object TLBIndexSrc extends SpinalEnum {
+  val Index, Random = newElement()
+}
+
+/**
+ * 从CP0中读和TLB相关值的接口
+ * */
+class TLBInterface extends Bundle with IMasterSlave {
+  val TLBIndexWidth:Int = log2Up(ConstantVal.TLBEntryNum)
+
+  val indexSrc = TLBIndexSrc()
+  /** index is used for TLBWI and TLBWR */
+  val index = UInt(TLBIndexWidth bits)  //读出的index值
+  val cp0 = new TLBEntry(ConstantVal.USE_MASK)  //从CP0读出要写入tlb的内容
+
+  /** following is used for TLBR */
+  val tlbr = Bool  //是否是TLBR而修改CP0
+  val tlbrEntry = new TLBEntry(ConstantVal.USE_MASK)
+
+  override def asMaster(): Unit = {
+    in(index, cp0)
+    out(indexSrc)
+    out(tlbrEntry, tlbr)
+  }
+}
+
+
 
 object CP0 {
   object Field {
@@ -164,6 +199,15 @@ object CP0 {
       }
     }
 
+    /**
+     * @param data 要写的各个域的值，按照起始bit的降序（从高到低）排列
+     * */
+    def write(data:Seq[Bits]):Unit = {
+      for((field, index) <- description.fields.sortBy(x => x.range.max).reverse.zipWithIndex) {
+        this.next(field.name) := data(index)
+      }
+    }
+
     def apply(name: String) = field.apply(name)
   }
 
@@ -199,7 +243,53 @@ object CP0 {
 
     describeRegister("EPC", 14, 0)
       .field("EPC", 31 downto 0)
-  }
+
+    //CP0 Reg for TLB-based MMU
+    if(ConstantVal.USE_TLB) {
+      val TLBIndexWidth:Int = log2Up(ConstantVal.TLBEntryNum)
+      describeRegister("EntryLo0", number = 2, sel = 0)
+        //31 downto (PABITS - 6) is hardwire to 0
+        .field("PFN", (ConstantVal.PABITS - 7) downto 6)
+        .field("C", 5 downto 3)
+        .field("D", 2)
+        .field("V", 1)
+        .field("G", 0)
+
+      describeRegister("EntryLo1", number = 3, sel = 0)
+        //31 downto (PABITS - 6) is hardwire to 0
+        .field("PFN", (ConstantVal.PABITS - 7) downto 6)
+        .field("C", 5 downto 3)
+        .field("D", 2)
+        .field("V", 1)
+        .field("G", 0)
+
+      describeRegister("Index", number = 0, sel = 0)
+        .readOnlyField("P", 31, init = false)
+        //log2Up(TLBConfig.tlbEntryNum) to 30 is hardwired to 0
+        .field("Index", 0 until TLBIndexWidth, "0" * TLBIndexWidth)
+
+      describeRegister("EntryHi", number = 10, sel = 0)
+        .field("VPN2", 31 downto 13, "0" * TLBConfig.vpn2Width)
+        //In Release1 VPN2X(12 downto 11) and (10 downto 8) is hardwired to 0
+        .field("ASID", 7 downto 0, "0" * TLBConfig.asidWidth)
+
+      if(ConstantVal.USE_MASK) {
+        describeRegister("PageMask", number = 5, sel = 0)
+          //(31 downto 29) is hardwired to 0
+          .field("Mask", 28 downto 13, "0" * TLBConfig.maskWidth)  //1 means do not participate in TLB match
+        //In Release1 MaskX(12 downto 11) is hardwired to 0
+      }
+
+      //TODO Random be set with (TLBEntryNum - 1)  when Reset Exception and write wired register
+      //Random Range : [Wired, TLBEntryNum - 1]
+      describeRegister("Random", number = 1 , sel = 0)
+        .readOnlyField("Random", 0 until TLBIndexWidth, "1" * TLBIndexWidth)
+
+      //TODO Wired is set to 0 when Reset Exception
+      describeRegister("Wired", number = 6, sel = 0)
+        .field("Wired", 0 until TLBIndexWidth, "0" * TLBIndexWidth)
+    }
+    }
 
   case class Addr() extends Bundle {
     val rd  = UInt(5 bits)
@@ -252,6 +342,10 @@ object CP0 {
     val pc        = UInt(32 bits)
     val bd        = Bool
   }
+
+  def main(args:Array[String]): Unit = {
+    SpinalVerilog(new CP0)
+  }
 }
 
 class CP0 extends Component {
@@ -260,6 +354,8 @@ class CP0 extends Component {
   val io = new Bundle {
     val softwareWrite = slave Flow (Write())
     val read          = slave(Read())
+
+    val tlbBus     = if(ConstantVal.USE_TLB) slave(new TLBInterface) else null //tlbBus
 
     val externalInterrupt = in Bits (6 bits)
     val exceptionInput    = in(ExceptionInput())
@@ -283,6 +379,61 @@ class CP0 extends Component {
     }
     when(io.softwareWrite.valid && io.softwareWrite.addr === addr) {
       reg.softwareWrite(io.softwareWrite.data)
+    }
+  }
+
+  // TLB related logic and register
+  if(ConstantVal.USE_TLB){
+    val TLBRelated = new Area {
+      val entryHi = regs("EntryHi")
+      val entryLo0 = regs("EntryLo0")
+      val entryLo1 = regs("EntryLo1")
+      val index = regs("Index")
+      val random = regs("Random")
+      //reset random when write Wired Reg
+      when(io.softwareWrite.valid & io.softwareWrite.addr ===  (6, 0)) {
+        random.next("Random") := B(ConstantVal.TLBEntryNum - 1, log2Up(ConstantVal.TLBEntryNum) bits)
+      }
+      //tlbBus signal
+      io.tlbBus.index := (io.tlbBus.indexSrc === TLBIndexSrc.Index) ? index("Index").asUInt | random("Random").asUInt
+      //read from cp0
+      io.tlbBus.cp0.vpn2 := entryHi("VPN2")   //如果激活了Mask，那么TLB模块会自己做Mask处理
+      io.tlbBus.cp0.asid := entryHi("ASID")
+      io.tlbBus.cp0.G := (entryLo0("G") & entryLo1("G")).asBool
+      io.tlbBus.cp0.pfn1 := entryLo1("PFN")
+      io.tlbBus.cp0.C1 := entryLo1("C")
+      io.tlbBus.cp0.D1 := entryLo1("D").asBool
+      io.tlbBus.cp0.V1 := entryLo1("V").asBool
+      io.tlbBus.cp0.pfn0 := entryLo0("PFN")
+      io.tlbBus.cp0.C0 := entryLo0("C")
+      io.tlbBus.cp0.D0 := entryLo0("D").asBool
+      io.tlbBus.cp0.V0 := entryLo0("V").asBool
+      //write to cp0 for TLBR
+      when(io.tlbBus.tlbr) {
+        entryHi.write(Array(io.tlbBus.tlbrEntry.vpn2, io.tlbBus.tlbrEntry.asid))
+        entryLo0.write(Array(io.tlbBus.tlbrEntry.pfn0, io.tlbBus.tlbrEntry.C0,
+          io.tlbBus.tlbrEntry.D0.asBits, io.tlbBus.tlbrEntry.V0.asBits, io.tlbBus.tlbrEntry.G.asBits))
+        entryLo1.write(Array(io.tlbBus.tlbrEntry.pfn1, io.tlbBus.tlbrEntry.C1,
+          io.tlbBus.tlbrEntry.D1.asBits, io.tlbBus.tlbrEntry.V1.asBits, io.tlbBus.tlbrEntry.G.asBits))
+      }
+      if(ConstantVal.USE_MASK) {
+        val pageMask = regs("PageMask")
+        val vpnMask = ~pageMask("Mask").resize(TLBConfig.vpn2Width)
+        val pfnMask = ~pageMask("Mask").resize(TLBConfig.pfnWidth)
+        //read from cp0
+        io.tlbBus.cp0.mask := pageMask("Mask")
+        //write to cp0 for TLBR
+        when(io.tlbBus.tlbr) {
+          pageMask.write(Array(io.tlbBus.tlbrEntry.mask))
+          val vpnMask = ~io.tlbBus.tlbrEntry.mask.resize(TLBConfig.vpn2Width)
+          val pfnMask = ~io.tlbBus.tlbrEntry.mask.resize(TLBConfig.pfnWidth)
+          entryHi.write(Array(io.tlbBus.tlbrEntry.vpn2 & vpnMask, io.tlbBus.tlbrEntry.asid))
+          entryLo0.write(Array(io.tlbBus.tlbrEntry.pfn0 & pfnMask, io.tlbBus.tlbrEntry.C0,
+            io.tlbBus.tlbrEntry.D0.asBits, io.tlbBus.tlbrEntry.V0.asBits, io.tlbBus.tlbrEntry.G.asBits))
+          entryLo1.write(Array(io.tlbBus.tlbrEntry.pfn1 & pfnMask, io.tlbBus.tlbrEntry.C1,
+            io.tlbBus.tlbrEntry.D1.asBits, io.tlbBus.tlbrEntry.V1.asBits, io.tlbBus.tlbrEntry.G.asBits))
+        }
+      }
     }
   }
 

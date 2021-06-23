@@ -194,4 +194,10 @@ object InstructionSpec {
   val ERET = cop0co(fn = "011000")
   val MFC0 = cop0(rs = "00000")
   val MTC0 = cop0(rs = "00100")
+
+  val TLBP = cop0co(fn = "001000")    //probe tlb for matching entry
+  val TLBR = cop0co(fn = "000001")    //read indexed tlb entry
+  val TLBWI = cop0co(fn = "000010")   //write tlb entry indexed by Index CP0 Reg
+  val TLBWR = cop0co(fn = "000110")   //writte tlb entry indexed by Random CP0 Reg
+
 }
