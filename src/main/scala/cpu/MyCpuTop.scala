@@ -82,7 +82,7 @@ class MyCPUTop extends Component {
   )
 
   val clockingArea = new ClockingArea(aClockDomain) {
-    val cpu = new CPU
+    val cpu = new CPU(sim = true)
     val crossbar = CrossBarIP(3, 1) //3 x 1 AXI4 CrossBar
     CrossBarIP.connect(crossbar,
       Array(cpu.io.icacheAXI, cpu.io.dcacheAXI, cpu.io.uncacheAXI),

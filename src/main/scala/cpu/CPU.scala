@@ -9,7 +9,8 @@ import spinal.core._
 import spinal.lib.{cpu => _, _}
 import spinal.lib.bus.amba4.axi._
 
-class CPU extends Component {
+/** sim: 表明是否是仿真，会对cache和fifo做初始化 */
+class CPU(sim: Boolean = true) extends Component {
   val io = new Bundle {
     val externalInterrupt = in Bits (6 bits)
     val icacheAXI         = master(Axi4(ConstantVal.AXI_BUS_CONFIG))
@@ -17,11 +18,11 @@ class CPU extends Component {
     val uncacheAXI        = master(Axi4(ConstantVal.AXI_BUS_CONFIG))
     val debug             = out(DebugInterface())
   }
-  val icu = new ICU(CacheRamConfig(sim=true))
+  val icu = new ICU(CacheRamConfig(sim=sim))
   val du  = new DU
   val ju  = new JU
   val alu = new ALU
-  val dcu = new DCU(CacheRamConfig(sim=true), 8)
+  val dcu = new DCU(CacheRamConfig(sim=sim), 8)
   val hlu = new HLU
   val rfu = new RFU
   val cp0 = new CP0
@@ -91,6 +92,7 @@ class CPU extends Component {
       dcu.io.wdata := input(rtValue)
       when(input(memAddr) <= U"32'hBFFF_FFFF" & input(memAddr) >= U"32'hA000_0000") {
         dcu.io.uncache := True
+        dcu.io.addr := (B(0, 3 bits) ## input(memAddr)(0, 29 bits)).asUInt
       }.otherwise(dcu.io.uncache := False)
       setInputReset(memRe, False)
       setInputReset(memWe, False)
@@ -324,7 +326,7 @@ class CPU extends Component {
     val icuC = new StageComponent {
       io.icacheAXI <> icu.io.axi
 
-      icu.io.ibus.addr := input(pc)
+      icu.io.ibus.addr := (B(0, 3 bits) ## input(pc)(0, 29 bits)).asUInt
       icu.io.ibus.read := True
 
       when(icu.io.ibus.stall) {

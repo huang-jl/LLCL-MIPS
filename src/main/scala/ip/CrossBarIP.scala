@@ -113,7 +113,7 @@ case class CrossBarIP(m: Int, n: Int) extends BlackBox {
   }
 
   noIoPrefix()
-  mapClockDomain(clock = io.aclk, reset = io.aresetn)
+  mapClockDomain(clock = io.aclk, reset = io.aresetn, resetActiveLevel = LOW)
   addPrePopTask(() => {
     io.flatten.foreach(bt => {
       val idx = bt.getName().lastIndexOf('_')
@@ -129,36 +129,36 @@ object CrossBarIP {
   def connect(crossbar: CrossBarIP, masters: Array[Axi4], slaves: Array[Axi4]): Unit = {
     assert(crossbar.m == masters.length && crossbar.n == slaves.length)
     //master
-    crossbar.io.s_axi.aw.id := masters.map(ele => ele.aw.id.asBits).reduceLeft((res, ele) => res ## ele)
-    crossbar.io.s_axi.aw.addr := masters.map(ele => ele.aw.addr.asBits).reduceLeft((res, ele) => res ## ele)
-    crossbar.io.s_axi.aw.len := masters.map(ele => ele.aw.len.asBits).reduceLeft((res, ele) => res ## ele)
-    crossbar.io.s_axi.aw.size := masters.map(ele => ele.aw.size.asBits).reduceLeft((res, ele) => res ## ele)
-    crossbar.io.s_axi.aw.burst := masters.map(ele => ele.aw.burst).reduceLeft((res, ele) => res ## ele)
-    crossbar.io.s_axi.aw.lock := masters.map(ele => ele.aw.lock).reduceLeft((res, ele) => res ## ele)
-    crossbar.io.s_axi.aw.cache := masters.map(ele => ele.aw.cache).reduceLeft((res, ele) => res ## ele)
-    crossbar.io.s_axi.aw.prot := masters.map(ele => ele.aw.prot).reduceLeft((res, ele) => res ## ele)
+    crossbar.io.s_axi.aw.id := masters.map(ele => ele.aw.id.asBits).reduceLeft((res, ele) => ele ## res)
+    crossbar.io.s_axi.aw.addr := masters.map(ele => ele.aw.addr.asBits).reduceLeft((res, ele) => ele ## res)
+    crossbar.io.s_axi.aw.len := masters.map(ele => ele.aw.len.asBits).reduceLeft((res, ele) => ele ## res)
+    crossbar.io.s_axi.aw.size := masters.map(ele => ele.aw.size.asBits).reduceLeft((res, ele) => ele ## res)
+    crossbar.io.s_axi.aw.burst := masters.map(ele => ele.aw.burst).reduceLeft((res, ele) => ele ## res)
+    crossbar.io.s_axi.aw.lock := masters.map(ele => ele.aw.lock).reduceLeft((res, ele) => ele ## res)
+    crossbar.io.s_axi.aw.cache := masters.map(ele => ele.aw.cache).reduceLeft((res, ele) => ele ## res)
+    crossbar.io.s_axi.aw.prot := masters.map(ele => ele.aw.prot).reduceLeft((res, ele) => ele ## res)
     crossbar.io.s_axi.aw.qos := 0
-    crossbar.io.s_axi.aw.valid := masters.map(ele => ele.aw.valid.asBits).reduceLeft((res, ele) => res ## ele)
+    crossbar.io.s_axi.aw.valid := masters.map(ele => ele.aw.valid.asBits).reduceLeft((res, ele) => ele ## res)
 
-    crossbar.io.s_axi.w.data := masters.map(ele => ele.w.data).reduceLeft((res, ele) => res ## ele)
-    crossbar.io.s_axi.w.strb := masters.map(ele => ele.w.strb).reduceLeft((res, ele) => res ## ele)
-    crossbar.io.s_axi.w.last := masters.map(ele => ele.w.last.asBits).reduceLeft((res, ele) => res ## ele)
-    crossbar.io.s_axi.w.valid := masters.map(ele => ele.w.valid.asBits).reduceLeft((res, ele) => res ## ele)
+    crossbar.io.s_axi.w.data := masters.map(ele => ele.w.data).reduceLeft((res, ele) => ele ## res)
+    crossbar.io.s_axi.w.strb := masters.map(ele => ele.w.strb).reduceLeft((res, ele) => ele ## res)
+    crossbar.io.s_axi.w.last := masters.map(ele => ele.w.last.asBits).reduceLeft((res, ele) => ele ## res)
+    crossbar.io.s_axi.w.valid := masters.map(ele => ele.w.valid.asBits).reduceLeft((res, ele) => ele ## res)
 
-    crossbar.io.s_axi.b.ready := masters.map(ele => ele.b.ready.asBits).reduceLeft((res, ele) => res ## ele)
+    crossbar.io.s_axi.b.ready := masters.map(ele => ele.b.ready.asBits).reduceLeft((res, ele) => ele ## res)
 
-    crossbar.io.s_axi.ar.id := masters.map(ele => ele.ar.id.asBits).reduceLeft((res, ele) => res ## ele)
-    crossbar.io.s_axi.ar.addr := masters.map(ele => ele.ar.addr.asBits).reduceLeft((res, ele) => res ## ele)
-    crossbar.io.s_axi.ar.len := masters.map(ele => ele.ar.len.asBits).reduceLeft((res, ele) => res ## ele)
-    crossbar.io.s_axi.ar.size := masters.map(ele => ele.ar.size.asBits).reduceLeft((res, ele) => res ## ele)
-    crossbar.io.s_axi.ar.burst := masters.map(ele => ele.ar.burst).reduceLeft((res, ele) => res ## ele)
-    crossbar.io.s_axi.ar.lock := masters.map(ele => ele.ar.lock).reduceLeft((res, ele) => res ## ele)
-    crossbar.io.s_axi.ar.cache := masters.map(ele => ele.ar.cache).reduceLeft((res, ele) => res ## ele)
-    crossbar.io.s_axi.ar.prot := masters.map(ele => ele.ar.prot).reduceLeft((res, ele) => res ## ele)
+    crossbar.io.s_axi.ar.id := masters.map(ele => ele.ar.id.asBits).reduceLeft((res, ele) => ele ## res)
+    crossbar.io.s_axi.ar.addr := masters.map(ele => ele.ar.addr.asBits).reduceLeft((res, ele) => ele ## res)
+    crossbar.io.s_axi.ar.len := masters.map(ele => ele.ar.len.asBits).reduceLeft((res, ele) => ele ## res)
+    crossbar.io.s_axi.ar.size := masters.map(ele => ele.ar.size.asBits).reduceLeft((res, ele) => ele ## res)
+    crossbar.io.s_axi.ar.burst := masters.map(ele => ele.ar.burst).reduceLeft((res, ele) => ele ## res)
+    crossbar.io.s_axi.ar.lock := masters.map(ele => ele.ar.lock).reduceLeft((res, ele) => ele ## res)
+    crossbar.io.s_axi.ar.cache := masters.map(ele => ele.ar.cache).reduceLeft((res, ele) => ele ## res)
+    crossbar.io.s_axi.ar.prot := masters.map(ele => ele.ar.prot).reduceLeft((res, ele) => ele ## res)
     crossbar.io.s_axi.ar.qos := 0
-    crossbar.io.s_axi.ar.valid := masters.map(ele => ele.ar.valid.asBits).reduceLeft((res, ele) => res ## ele)
+    crossbar.io.s_axi.ar.valid := masters.map(ele => ele.ar.valid.asBits).reduceLeft((res, ele) => ele ## res)
 
-    crossbar.io.s_axi.r.ready := masters.map(ele => ele.r.ready.asBits).reduceLeft((res, ele) => res ## ele)
+    crossbar.io.s_axi.r.ready := masters.map(ele => ele.r.ready.asBits).reduceLeft((res, ele) => ele ## res)
 
     masters.zipWithIndex.foreach(ele => {
       ele._1.aw.ready := crossbar.io.s_axi.aw.ready(ele._2)
@@ -206,17 +206,17 @@ object CrossBarIP {
       ele._1.r.ready := crossbar.io.m_axi.r.ready(ele._2)
     })
 
-    crossbar.io.m_axi.aw.ready := slaves.map(ele => ele.aw.ready.asBits).reduceLeft((res, ele) => res ## ele)
-    crossbar.io.m_axi.w.ready := slaves.map(ele => ele.w.ready.asBits).reduceLeft((res, ele) => res ## ele)
-    crossbar.io.m_axi.b.id := slaves.map(ele => ele.b.id.asBits).reduceLeft((res, ele) => res ## ele)
-    crossbar.io.m_axi.b.resp := slaves.map(ele => ele.b.resp).reduceLeft((res, ele) => res ## ele)
-    crossbar.io.m_axi.b.valid := slaves.map(ele => ele.b.valid.asBits).reduceLeft((res, ele) => res ## ele)
-    crossbar.io.m_axi.ar.ready := slaves.map(ele => ele.ar.ready.asBits).reduceLeft((res, ele) => res ## ele)
-    crossbar.io.m_axi.r.id := slaves.map(ele => ele.r.id.asBits).reduceLeft((res, ele) => res ## ele)
-    crossbar.io.m_axi.r.data := slaves.map(ele => ele.r.data).reduceLeft((res, ele) => res ## ele)
-    crossbar.io.m_axi.r.resp := slaves.map(ele => ele.r.resp).reduceLeft((res, ele) => res ## ele)
-    crossbar.io.m_axi.r.last := slaves.map(ele => ele.r.last.asBits).reduceLeft((res, ele) => res ## ele)
-    crossbar.io.m_axi.r.valid := slaves.map(ele => ele.r.valid.asBits).reduceLeft((res, ele) => res ## ele)
+    crossbar.io.m_axi.aw.ready := slaves.map(ele => ele.aw.ready.asBits).reduceLeft((res, ele) => ele ## res)
+    crossbar.io.m_axi.w.ready := slaves.map(ele => ele.w.ready.asBits).reduceLeft((res, ele) => ele ## res)
+    crossbar.io.m_axi.b.id := slaves.map(ele => ele.b.id.asBits).reduceLeft((res, ele) => ele ## res)
+    crossbar.io.m_axi.b.resp := slaves.map(ele => ele.b.resp).reduceLeft((res, ele) => ele ## res)
+    crossbar.io.m_axi.b.valid := slaves.map(ele => ele.b.valid.asBits).reduceLeft((res, ele) => ele ## res)
+    crossbar.io.m_axi.ar.ready := slaves.map(ele => ele.ar.ready.asBits).reduceLeft((res, ele) => ele ## res)
+    crossbar.io.m_axi.r.id := slaves.map(ele => ele.r.id.asBits).reduceLeft((res, ele) => ele ## res)
+    crossbar.io.m_axi.r.data := slaves.map(ele => ele.r.data).reduceLeft((res, ele) => ele ## res)
+    crossbar.io.m_axi.r.resp := slaves.map(ele => ele.r.resp).reduceLeft((res, ele) => ele ## res)
+    crossbar.io.m_axi.r.last := slaves.map(ele => ele.r.last.asBits).reduceLeft((res, ele) => ele ## res)
+    crossbar.io.m_axi.r.valid := slaves.map(ele => ele.r.valid.asBits).reduceLeft((res, ele) => ele ## res)
   }
 
   def main(args: Array[String]): Unit = {

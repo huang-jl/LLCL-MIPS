@@ -4,7 +4,7 @@ import spinal.core._
 import spinal.lib._
 
 //depth: Fifo的大小
-case class WriteBufferConfig(blockSize: Int, tagWidth: Int, depth: Int = 16) {
+case class WriteBufferConfig(blockSize: Int, tagWidth: Int, depth: Int = 16, sim: Boolean) {
   def dataWidth: Int = blockSize * 8 //数据的位宽
 
   def beWidth: Int = blockSize //byteEnable信号的宽度
@@ -16,24 +16,24 @@ case class WriteBufferConfig(blockSize: Int, tagWidth: Int, depth: Int = 16) {
 
 object WriteBuffer {
   def main(args: Array[String]): Unit = {
-    SpinalVerilog(new WriteBuffer(WriteBufferConfig(32, 27)))
+    SpinalVerilog(new WriteBuffer(WriteBufferConfig(32, 27, 8, false)))
   }
 }
 
 class WriteBufferInterface(config: WriteBufferConfig) extends Bundle with IMasterSlave {
   val write: Bool = Bool //是否把queryWData写入对应命中的cache中
-  val queryTag: Bits = Bits (config.tagWidth bits) //要查询的tag
-  val queryBE: Bits = Bits (config.beWidth bits) //要写入FIFO数据的byteEnable信号，长度为一个cache line的byte数量
-  val queryWData: Bits = Bits (config.dataWidth bits) //要写入FIFO对应的数据
-  val queryRData: Bits = Bits (config.dataWidth bits) //读出的FIFO数据
+  val queryTag: Bits = Bits(config.tagWidth bits) //要查询的tag
+  val queryBE: Bits = Bits(config.beWidth bits) //要写入FIFO数据的byteEnable信号，长度为一个cache line的byte数量
+  val queryWData: Bits = Bits(config.dataWidth bits) //要写入FIFO对应的数据
+  val queryRData: Bits = Bits(config.dataWidth bits) //读出的FIFO数据
   val readHit: Bool = Bool //查询读是否命中
   val writeHit: Bool = Bool //查询写是否命中
   //要压入的数据
-  val pushTag: Bits = Bits (config.tagWidth bits)
-  val pushData: Bits = Bits (config.dataWidth bits)
+  val pushTag: Bits = Bits(config.tagWidth bits)
+  val pushData: Bits = Bits(config.dataWidth bits)
   //要弹出的数据
-  val popTag: Bits = Bits (config.tagWidth bits)
-  val popData: Bits = Bits (config.dataWidth bits)
+  val popTag: Bits = Bits(config.tagWidth bits)
+  val popData: Bits = Bits(config.dataWidth bits)
   val push: Bool = Bool //是否压入数据
   val pop: Bool = Bool //是否弹出数据
 
@@ -64,6 +64,11 @@ class WriteBuffer(config: WriteBufferConfig) extends Component {
     val tag = Mem(Bits(config.tagWidth bits), config.depth)
     val data = Mem(Bits(config.dataWidth bits), config.depth)
     val valid = Mem(Bool, config.depth)
+    if (config.sim) {
+      tag.init(for (i <- 0 until config.depth) yield B(0))
+      data.init(for (i <- 0 until config.depth) yield B(0))
+      valid.init(for (i <- 0 until config.depth) yield False)
+    }
     val fifoTag = Vec(Bits(config.tagWidth bits), config.depth)
     val fifoData = Vec(Bits(config.dataWidth bits), config.depth)
     val fifoValid = Vec(Bool, config.depth)

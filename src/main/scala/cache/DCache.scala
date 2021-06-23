@@ -58,7 +58,7 @@ object DCache {
 //并且byteEnable应该是0100
 
 class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
-  val writeBufferConfig = WriteBufferConfig(config.blockSize, config.tagWidth + config.indexWidth, fifoDepth)
+  val writeBufferConfig = WriteBufferConfig(config.blockSize, config.tagWidth + config.indexWidth, fifoDepth, sim = config.sim)
   val io = new Bundle {
     val cpu = slave(new CPUDCacheInterface)
     val axi = master(new Axi4(Axi4Config(
@@ -205,7 +205,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     //Default Value of Cached AXI
     //ar
     io.axi.ar.addr := (inputAddr.tag ## inputAddr.index ## B(0, config.offsetWidth bits)).asUInt
-    io.axi.ar.id := 0
+    io.axi.ar.id := U"4'b0000"
     io.axi.ar.lock := 0
     io.axi.ar.cache := 0
     io.axi.ar.prot := 0
@@ -217,7 +217,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     io.axi.r.ready := False
     //Write
     //aw
-    io.axi.aw.id := 0
+    io.axi.aw.id := U"4'b0000"
     io.axi.aw.lock := 0
     io.axi.aw.cache := 0
     io.axi.aw.prot := 0
@@ -236,7 +236,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
 
     //Default Value of UnCached AXI
     io.uncacheAXI.ar.addr := (inputAddr.addr(31 downto 2) ## B(0, 2 bits)).asUInt
-    io.uncacheAXI.ar.id := 0
+    io.uncacheAXI.ar.id := U"4'b0000"
     io.uncacheAXI.ar.lock := 0
     io.uncacheAXI.ar.cache := 0
     io.uncacheAXI.ar.prot := 0
@@ -248,7 +248,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     io.uncacheAXI.r.ready := False
     //Write
     //aw
-    io.uncacheAXI.aw.id := 0
+    io.uncacheAXI.aw.id := U"4'b0000"
     io.uncacheAXI.aw.lock := 0
     io.uncacheAXI.aw.cache := 0
     io.uncacheAXI.aw.prot := 0

@@ -80,8 +80,8 @@ class DCU(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
 
   io.rdata := (io.extend === MU_EX.s) ? signExt | unsignExt
   when(io.uncache) {
-    dcache.io.uncache.read := io.read
-    dcache.io.uncache.write := io.write
+    dcache.io.uncache.read := io.read & addrValid
+    dcache.io.uncache.write := io.write & addrValid
     dcache.io.uncache.addr := io.addr
     dcache.io.uncache.byteEnable := byteEnable
     dcache.io.uncache.wdata := wdata
@@ -95,8 +95,8 @@ class DCU(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     dcache.io.cpu.wdata.assignDontCare()
     dcache.io.cpu.byteEnable.assignDontCare()
   }.otherwise {
-    dcache.io.cpu.read := io.read
-    dcache.io.cpu.write := io.write
+    dcache.io.cpu.read := io.read & addrValid
+    dcache.io.cpu.write := io.write & addrValid
     dcache.io.cpu.addr := io.addr
     dcache.io.cpu.byteEnable := byteEnable
     dcache.io.cpu.wdata := wdata

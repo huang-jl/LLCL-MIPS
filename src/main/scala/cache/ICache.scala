@@ -155,7 +155,7 @@ class ICache(config: CacheRamConfig) extends Component {
     icache.dataWE := 0 //默认禁止所有的cache写
 
     //  Default value of AXI singal
-    io.axi.ar.id := 0
+    io.axi.ar.id := U"4'b0000"
     io.axi.ar.addr := (inputAddr.tag ## inputAddr.index ## B(0, config.offsetWidth bits)).asUInt
     io.axi.ar.lock := 0
     io.axi.ar.cache := 0
@@ -169,7 +169,7 @@ class ICache(config: CacheRamConfig) extends Component {
     //Write is always disabled for ICache
     //aw
     io.axi.aw.addr := 0
-    io.axi.aw.id := 0
+    io.axi.aw.id := U"4'b0000"
     io.axi.aw.lock := 0
     io.axi.aw.cache := 0
     io.axi.aw.prot := 0
