@@ -1,10 +1,11 @@
 package cache
 
 import spinal.core._
-import spinal.core.sim.SimDataPimper
 import spinal.lib._
 import spinal.lib.fsm._
 import spinal.lib.bus.amba4.axi._
+
+import ip.SinglePortRam
 
 class CPUICacheInterface extends Bundle with IMasterSlave {
   val read = Bool
@@ -55,10 +56,10 @@ class ICache(config: CacheRamConfig) extends Component {
   val cacheRam = new Area {
     //    val tags = Array.fill(config.wayNum)(Mem(Bits(Meta.getBitWidth(config.tagWidth) bits), config.setSize))
     //    val datas = Array.fill(config.wayNum)(Mem(Bits(Block.getBitWidth(config.blockSize) bits), config.setSize))
-    val tags = if (!config.sim) Array.fill(config.wayNum)(new SinglePortBRAM(config.indexWidth,
-      Meta.getBitWidth(config.tagWidth), "single_port_imeta_ram")) else null
-    val datas = if (!config.sim) Array.fill(config.wayNum)(new SinglePortBRAM(config.indexWidth,
-      Block.getBitWidth(config.blockSize), "single_port_data_ram")) else null
+    val tags = if (!config.sim) Array.fill(config.wayNum)(new SinglePortRam(Meta.getBitWidth(config.tagWidth),
+      1 << config.indexWidth, "distributed")) else null
+    val datas = if (!config.sim) Array.fill(config.wayNum)(new SinglePortRam(Block.getBitWidth(config.blockSize),
+      1 << config.indexWidth, "block")) else null
 
     val simTags = if (config.sim) Array.fill(config.wayNum)(Mem(Bits(Meta.getBitWidth(config.tagWidth) bits), config.setSize)) else null
     val simDatas = if (config.sim) Array.fill(config.wayNum)(Mem(Bits(Block.getBitWidth(config.blockSize) bits), config.setSize)) else null
@@ -79,8 +80,8 @@ class ICache(config: CacheRamConfig) extends Component {
      */
     if (!config.sim) {
       for (i <- 0 until config.wayNum) {
-        cacheRam.tags(i).io.addra := inputAddr.index
-        cacheRam.datas(i).io.addra := inputAddr.index
+        cacheRam.tags(i).io.addr := inputAddr.index
+        cacheRam.datas(i).io.addr := inputAddr.index
       }
     }
     /*
@@ -93,8 +94,8 @@ class ICache(config: CacheRamConfig) extends Component {
         rmeta(i).assignFromBits(cacheRam.simTags(i).readAsync(inputAddr.index))
         rdata(i).assignFromBits(cacheRam.simDatas(i).readAsync(inputAddr.index))
       } else {
-        rmeta(i).assignFromBits(cacheRam.tags(i).io.douta)
-        rdata(i).assignFromBits(cacheRam.datas(i).io.douta)
+        rmeta(i).assignFromBits(cacheRam.tags(i).io.dout)
+        rdata(i).assignFromBits(cacheRam.datas(i).io.dout)
       }
     }
     /*
@@ -108,10 +109,10 @@ class ICache(config: CacheRamConfig) extends Component {
         cacheRam.simTags(i).write(inputAddr.index, writeMeta.asBits, enable = tagWE(i))
         cacheRam.simDatas(i).write(inputAddr.index, writeData.asBits, enable = dataWE(i))
       } else {
-        cacheRam.tags(i).io.wea := tagWE(i)
-        cacheRam.datas(i).io.wea := dataWE(i)
-        cacheRam.tags(i).io.dina := writeMeta.asBits
-        cacheRam.datas(i).io.dina := writeData.asBits
+        cacheRam.tags(i).io.we := tagWE(i)
+        cacheRam.datas(i).io.we := dataWE(i)
+        cacheRam.tags(i).io.din := writeMeta.asBits
+        cacheRam.datas(i).io.din := writeData.asBits
       }
     }
 

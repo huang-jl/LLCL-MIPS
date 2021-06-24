@@ -4,7 +4,7 @@ import defs.Mips32InstImplicits._
 import defs.{ConstantVal, Mips32Inst}
 import cache.CacheRamConfig
 import lib.{Key, Optional, Updating}
-import tlb.{MMU, CPUMMUInterface}
+import tlb.{MMU, TLBEntry, TLBConfig}
 
 import spinal.core._
 import spinal.lib.{cpu => _, _}
@@ -64,17 +64,24 @@ class CPU extends Component {
   val rsValue    = Key(Bits(32 bits))
   val rtValue    = Key(Bits(32 bits))
 
-  //TODO 实现CP0后需要做额外的连线
+  val tlbr       = Key(Bool)  //ID解码
+  val tlbw       = Key(Bool)  //ID解码
+  val tlbp       = Key(Bool)  //ID解码
+  val tlbIndexSrc= Key(TLBIndexSrc())  //ID解码
+
   //MMU input signal
+  //目前MMU和CP0直接相连，MMU拿到的CP0寄存器值都是实时的
+  //CP0拿到的MMU的rdata和probeIndex也都是实时的
   if(!ConstantVal.USE_TLB) {
     mmu.io.asid.assignDontCare()
   }else{
-    mmu.io.asid := cp0.io.tlbBus.cp0.asid
-    mmu.io.index := cp0.io.tlbBus.index
-    mmu.io.wdata := cp0.io.tlbBus.cp0
-    mmu.io.probeVPN2 := cp0.io.tlbBus.cp0.vpn2
-    mmu.io.probeASID := cp0.io.tlbBus.cp0.asid
-    //used for TLBR
+    mmu.io.asid := cp0.io.tlbBus.tlbwEntry.asid
+    mmu.io.probeVPN2 := cp0.io.tlbBus.tlbwEntry.vpn2
+    mmu.io.probeASID := cp0.io.tlbBus.tlbwEntry.asid
+    mmu.io.index := cp0.io.tlbBus.index //默认是读index寄存器的值
+    mmu.io.wdata := cp0.io.tlbBus.tlbwEntry
+
+    cp0.io.tlbBus.probeIndex := mmu.io.probeIndex
     cp0.io.tlbBus.tlbrEntry := mmu.io.rdata
   }
 
@@ -109,7 +116,7 @@ class CPU extends Component {
       dcu.io.addr := mmu.io.dataRes.paddr
       dcu.io.uncache := !mmu.io.dataCached
       dcu.io.wdata := input(rtValue)
-      // MMU
+      // MMU translate
       mmu.io.dataVaddr := input(memAddr)
       setInputReset(memRe, False)
       setInputReset(memWe, False)
@@ -167,6 +174,24 @@ class CPU extends Component {
     output(rfuData) := ((input(rfuRdSrc) === RFU_RD_SRC.mu)
       ? produced(rfuData)
       | input(rfuData))
+
+      //只包括写MMU和写CP0的逻辑信号
+    val cp0TLB = new StageComponent {
+      if(ConstantVal.USE_TLB){
+        //used for TLBR
+        cp0.io.tlbBus.tlbr := input(tlbr)
+        //used for tlbp
+        cp0.io.tlbBus.tlbp := input(tlbp)
+      }
+    }
+    val MMU = new StageComponent {
+      if(ConstantVal.USE_TLB) {
+        mmu.io.write := input(tlbw)
+        when(input(tlbw) & input(tlbIndexSrc) === TLBIndexSrc.Random) {
+          mmu.io.index := cp0.io.tlbBus.random //如果是写tlbwr那么用random
+        }
+      }
+    }
   }
 
   val EX = new Stage {
@@ -244,6 +269,12 @@ class CPU extends Component {
       produced(useRs) := du.io.use_rs
       produced(useRt) := du.io.use_rt
       produced(eret) := du.io.eret
+      if(ConstantVal.USE_TLB){
+        produced(tlbr) := du.io.tlbr
+        produced(tlbw) := du.io.tlbw
+        produced(tlbp) := du.io.tlbp
+        produced(tlbIndexSrc) := du.io.tlbIndexSrc
+      }
       exceptionToRaise := du.io.exception
     }
 
@@ -337,6 +368,7 @@ class CPU extends Component {
     ) {
       stalls := True
     }
+
   }
 
   val IF = new Stage {
@@ -345,7 +377,7 @@ class CPU extends Component {
       //ibus
       icu.io.ibus.addr := mmu.io.instRes.paddr
       icu.io.ibus.read := True
-      //mmu
+      // MMU Translate
       mmu.io.instVaddr := input(pc)
       when(icu.io.ibus.stall) {
         stalls := True

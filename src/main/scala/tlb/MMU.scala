@@ -18,7 +18,7 @@ class CPUMMUInterface(useTLB: Boolean, useMask: Boolean) extends Bundle with IMa
 
   //TLB指令相关的内容，包括tlbp, tlbr, tlbwi, tlbwr
   /** 不是Index寄存器，而是Index寄存器（或者Random寄存器）中的值 */
-  val index = if (useTLB) UInt(TLBConfig.tlbIndexWidth bits) else null
+  val index = if (useTLB) UInt(TLBConfig.tlbIndexWidth bits) else null  //要读或者要写的index
   val wdata = if (useTLB) new TLBEntry(useMask) else null //需要把要写入的TLB内容提前填充成一个Entry项
   val write = if (useTLB) Bool else null //是否把wdata写入TLB中
   val rdata = if (useTLB) new TLBEntry(useMask) else null
@@ -40,7 +40,7 @@ class CPUMMUInterface(useTLB: Boolean, useMask: Boolean) extends Bundle with IMa
 }
 
 /**
- * useTLB: 是否使用TLB进行地址转换，useMask：是否在TLB中使用mask（是否实现了PageMask）
+ * @param useTLB 是否使用TLB进行地址转换，useMask：是否在TLB中使用mask（是否实现了PageMask）
  * 开启TLB后支持useg, kseg0, kseg1, kseg3
  */
 class MMU(useTLB: Boolean, useMask: Boolean) extends Component {

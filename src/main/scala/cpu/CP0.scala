@@ -24,19 +24,22 @@ object TLBIndexSrc extends SpinalEnum {
 class TLBInterface extends Bundle with IMasterSlave {
   val TLBIndexWidth:Int = log2Up(ConstantVal.TLBEntryNum)
 
-  val indexSrc = TLBIndexSrc()
-  /** index is used for TLBWI and TLBWR */
-  val index = UInt(TLBIndexWidth bits)  //读出的index值
-  val cp0 = new TLBEntry(ConstantVal.USE_MASK)  //从CP0读出要写入tlb的内容
+  /** index is used for TLBWI and TLBWR, write to MMU */
+  val index = UInt(TLBIndexWidth bits)  //读出的index寄存器值
+  val random = UInt(TLBIndexWidth bits) //读出的random寄存器值
+  val tlbwEntry = new TLBEntry(ConstantVal.USE_MASK)  //从CP0读出要写入tlb的内容
 
-  /** following is used for TLBR */
+  /** following is used for TLBR, write to CP0 */
   val tlbr = Bool  //是否是TLBR而修改CP0
   val tlbrEntry = new TLBEntry(ConstantVal.USE_MASK)
 
+  /** following is used for tlbp to write Index Reg */
+  val tlbp = Bool
+  val probeIndex = Bits(32 bits)
+
   override def asMaster(): Unit = {
-    in(index, cp0)
-    out(indexSrc)
-    out(tlbrEntry, tlbr)
+    in(index, random, tlbwEntry)
+    out(tlbrEntry, tlbr, tlbp, probeIndex)
   }
 }
 
@@ -201,10 +204,23 @@ object CP0 {
 
     /**
      * @param data 要写的各个域的值，按照起始bit的降序（从高到低）排列
+     * @note 这个方法用于硬件自己写，但是只能写Hardwired和ReadWrite
      * */
     def write(data:Seq[Bits]):Unit = {
       for((field, index) <- description.fields.sortBy(x => x.range.max).reverse.zipWithIndex) {
         this.next(field.name) := data(index)
+      }
+    }
+
+    /**
+     * @param data 要写的各个域的值，按照起始bit的降序（从高到低）排列
+     * @note 这个方法用于硬件自己写，但是只能写Hardwired和ReadWrite
+     * */
+    def write(data: Bits):Unit = {
+      for (field <- description.fields) {
+        if (field.fieldType != Field.Type.Hardwired) {
+          this.next(field.name) := data(field.range)
+        }
       }
     }
 
@@ -395,19 +411,24 @@ class CP0 extends Component {
         random.next("Random") := B(ConstantVal.TLBEntryNum - 1, log2Up(ConstantVal.TLBEntryNum) bits)
       }
       //tlbBus signal
-      io.tlbBus.index := (io.tlbBus.indexSrc === TLBIndexSrc.Index) ? index("Index").asUInt | random("Random").asUInt
+      io.tlbBus.index := index("Index").asUInt
+      io.tlbBus.random := random("Random").asUInt
+      //tlbp
+      when(io.tlbBus.tlbp) {
+        index.write(io.tlbBus.probeIndex)
+      }
       //read from cp0
-      io.tlbBus.cp0.vpn2 := entryHi("VPN2")   //如果激活了Mask，那么TLB模块会自己做Mask处理
-      io.tlbBus.cp0.asid := entryHi("ASID")
-      io.tlbBus.cp0.G := (entryLo0("G") & entryLo1("G")).asBool
-      io.tlbBus.cp0.pfn1 := entryLo1("PFN")
-      io.tlbBus.cp0.C1 := entryLo1("C")
-      io.tlbBus.cp0.D1 := entryLo1("D").asBool
-      io.tlbBus.cp0.V1 := entryLo1("V").asBool
-      io.tlbBus.cp0.pfn0 := entryLo0("PFN")
-      io.tlbBus.cp0.C0 := entryLo0("C")
-      io.tlbBus.cp0.D0 := entryLo0("D").asBool
-      io.tlbBus.cp0.V0 := entryLo0("V").asBool
+      io.tlbBus.tlbwEntry.vpn2 := entryHi("VPN2")   //如果激活了Mask，那么TLB模块会自己做Mask处理
+      io.tlbBus.tlbwEntry.asid := entryHi("ASID")
+      io.tlbBus.tlbwEntry.G := (entryLo0("G") & entryLo1("G")).asBool
+      io.tlbBus.tlbwEntry.pfn1 := entryLo1("PFN")
+      io.tlbBus.tlbwEntry.C1 := entryLo1("C")
+      io.tlbBus.tlbwEntry.D1 := entryLo1("D").asBool
+      io.tlbBus.tlbwEntry.V1 := entryLo1("V").asBool
+      io.tlbBus.tlbwEntry.pfn0 := entryLo0("PFN")
+      io.tlbBus.tlbwEntry.C0 := entryLo0("C")
+      io.tlbBus.tlbwEntry.D0 := entryLo0("D").asBool
+      io.tlbBus.tlbwEntry.V0 := entryLo0("V").asBool
       //write to cp0 for TLBR
       when(io.tlbBus.tlbr) {
         entryHi.write(Array(io.tlbBus.tlbrEntry.vpn2, io.tlbBus.tlbrEntry.asid))
@@ -421,7 +442,7 @@ class CP0 extends Component {
         val vpnMask = ~pageMask("Mask").resize(TLBConfig.vpn2Width)
         val pfnMask = ~pageMask("Mask").resize(TLBConfig.pfnWidth)
         //read from cp0
-        io.tlbBus.cp0.mask := pageMask("Mask")
+        io.tlbBus.tlbwEntry.mask := pageMask("Mask")
         //write to cp0 for TLBR
         when(io.tlbBus.tlbr) {
           pageMask.write(Array(io.tlbBus.tlbrEntry.mask))

@@ -46,7 +46,7 @@ class WriteBufferInterface(config: WriteBufferConfig) extends Bundle with IMaste
   }
 }
 
-//一个先进先出队列
+//一个先进先出队列，由于是全连接，不适合使用XPM_MEMORY
 //用来缓存要写入内存的数据
 //blockSize: byte，一个cache block 的大小
 //tagWidth:表示队列中要存储的tag宽度，应该是cache中tag+index

@@ -50,15 +50,20 @@ class TLBTranslationRes extends Bundle {
   }
 }
 
-class TLBEntry(useMask: Boolean = true) extends Bundle {
-  val mask = if (useMask) Bits(TLBConfig.maskWidth bits) else null
-  val vpn2 = Bits(TLBConfig.vpn2Width bits)
-  val asid = Bits(TLBConfig.asidWidth bits)
-  val pfn0, pfn1 = Bits(TLBConfig.pfnWidth bits)
-  val C0, C1 = Bits(TLBConfig.cacheAttrWidth bits)
-  val V0, V1, D0, D1, G = Bool
+class TLBEntry(useMask: Boolean = true, init: Boolean = false) extends Bundle {
+  val mask = if (useMask) {
+    if (!init) Bits(TLBConfig.maskWidth bits) else B(0, TLBConfig.maskWidth bits)
+  } else null
+  val vpn2 = if (!init) Bits(TLBConfig.vpn2Width bits) else B(0, TLBConfig.vpn2Width bits)
+  val asid = if (!init) Bits(TLBConfig.asidWidth bits) else B(0, TLBConfig.asidWidth bits)
+  val pfn0, pfn1 = if (!init) Bits(TLBConfig.pfnWidth bits) else B(0, TLBConfig.pfnWidth bits)
+  val C0, C1 = if (!init) Bits(TLBConfig.cacheAttrWidth bits) else B(0, TLBConfig.cacheAttrWidth bits)
+  val V0, V1, D0, D1, G = if (!init) Bool else False
 }
 
+/**
+ * @note 由于是全连接的TLB，因此不好采用XPM_Memory，因为要同时读出来所有的TLB Entry并比较
+ * */
 class TLB(useMask: Boolean) extends Component {
   val io = new Bundle {
     val asid = in Bits (TLBConfig.asidWidth bits) //当前EntryHi对应的ASID
@@ -90,6 +95,9 @@ class TLB(useMask: Boolean) extends Component {
 
   val entryRam = Mem(new TLBEntry(useMask), ConstantVal.TLBEntryNum)
   val entry = Vec(new TLBEntry(useMask), ConstantVal.TLBEntryNum)
+  if (ConstantVal.SIM) {
+    entryRam.init(for (_ <- 0 until ConstantVal.TLBEntryNum) yield new TLBEntry(ConstantVal.USE_MASK, true))
+  }
   //读端口
   for (i <- 0 until ConstantVal.TLBEntryNum) entry(i) := entryRam.readAsync(U(i, TLBConfig.tlbIndexWidth bits))
   io.rdata := entryRam.readAsync(io.index)

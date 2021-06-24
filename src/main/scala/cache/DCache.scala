@@ -10,6 +10,8 @@ import spinal.lib._
 import spinal.lib.fsm._
 import spinal.lib.bus.amba4.axi.{Axi4, Axi4Config}
 
+import ip.SinglePortRam
+
 class CPUDCacheInterface extends Bundle with IMasterSlave {
   val read: Bool = Bool
   val write: Bool = Bool
@@ -94,10 +96,10 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
       Bits(DMeta.getBitWidth(config.tagWidth) bits), config.setSize)) else null
     val simDatas = if (config.sim) Array.fill(config.wayNum)(new Mem(
       Bits(Block.getBitWidth(config.blockSize) bits), config.setSize)) else null
-    val tags = if (!config.sim) Array.fill(config.wayNum)(new SinglePortBRAM(
-      config.indexWidth, DMeta.getBitWidth(config.tagWidth), "single_port_dmeta_ram")) else null
-    val datas = if (!config.sim) Array.fill(config.wayNum)(new SinglePortBRAM(
-      config.indexWidth, Block.getBitWidth(config.blockSize), "single_port_data_ram")) else null
+    val tags = if (!config.sim) Array.fill(config.wayNum)(new SinglePortRam(
+      DMeta.getBitWidth(config.tagWidth), 1 << config.indexWidth, "distributed")) else null
+    val datas = if (!config.sim) Array.fill(config.wayNum)(new SinglePortRam(
+      Block.getBitWidth(config.blockSize), 1 << config.indexWidth, "block")) else null
     if (config.sim) {
       //仿真时初值
       for (i <- 0 until config.wayNum) {
@@ -115,8 +117,8 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
      */
     if (!config.sim) {
       for (i <- 0 until config.wayNum) {
-        cacheRam.tags(i).io.addra := inputAddr.index
-        cacheRam.datas(i).io.addra := inputAddr.index
+        cacheRam.tags(i).io.addr := inputAddr.index
+        cacheRam.datas(i).io.addr := inputAddr.index
       }
     }
     /*
@@ -129,8 +131,8 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
         rmeta(i).assignFromBits(cacheRam.simTags(i).readAsync(inputAddr.index))
         rdata(i).assignFromBits(cacheRam.simDatas(i).readAsync(inputAddr.index))
       } else {
-        rdata(i).assignFromBits(cacheRam.datas(i).io.douta)
-        rmeta(i).assignFromBits(cacheRam.tags(i).io.douta)
+        rdata(i).assignFromBits(cacheRam.datas(i).io.dout)
+        rmeta(i).assignFromBits(cacheRam.tags(i).io.dout)
       }
     }
     /*
@@ -144,10 +146,10 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
         cacheRam.simTags(i).write(inputAddr.index, writeMeta.asBits, enable = tagWE(i))
         cacheRam.simDatas(i).write(inputAddr.index, writeData, enable = dataWE(i))
       } else {
-        cacheRam.tags(i).io.wea := tagWE(i)
-        cacheRam.datas(i).io.wea := dataWE(i)
-        cacheRam.tags(i).io.dina := writeMeta.asBits
-        cacheRam.datas(i).io.dina := writeData.asBits
+        cacheRam.tags(i).io.we := tagWE(i)
+        cacheRam.datas(i).io.we := dataWE(i)
+        cacheRam.tags(i).io.din := writeMeta.asBits
+        cacheRam.datas(i).io.din := writeData.asBits
       }
     }
 
