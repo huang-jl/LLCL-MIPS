@@ -46,7 +46,7 @@ class WriteBufferInterface(config: WriteBufferConfig) extends Bundle with IMaste
   }
 }
 
-//一个先进先出队列，由于是全连接，不适合使用XPM_MEMORY
+//一个先进先出队列，由于是全连接，不适合使用XPM_MEMORY，直接用Reg存
 //用来缓存要写入内存的数据
 //blockSize: byte，一个cache block 的大小
 //tagWidth:表示队列中要存储的tag宽度，应该是cache中tag+index
@@ -60,24 +60,29 @@ class WriteBuffer(config: WriteBufferConfig) extends Component {
   /*
    * Signal and Reg Definition
    */
-  val mem = new Area {
-    val tag = Mem(Bits(config.tagWidth bits), config.depth)
-    val data = Mem(Bits(config.dataWidth bits), config.depth)
-    val valid = Mem(Bool, config.depth)
-    if (config.sim) {
-      tag.init(for (i <- 0 until config.depth) yield B(0))
-      data.init(for (i <- 0 until config.depth) yield B(0))
-      valid.init(for (i <- 0 until config.depth) yield False)
-    }
-    val fifoTag = Vec(Bits(config.tagWidth bits), config.depth)
-    val fifoData = Vec(Bits(config.dataWidth bits), config.depth)
-    val fifoValid = Vec(Bool, config.depth)
-    for (i <- 0 until config.depth) {
-      fifoTag(i) := tag.readAsync(U(i, config.memAddrWidth bits))
-      fifoData(i) := data.readAsync(U(i, config.memAddrWidth bits))
-      fifoValid(i) := valid.readAsync(U(i, config.memAddrWidth bits))
-    }
+  val fifo = new Area {
+    val tag = Vec(Reg(Bits(config.tagWidth bits)) init (0), config.depth)
+    val data = Vec(Reg(Bits(config.dataWidth bits)) init (0), config.depth)
+    val valid = Vec(Reg(Bool) init (False), config.depth)
   }
+  //  val mem = new Area {
+  //    val tag = Mem(Bits(config.tagWidth bits), config.depth)
+  //    val data = Mem(Bits(config.dataWidth bits), config.depth)
+  //    val valid = Mem(Bool, config.depth)
+  //    if (config.sim) {
+  //      tag.init(for (i <- 0 until config.depth) yield B(0))
+  //      data.init(for (i <- 0 until config.depth) yield B(0))
+  //      valid.init(for (i <- 0 until config.depth) yield False)
+  //    }
+  //    val fifoTag = Vec(Bits(config.tagWidth bits), config.depth)
+  //    val fifoData = Vec(Bits(config.dataWidth bits), config.depth)
+  //    val fifoValid = Vec(Bool, config.depth)
+  //    for (i <- 0 until config.depth) {
+  //      fifoTag(i) := tag.readAsync(U(i, config.memAddrWidth bits))
+  //      fifoData(i) := data.readAsync(U(i, config.memAddrWidth bits))
+  //      fifoValid(i) := valid.readAsync(U(i, config.memAddrWidth bits))
+  //    }
+  //  }
   val counter = new Area {
     val head = Counter(0 until config.depth)
     val tail = Counter(0 until config.depth)
@@ -98,22 +103,31 @@ class WriteBuffer(config: WriteBufferConfig) extends Component {
   io.empty := counter.cnt === 0
   io.full := counter.cnt === config.depth
   for (i <- 0 until config.depth) {
-    queryReadHit(i) := (mem.fifoTag(i) === io.queryTag) & mem.fifoValid(i)
+    queryReadHit(i) := (fifo.tag(i) === io.queryTag) & fifo.valid(i)
     //如果当前第i个是head并且正在pop，那么写不命中
     queryWriteHit(i) := Mux(io.pop & counter.head.value === i, False, queryReadHit(i))
+    //    queryReadHit(i) := (mem.fifoTag(i) === io.queryTag) & mem.fifoValid(i)
+    //    //如果当前第i个是head并且正在pop，那么写不命中
+    //    queryWriteHit(i) := Mux(io.pop & counter.head.value === i, False, queryReadHit(i))
   }
   //logic of push and pop
   when(io.push & !io.full) {
-    mem.tag.write(counter.tail.value, io.pushTag)
-    mem.data.write(counter.tail.value, io.pushData)
-    mem.valid.write(counter.tail.value, True)
+    fifo.tag(counter.tail.value) := io.pushTag
+    fifo.data(counter.tail.value) := io.pushData
+    fifo.valid(counter.tail.value) := True
+    //    mem.tag.write(counter.tail.value, io.pushTag)
+    //    mem.data.write(counter.tail.value, io.pushData)
+    //    mem.valid.write(counter.tail.value, True)
     counter.tail.increment()
     counter.cnt := counter.cnt + 1
   }
   when(io.pop & !io.empty) {
-    io.popTag := mem.fifoTag(counter.head.value)
-    io.popData := mem.fifoData(counter.head.value)
-    mem.valid.write(counter.head.value, False) //把对应的数据无效了
+    io.popTag := fifo.tag(counter.head.value)
+    io.popData := fifo.data(counter.head.value)
+    fifo.valid(counter.head.value) := False //把对应的数据无效了
+    //    io.popTag := mem.fifoTag(counter.head.value)
+    //    io.popData := mem.fifoData(counter.head.value)
+    //    mem.valid.write(counter.head.value, False) //把对应的数据无效了
     counter.head.increment()
     counter.cnt := counter.cnt - 1
   }
@@ -121,16 +135,21 @@ class WriteBuffer(config: WriteBufferConfig) extends Component {
   //logic of query read
   io.readHit := queryReadHit.orR
   for (i <- 0 until config.depth) {
-    when(queryReadHit(i))(io.queryRData := mem.fifoData(i))
+    when(queryReadHit(i))(io.queryRData := fifo.data(i))
+    //    when(queryReadHit(i))(io.queryRData := mem.fifoData(i))
   }
   //logic of query write
   io.writeHit := queryWriteHit.orR
   for (i <- 0 until config.depth) {
-    val writeData = B(mem.fifoData(i), config.dataWidth bits)
+    val writeData = B(fifo.data(i), config.dataWidth bits)
+    //    val writeData = B(mem.fifoData(i), config.dataWidth bits)
     //当byte enable置1时，writeData对应的byte为queryWData，否则为fifoData(i)
     for (j <- 0 until config.beWidth) {
       when(io.queryBE(j))(writeData(j * 8, 8 bits) := io.queryWData(j * 8, 8 bits))
     }
-    mem.data.write(i, writeData, io.write & queryWriteHit(i))
+    when(io.write & queryWriteHit(i)) {
+      fifo.data(i) := writeData
+    }
+    //    mem.data.write(i, writeData, io.write & queryWriteHit(i))
   }
 }

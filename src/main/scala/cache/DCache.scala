@@ -10,7 +10,7 @@ import spinal.lib._
 import spinal.lib.fsm._
 import spinal.lib.bus.amba4.axi.{Axi4, Axi4Config}
 
-import ip.SinglePortRam
+import ip.{SinglePortBRam, SinglePortLUTRam}
 
 class CPUDCacheInterface extends Bundle with IMasterSlave {
   val read: Bool = Bool
@@ -96,10 +96,10 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
       Bits(DMeta.getBitWidth(config.tagWidth) bits), config.setSize)) else null
     val simDatas = if (config.sim) Array.fill(config.wayNum)(new Mem(
       Bits(Block.getBitWidth(config.blockSize) bits), config.setSize)) else null
-    val tags = if (!config.sim) Array.fill(config.wayNum)(new SinglePortRam(
-      DMeta.getBitWidth(config.tagWidth), 1 << config.indexWidth, "distributed")) else null
-    val datas = if (!config.sim) Array.fill(config.wayNum)(new SinglePortRam(
-      Block.getBitWidth(config.blockSize), 1 << config.indexWidth, "block")) else null
+    val tags = if (!config.sim) Array.fill(config.wayNum)(new SinglePortLUTRam(
+      DMeta.getBitWidth(config.tagWidth), 1 << config.indexWidth)) else null
+    val datas = if (!config.sim) Array.fill(config.wayNum)(new SinglePortLUTRam(
+      Block.getBitWidth(config.blockSize), 1 << config.indexWidth)) else null
     if (config.sim) {
       //仿真时初值
       for (i <- 0 until config.wayNum) {
@@ -113,12 +113,14 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     val dataWE = Bits(config.wayNum bits) //写哪一路cache.data的使能
     val tagWE = Bits(config.wayNum bits) //写哪一路cache.meta的使能
     /*
-     * Cache地址
+     * Cache地址和使能
      */
     if (!config.sim) {
       for (i <- 0 until config.wayNum) {
         cacheRam.tags(i).io.addr := inputAddr.index
         cacheRam.datas(i).io.addr := inputAddr.index
+        cacheRam.tags(i).io.en := True
+        cacheRam.datas(i).io.en := True
       }
     }
     /*

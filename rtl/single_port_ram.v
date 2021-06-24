@@ -3,7 +3,8 @@ module single_port_ram #
     parameter DATA_WIDTH = 32,  //default data width of xpm ram(bits)
     parameter DEPTH = 128,   //default depth of memory
     parameter MEMORY_PRIMITIVE = "auto",    //"auto | distributed | block"
-    parameter LATENCY = 1      //default latency is 1 cycle
+    parameter LATENCY = 1,      //default latency is 1 cycle
+    parameter WRITE_MODE = "write_first"
 )
 (
     input wire                      clk,
@@ -31,7 +32,7 @@ module single_port_ram #
       .READ_RESET_VALUE_A("0"),      // String
       .USE_MEM_INIT(0),              // DECIMAL
       .WRITE_DATA_WIDTH_A(DATA_WIDTH),       // DECIMAL
-      .WRITE_MODE_A("write_first"),    // String
+      .WRITE_MODE_A(WRITE_MODE),    // String
       .BYTE_WRITE_WIDTH_A(DATA_WIDTH)
    )
    xpm_memory_spram_inst (

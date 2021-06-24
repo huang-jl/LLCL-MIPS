@@ -5,7 +5,7 @@ import spinal.lib._
 import spinal.lib.fsm._
 import spinal.lib.bus.amba4.axi._
 
-import ip.SinglePortRam
+import ip.{SinglePortBRam, SinglePortLUTRam}
 
 class CPUICacheInterface extends Bundle with IMasterSlave {
   val read = Bool
@@ -56,10 +56,10 @@ class ICache(config: CacheRamConfig) extends Component {
   val cacheRam = new Area {
     //    val tags = Array.fill(config.wayNum)(Mem(Bits(Meta.getBitWidth(config.tagWidth) bits), config.setSize))
     //    val datas = Array.fill(config.wayNum)(Mem(Bits(Block.getBitWidth(config.blockSize) bits), config.setSize))
-    val tags = if (!config.sim) Array.fill(config.wayNum)(new SinglePortRam(Meta.getBitWidth(config.tagWidth),
-      1 << config.indexWidth, "distributed")) else null
-    val datas = if (!config.sim) Array.fill(config.wayNum)(new SinglePortRam(Block.getBitWidth(config.blockSize),
-      1 << config.indexWidth, "block")) else null
+    val tags = if (!config.sim) Array.fill(config.wayNum)(new SinglePortLUTRam(Meta.getBitWidth(config.tagWidth),
+      1 << config.indexWidth)) else null
+    val datas = if (!config.sim) Array.fill(config.wayNum)(new SinglePortLUTRam(Block.getBitWidth(config.blockSize),
+      1 << config.indexWidth)) else null
 
     val simTags = if (config.sim) Array.fill(config.wayNum)(Mem(Bits(Meta.getBitWidth(config.tagWidth) bits), config.setSize)) else null
     val simDatas = if (config.sim) Array.fill(config.wayNum)(Mem(Bits(Block.getBitWidth(config.blockSize) bits), config.setSize)) else null
@@ -76,12 +76,14 @@ class ICache(config: CacheRamConfig) extends Component {
     val dataWE = Bits(config.wayNum bits) //写cache.data的使能
     val tagWE = Bits(config.wayNum bits) //写cache.meta的使能
     /*
-     * Cache地址
+     * Cache地址和使能
      */
     if (!config.sim) {
       for (i <- 0 until config.wayNum) {
         cacheRam.tags(i).io.addr := inputAddr.index
         cacheRam.datas(i).io.addr := inputAddr.index
+        cacheRam.tags(i).io.en := True
+        cacheRam.datas(i).io.en := True
       }
     }
     /*

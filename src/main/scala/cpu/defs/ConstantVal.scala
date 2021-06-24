@@ -18,7 +18,7 @@ object ConstantVal {
     useQos = false
   )
 
-  val SIM = true  //是否仿真，会生成RAM的初始化文件
+  val SIM = false  //是否仿真，会生成RAM的初始化文件
 
   /** TLB相关配置 */
   val PABITS = 32 //至少应该大于等于32，表示支持的物理地址宽度

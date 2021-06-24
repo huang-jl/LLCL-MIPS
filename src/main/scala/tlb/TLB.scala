@@ -93,17 +93,22 @@ class TLB(useMask: Boolean) extends Component {
     val dataOffset = io.dataVaddr(0, 12 bits)
   }
 
-  val entryRam = Mem(new TLBEntry(useMask), ConstantVal.TLBEntryNum)
-  val entry = Vec(new TLBEntry(useMask), ConstantVal.TLBEntryNum)
-  if (ConstantVal.SIM) {
-    entryRam.init(for (_ <- 0 until ConstantVal.TLBEntryNum) yield new TLBEntry(ConstantVal.USE_MASK, true))
-  }
+  val entry = Vec(Reg(new TLBEntry((useMask))) init (new TLBEntry(useMask, true)), ConstantVal.TLBEntryNum)
+  //  val entryRam = Mem(new TLBEntry(useMask), ConstantVal.TLBEntryNum)
+  //  val entry = Vec(new TLBEntry(useMask), ConstantVal.TLBEntryNum)
+  //  if (ConstantVal.SIM) {
+  //    entryRam.init(for (_ <- 0 until ConstantVal.TLBEntryNum) yield new TLBEntry(ConstantVal.USE_MASK, true))
+  //  }
   //读端口
-  for (i <- 0 until ConstantVal.TLBEntryNum) entry(i) := entryRam.readAsync(U(i, TLBConfig.tlbIndexWidth bits))
-  io.rdata := entryRam.readAsync(io.index)
+  //  for (i <- 0 until ConstantVal.TLBEntryNum) entry(i) := entryRam.readAsync(U(i, TLBConfig.tlbIndexWidth bits))
+  //  io.rdata := entryRam.readAsync(io.index)
+  io.rdata := entry(io.index)
   //写端口
   val writeEntry = new TLBEntry(useMask)
-  entryRam.write(io.index, writeEntry, io.write)
+  //  entryRam.write(io.index, writeEntry, io.write)
+  when(io.write) {
+    entry(io.index) := writeEntry
+  }
 
   val hit = new Area {
     val instHit, dataHit, probeHit = Bits(ConstantVal.TLBEntryNum bits)
