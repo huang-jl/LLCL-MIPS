@@ -195,24 +195,24 @@ class CPU extends Component {
   }
 
   val EX = new Stage {
-    when(
-      ME.valid && ME.currentInput(rfuWe) &&
-        ME.currentInput(rfuAddr) === input(inst).rs
-    ) {
-      input(rsValue) := ME.currentOutput(rfuData)
-      when(ME.stalls) {
-        stalls := True
-      }
-    }
-    when(
-      ME.valid && ME.currentInput(rfuWe) &&
-        ME.currentInput(rfuAddr) === input(inst).rt
-    ) {
-      input(rtValue) := ME.currentOutput(rfuData)
-      when(ME.stalls) {
-        stalls := True
-      }
-    }
+//    when(
+//      ME.valid && ME.currentInput(rfuWe) &&
+//        ME.currentInput(rfuAddr) === input(inst).rs
+//    ) {
+//      input(rsValue) := ME.currentOutput(rfuData)
+//      when(ME.stalls) {
+//        stalls := True
+//      }
+//    }
+//    when(
+//      ME.valid && ME.currentInput(rfuWe) &&
+//        ME.currentInput(rfuAddr) === input(inst).rt
+//    ) {
+//      input(rtValue) := ME.currentOutput(rfuData)
+//      when(ME.stalls) {
+//        stalls := True
+//      }
+//    }
     when(alu.io.stall) {
       stalls := True
       flushable := False
@@ -327,6 +327,7 @@ class CPU extends Component {
       output(rsValue) := EX.currentOutput(rfuData)
     } elsewhen (ME.valid && ME.currentInput(rfuWe) &&
       ME.currentInput(rfuAddr) === input(inst).rs) {
+      when(ME.stalls) (stalls := True)
       output(rsValue) := ME.currentOutput(rfuData)
     } elsewhen (WB.valid && WB.currentInput(rfuWe) &&
       WB.currentInput(rfuAddr) === input(inst).rs) {
@@ -342,6 +343,7 @@ class CPU extends Component {
       output(rtValue) := EX.currentOutput(rfuData)
     } elsewhen (ME.valid && ME.currentInput(rfuWe) &&
       ME.currentInput(rfuAddr) === input(inst).rt) {
+      when(ME.stalls) (stalls := True)
       output(rtValue) := ME.currentOutput(rfuData)
     } elsewhen (WB.valid && WB.currentInput(rfuWe) &&
       WB.currentInput(rfuAddr) === input(inst).rt) {
@@ -349,6 +351,7 @@ class CPU extends Component {
     } otherwise {
       output(rtValue) := produced(rtValue)
     }
+
 
     produced(rfuData) := produced(rfuRdSrc) mux (
       RFU_RD_SRC.cp0 -> cp0Read.produced(rfuData),

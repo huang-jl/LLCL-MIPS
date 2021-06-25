@@ -35,5 +35,5 @@ object ConstantVal {
   val DcacheLineSize = 32  //bytes, 2的幂
   val DcacheIndexWIdth = 7  //dcache中index的宽度，对应2**DcacheIndexWidth个组
   val DcacheWayNum = 2  //dcache中路数
-  val DcacheFifoDepth = 2 //DCache的FIFO深度
+  val DcacheFifoDepth = 4 //DCache的FIFO深度
 }
