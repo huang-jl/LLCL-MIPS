@@ -23,7 +23,7 @@ object ConstantVal {
   /** TLB相关配置 */
   val PABITS = 32 //至少应该大于等于32，表示支持的物理地址宽度
   val TLBEntryNum = 16  //TLB表项的个数, 2的幂
-  val USE_TLB = true //是否开启真正的TLB
+  val USE_TLB = false //是否开启真正的TLB
   val USE_MASK = false  //是否开启TLB的Mask，和PageMask寄存器
 
   /** Cache配置 */
@@ -35,5 +35,5 @@ object ConstantVal {
   val DcacheLineSize = 32  //bytes, 2的幂
   val DcacheIndexWIdth = 7  //dcache中index的宽度，对应2**DcacheIndexWidth个组
   val DcacheWayNum = 2  //dcache中路数
-  val DcacheFifoDepth = 8 //DCache的FIFO深度
+  val DcacheFifoDepth = 2 //DCache的FIFO深度
 }

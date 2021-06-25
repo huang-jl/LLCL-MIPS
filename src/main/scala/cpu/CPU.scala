@@ -213,6 +213,10 @@ class CPU extends Component {
         stalls := True
       }
     }
+    when(alu.io.stall) {
+      stalls := True
+      flushable := False
+    }
 
     val aluC = new StageComponent {
       alu.io.input.op := input(aluOp)
