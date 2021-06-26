@@ -7,17 +7,7 @@ package object Utils {
 
   def zeroExtend(b: Bits, length: Int = 32) = b.asUInt.resize(length).asBits
 
-  def instantiateWhen[T <: Data](data: HardType[T], when: Boolean): T = {
-    val signal: T = if (when) data() else null.asInstanceOf[T]
-    signal
-  }
-
-  def instantiateWhen[T <: Data](data: HardType[T], when: Boolean, direction: IODirection): T = {
-    val signal: T = if (when) data() else null.asInstanceOf[T]
-    if (when) {
-      direction(signal)
-    } else {
-      signal
-    }
+  def instantiateWhen[T <: Data](data: => T, when: Boolean): T = {
+    if (when) data else null.asInstanceOf[T]
   }
 }

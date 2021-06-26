@@ -8,19 +8,21 @@ class Stage extends Area with ValCallbackRec {
   // but actual connection user configurable.
   // read and output are interfaces of the stage,
   // while input and produced are linked to StageComponent's.
-  val read                 = Record() // Values read from last stage
-  val input                = Record() // Values serving as StageComponent input
-  val produced             = Record() // Values produced by current stage
-  val output               = Record() // Values output to the next stage
+  val read     = Record().setAsReg() // Values read from last stage
+  val input    = Record()            // Values serving as StageComponent input
+  val produced = Record()            // Values produced by current stage
+  val output   = Record()            // Values output to the next stage
 
   // Additional I/O Records for being referenced from other stages.
   // currentInput does not reset even after the stage finishes its work.
   // currentOutput keeps its value even after the input resets, when the stage
   // can not reproduce the output.
-  val currentInput         = Record() // Input for the inst, not reset
-  val currentOutput        = Record() // Output of the inst, kept unchanged
-  private val inputStored  = Record() // Aux regs to implement currentInput
-  private val outputStored = Record() // Aux regs to implement currentOutput
+  val currentInput  = Record() // Input for the inst, not reset
+  val currentOutput = Record() // Output of the inst, kept unchanged
+  private val inputStored =
+    Record().setAsReg() // Aux regs to implement currentInput
+  private val outputStored =
+    Record().setAsReg() // Aux regs to implement currentOutput
 
   // Exceptions.
   val exceptionToRaise = Optional(EXCEPTION()) default None // User settable
@@ -87,19 +89,12 @@ class Stage extends Area with ValCallbackRec {
     currentScope.pop()
   }
 
-  read.whenAddedKey(new Record.AddedKeyCallback {
-    def apply[T <: Data](key: Key[T], value: T) = atTheBeginning {
-      value.setAsReg()
-    }
-  })
-
   input.whenAddedKey(new Record.AddedKeyCallback {
     def apply[T <: Data](key: Key[T], value: T) = atTheBeginning {
       value := read(key)
       value.allowOverride
       output += key
 
-      inputStored(key).setAsReg()
       when(firing) {
         inputStored(key) := value
         currentInput(key) := value
@@ -123,7 +118,6 @@ class Stage extends Area with ValCallbackRec {
         value := input(key)
       }
 
-      outputStored(key).setAsReg()
       when(finishing) {
         outputStored(key) := value
       }
