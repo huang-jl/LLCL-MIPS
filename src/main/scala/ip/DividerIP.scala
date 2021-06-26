@@ -9,7 +9,7 @@ import spinal.core._
  *       假设你的输入是33bit，那么输入会到40bit（文档没明确说怎么填充多余的位，估计是高7位填充0）
  *       此时输出的格式是B(0, 7 bits) ## 商(32 bit) ## B(0, 7 bits) ## 余数(32 bit)
  * */
-class Divider(dataWidth: Int = 32, detectZero: Boolean = false, name: String = "divider") extends BlackBox {
+class DividerIP(dataWidth: Int = 32, detectZero: Boolean = false, name: String = "divider") extends BlackBox {
   setDefinitionName(name)
   val alignedDataWidth = ((dataWidth + 7) / 8) * 8
   val io = new Bundle {
@@ -46,7 +46,7 @@ class Divider(dataWidth: Int = 32, detectZero: Boolean = false, name: String = "
 object Divider {
   def main(args: Array[String]): Unit = {
     SpinalVerilog(new Component {
-      val divider = new Divider(32, true)
+      val divider = new DividerIP(32, true)
       divider.io.dividend.assignDontCare()
       divider.io.divisor.assignDontCare()
     })

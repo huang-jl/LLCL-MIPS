@@ -1,8 +1,9 @@
 package cpu
 
 import lib.Optional
-import ip.Divider
+import ip.DividerIP
 import spinal.core._
+import spinal.lib.fsm._
 
 object ALU_OP extends SpinalEnum {
   val add, addu, sub, subu, and, or, xor, nor, sll, lu, srl, sra, mult, multu,
@@ -47,7 +48,7 @@ class ALU extends Component {
 
   //除法器统一进行无符号除法，所以要对操作数进行修正
   val divide = new Area {
-    val divider = new Divider(32, false)
+    val divider = new Divider(detectZero =  false)
 
     val unsignedDiv: Bool = io.input.op === divu
     val signedDiv: Bool = io.input.op === div
@@ -59,13 +60,12 @@ class ALU extends Component {
     val divisor = signedDiv ? b.asSInt.abs | b //如果a[31]为1则转为补码，否则不变
 
     divider.io.dividend.tdata := dividend
-    divider.io.dividend.tvalid := (unsignedDiv | signedDiv) & (!divideByZero)
     divider.io.divisor.tdata := divisor
-    divider.io.divisor.tvalid := (unsignedDiv | signedDiv) & (!divideByZero)
+    divider.io.tvalid := (unsignedDiv | signedDiv) & (!divideByZero)
     quotient := divider.io.dout.tdata(32, 32 bits)
     remainder := divider.io.dout.tdata(0, 32 bits)
 
-    io.stall := (signedDiv | unsignedDiv) & !divideByZero & !divider.io.dout.tvalid //是除法 & 不是除0 & 没有计算出结果的时候就stall
+    io.stall := (signedDiv | unsignedDiv) & !divideByZero & divider.io.stall //是除法 & 不是除0 & 没有计算出结果的时候就stall
   }
 
 
@@ -144,6 +144,54 @@ class ALU extends Component {
     is(sltu) {
       c := U(a < b, 32 bits)
     }
+  }
+}
+
+/**
+ * @note Vivado的除法器是流水的，如果一直拉高`tvalid`那么会让他持续流水地计算
+ *       因此使用一个状态机，仅在IDLE状态接受输入
+ * */
+class Divider(detectZero: Boolean = false, name: String = "divider") extends Component {
+  val io = new Bundle {
+    val tvalid = in Bool  // 一个输入指明除数和被除数是否准备好
+    val dividend = new Bundle {
+      val tdata = in UInt (32 bits)
+    }
+    val divisor = new Bundle {
+      val tdata = in UInt (32 bits)
+    }
+    val dout = new Bundle {
+      val tdata = out UInt (64 bits)
+      val tvalid = out Bool
+      val divideByZero = if (detectZero) out(Bool) else null
+    }
+    val stall = out Bool
+  }
+  val divider = new DividerIP(32, false)
+  divider.io.dividend.tdata := io.dividend.tdata
+  divider.io.divisor.tdata := io.divisor.tdata
+  divider.io.divisor.tvalid := False
+  divider.io.dividend.tvalid := False
+  io.dout.assignAllByName(divider.io.dout)
+  io.stall := True
+
+  val dividerFSM = new StateMachine {
+    setEntry(stateBoot)
+    disableAutoStart()
+    val running = new State
+
+    stateBoot
+      .whenIsNext(io.stall := False)
+      .whenIsActive {
+        divider.io.dividend.tvalid := io.tvalid
+        divider.io.divisor.tvalid := io.tvalid
+        when(io.tvalid)(goto(running))
+      }
+
+    running
+      .whenIsActive {
+        when(divider.io.dout.tvalid)(goto(stateBoot))
+      }
   }
 }
 
