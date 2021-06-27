@@ -36,8 +36,8 @@ class CPU extends Component {
   val pc         = Key(UInt(32 bits))
   val bd         = Key(Bool)
   val inst       = Key(Mips32Inst())
-  val exception  = Key(Optional(EXCEPTION()))
   val eret       = Key(Bool)
+  val isTrap = Key(Bool)
   val aluOp      = Key(ALU_OP())
   val aluASrc    = Key(ALU_A_SRC())
   val aluBSrc    = Key(ALU_B_SRC())
@@ -171,10 +171,14 @@ class CPU extends Component {
       }
     }
 
+    when (input(isTrap) && input(aluResultC)(0)) {
+      exceptionToRaise := EXCEPTION.Tr
+    }
+
     output(rfuData) := ((input(rfuRdSrc) === RFU_RD_SRC.mu)
       ? produced(rfuData)
       | input(rfuData))
-
+    
       //只包括写MMU和写CP0的逻辑信号
     val cp0TLB = new StageComponent {
       if(ConstantVal.USE_TLB){
@@ -195,24 +199,6 @@ class CPU extends Component {
   }
 
   val EX = new Stage {
-//    when(
-//      ME.valid && ME.currentInput(rfuWe) &&
-//        ME.currentInput(rfuAddr) === input(inst).rs
-//    ) {
-//      input(rsValue) := ME.currentOutput(rfuData)
-//      when(ME.stalls) {
-//        stalls := True
-//      }
-//    }
-//    when(
-//      ME.valid && ME.currentInput(rfuWe) &&
-//        ME.currentInput(rfuAddr) === input(inst).rt
-//    ) {
-//      input(rtValue) := ME.currentOutput(rfuData)
-//      when(ME.stalls) {
-//        stalls := True
-//      }
-//    }
     when(alu.io.stall) {
       stalls := True
       flushable := False
@@ -273,6 +259,7 @@ class CPU extends Component {
       produced(useRs) := du.io.use_rs
       produced(useRt) := du.io.use_rt
       produced(eret) := du.io.eret
+      produced(isTrap) := du.io.is_trap
       if(ConstantVal.USE_TLB){
         produced(tlbr) := du.io.tlbr
         produced(tlbw) := du.io.tlbw

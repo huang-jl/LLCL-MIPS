@@ -8,7 +8,7 @@ import scala.collection.mutable
 
 object ALU_OP extends SpinalEnum {
   val add, addu, sub, subu, and, or, xor, nor, sll, lu, srl, sra, mult, multu,
-      div, divu, slt, sltu, clo, clz = newElement()
+      div, divu, seq, sne, slt, sltu, sge, sgeu, clo, clz = newElement()
 }
 
 object ALU_A_SRC extends SpinalEnum {
@@ -138,11 +138,23 @@ class ALU extends Component {
       //      c := a / b
       //      d := a % b
     }
+    is(seq) {
+      c := (a === b).asUInt(32 bits)
+    }
+    is(sne) {
+      c := (a =/= b).asUInt(32 bits)
+    }
     is(slt) {
-      c := U(S(a) < S(b), 32 bits)
+      c := (S(a) < S(b)).asUInt(32 bits)
     }
     is(sltu) {
-      c := U(a < b, 32 bits)
+      c := (a < b).asUInt(32 bits)
+    }
+    is(sge) {
+      c := (S(a) >= S(b)).asUInt(32 bits)
+    }
+    is(sgeu) {
+      c := (a >= b).asUInt(32 bits)
     }
 
     def cloImpl(a: BitVector, nameProvider: Nameable) =

@@ -5,7 +5,7 @@ import defs.Mips32Inst
 import defs.Mips32InstImplicits._
 import defs.ConstantVal
 import lib.{Key, Optional, Decoder, NotConsidered}
-import spinal.core._
+import spinal.core.{SYNC => _, _}
 
 class DU extends Component {
   /// 解码指令
@@ -44,6 +44,7 @@ class DU extends Component {
 
     val exception = out(Optional(EXCEPTION()))
     val eret      = out Bool
+    val is_trap   = out Bool
 
     //tlb相关
     //读tlb到CP0
@@ -91,6 +92,7 @@ class DU extends Component {
 
   val exception = Key(Optional(EXCEPTION()))
   val eret      = Key(Bool)
+  val isTrap    = Key(Bool)
 
   val tlbr, tlbw, tlbp = Key(Bool)
   val tlbIndexSrc      = Key(TLBIndexSrc())
@@ -118,6 +120,7 @@ class DU extends Component {
     default(useRt) to False
     default(exception) to Optional.noneOf(EXCEPTION())
     default(eret) to False
+    default(isTrap) to False
     default(tlbr) to False
     default(tlbw) to False
     default(tlbp) to False
@@ -191,7 +194,7 @@ class DU extends Component {
       CLO -> ALU_OP.clo,
       CLZ -> ALU_OP.clz
     )
-    
+
     for ((inst, op) <- countLeading) {
       on(inst) {
         set(useRs) to True
@@ -310,6 +313,32 @@ class DU extends Component {
       set(eret) to True
     }
 
+    val traps = Seq(
+      (TEQ, TEQI, ALU_OP.seq),
+      (TNE, TNEI, ALU_OP.sne),
+      (TGE, TGEI, ALU_OP.sge),
+      (TGEU, TGEIU, ALU_OP.sgeu),
+      (TLT, TLTI, ALU_OP.slt),
+      (TLTU, TLTIU, ALU_OP.sltu)
+    )
+    for ((rTypeInst, iTypeInst, op) <- traps) {
+      on(rTypeInst) {
+        set(useRs) to True
+        set(useRt) to True
+        set(aluOp) to op
+        set(aluASrc) to ALU_A_SRC.rs
+        set(aluBSrc) to ALU_B_SRC.rt
+        set(isTrap) to True
+      }
+      on(iTypeInst) {
+        set(useRs) to True
+        set(aluOp) to op
+        set(aluASrc) to ALU_A_SRC.rs
+        set(aluBSrc) to ALU_B_SRC.imm
+        set(isTrap) to True
+      }
+    }
+
     // Load & Store
     val loads = Map(
       LB  -> (MU_EX.s, U"00"),
@@ -371,6 +400,14 @@ class DU extends Component {
         set(tlbp) to True
       }
     }
+
+    // Instruction that does nothing
+    val useless = Set(SYNC, WAIT)
+    for (inst <- useless) {
+      on(inst) {
+        // Do nothing. Prevents Reserved Instruction exception.
+      }
+    }
   }
 
   decoder.input := io.inst
@@ -413,6 +450,7 @@ class DU extends Component {
     io.exception := decoder.output(exception)
   }
   io.eret := decoder.output(eret)
+  io.is_trap := decoder.output(isTrap)
 
   if (ConstantVal.USE_TLB) {
     io.tlbr := decoder.output(tlbr)
