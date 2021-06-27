@@ -29,7 +29,7 @@ class CPU extends Component {
   val hlu = new HLU
   val rfu = new RFU
   val cp0 = new CP0
-  val mmu = new MMU(useTLB = ConstantVal.USE_TLB, useMask = ConstantVal.USE_MASK)
+  val mmu = new MMU(useTLB = ConstantVal.USE_TLB)
 
   val jumpPc = Key(Optional(UInt(32 bits)))
 
@@ -54,6 +54,7 @@ class CPU extends Component {
   val hluLoSrc   = Key(HLU_SRC())
   val hluHiData  = Key(Bits(32 bits))
   val hluLoData  = Key(Bits(32 bits))
+  val cp0Re      = Key(Bool)
   val cp0We      = Key(Bool)
   val rfuWe      = Key(Bool)
   val rfuAddr    = Key(UInt(5 bits))
@@ -68,6 +69,7 @@ class CPU extends Component {
   val tlbw       = Key(Bool)  //ID解码
   val tlbp       = Key(Bool)  //ID解码
   val tlbIndexSrc= Key(TLBIndexSrc())  //ID解码
+  val instFetch  = Key(Bool)  //异常是否是取值时发生的
 
   //MMU input signal
   //目前MMU和CP0直接相连，MMU拿到的CP0寄存器值都是实时的
@@ -127,7 +129,6 @@ class CPU extends Component {
       }
 
       produced(rfuData) := dcu.io.rdata
-      exceptionToRaise := dcu.io.exception
     }
 
     val hluC = new StageComponent {
@@ -147,6 +148,7 @@ class CPU extends Component {
     }
 
     val cp0C = new StageComponent {
+      //CP0 write
       cp0.io.softwareWrite.valid := input(cp0We)
       cp0.io.softwareWrite.addr.rd := input(inst).rd
       cp0.io.softwareWrite.addr.sel := input(inst).sel
@@ -158,6 +160,7 @@ class CPU extends Component {
       cp0.io.exceptionInput.memAddr := input(memAddr)
       cp0.io.exceptionInput.pc := input(pc)
       cp0.io.exceptionInput.bd := input(bd)
+      cp0.io.exceptionInput.instFetch := input(instFetch)
 
       cp0.io.instStarting := RegNext(receiving)
       when(cp0.io.interruptOnNextInst && receiving) {
@@ -171,6 +174,7 @@ class CPU extends Component {
       }
     }
 
+    //TODO 是不是有点啰嗦
     output(rfuData) := ((input(rfuRdSrc) === RFU_RD_SRC.mu)
       ? produced(rfuData)
       | input(rfuData))
@@ -191,6 +195,23 @@ class CPU extends Component {
           mmu.io.index := cp0.io.tlbBus.random //如果是写tlbwr那么用random
         }
       }
+    }
+    // 异常
+    exceptionToRaise := None
+    // TLB异常
+    if(ConstantVal.USE_TLB){
+      val refillException = mmu.io.dataMapped & mmu.io.dataRes.miss
+      val invalidException = mmu.io.dataMapped & !mmu.io.dataRes.miss & !mmu.io.dataRes.valid
+      val modifiedException = mmu.io.dataMapped & input(memWe) &
+        !mmu.io.dataRes.miss & mmu.io.dataRes.valid & !mmu.io.dataRes.dirty
+      when(refillException | invalidException) {
+        when(input(memRe)) (exceptionToRaise := EXCEPTION.TLBL)
+          .elsewhen(input(memWe)) (exceptionToRaise := EXCEPTION.TLBS)
+      }.elsewhen(modifiedException) (exceptionToRaise := EXCEPTION.Mod)
+    }
+    // 访存地址不对齐异常（更优先）
+    when(dcu.io.exception.nonEmpty) {
+      exceptionToRaise := dcu.io.exception
     }
   }
 
@@ -238,6 +259,12 @@ class CPU extends Component {
       produced(memAddr) := U(S(input(rsValue)) + input(inst).offset)
     }
 
+    val cp0Read = new StageComponent {
+      cp0.io.read.addr.rd := input(inst).rd
+      cp0.io.read.addr.sel := input(inst).sel
+      produced(rfuData) := cp0.io.read.data
+    }
+
     produced(rfuData) := input(rfuRdSrc) mux (
       RFU_RD_SRC.alu -> produced(aluResultC).asBits,
       RFU_RD_SRC.hi -> ((ME.valid && ME.currentInput(hluHiWe))
@@ -246,8 +273,24 @@ class CPU extends Component {
       RFU_RD_SRC.lo -> ((ME.valid && ME.currentInput(hluLoWe))
         ? ME.currentOutput(hluLoData)
         | hlu.lo_v),
+      RFU_RD_SRC.cp0 -> cp0Read.produced(rfuData),
       default -> input(rfuData)
     )
+
+    val cp0_RAW_harzard = new Area {
+      //当前指令mfc0，上一条指令mtc0 | tlbp | tlbr ，则需要暂停一个周期
+      val mfc0_mtc0_harzard = input(cp0Re) & ME.currentInput(cp0We) &
+        input(inst).rd === ME.currentInput(inst).rd &
+        input(inst).sel === ME.currentInput(inst).sel
+      val mfc0_tlb_harzard = input(cp0Re) &
+        (
+          (ME.currentInput(tlbp) & input(inst).rd === 0 & input(inst).sel === 0) |
+            (ME.currentInput(tlbr) & Utils.equalAny(input(inst).rd, U(2), U(3), U(5), U(10)) & input(inst).sel === 0)
+          )
+      when(ME.valid & (mfc0_mtc0_harzard | mfc0_tlb_harzard)) {
+        stalls := True
+      }
+    }
   }
 
   val ID = new Stage {
@@ -266,6 +309,7 @@ class CPU extends Component {
       produced(hluHiSrc) := du.io.hlu_hi_src
       produced(hluLoWe) := du.io.hlu_lo_we
       produced(hluLoSrc) := du.io.hlu_lo_src
+      produced(cp0Re) := du.io.cp0_re
       produced(cp0We) := du.io.cp0_we
       produced(rfuWe) := du.io.rfu_we
       produced(rfuAddr) := du.io.rfu_rd
@@ -289,11 +333,11 @@ class CPU extends Component {
       produced(rtValue) := rfu.io.rb.data
     }
 
-    val cp0Read = new StageComponent {
-      cp0.io.read.addr.rd := input(inst).rd
-      cp0.io.read.addr.sel := input(inst).sel
-      produced(rfuData) := cp0.io.read.data
-    }
+//    val cp0Read = new StageComponent {
+//      cp0.io.read.addr.rd := input(inst).rd
+//      cp0.io.read.addr.sel := input(inst).sel
+//      produced(rfuData) := cp0.io.read.data
+//    }
 
     val juC = new StageComponent {
       ju.op := du.io.ju_op
@@ -324,6 +368,7 @@ class CPU extends Component {
       EX.valid && EX.currentInput(rfuWe) &&
         EX.currentInput(rfuAddr) === input(inst).rs
     ) {
+      when(EX.stalls) (stalls := True)
       output(rsValue) := EX.currentOutput(rfuData)
     } elsewhen (ME.valid && ME.currentInput(rfuWe) &&
       ME.currentInput(rfuAddr) === input(inst).rs) {
@@ -340,6 +385,7 @@ class CPU extends Component {
       EX.valid && EX.currentInput(rfuWe) &&
         EX.currentInput(rfuAddr) === input(inst).rt
     ) {
+      when(EX.stalls) (stalls := True)
       output(rtValue) := EX.currentOutput(rfuData)
     } elsewhen (ME.valid && ME.currentInput(rfuWe) &&
       ME.currentInput(rfuAddr) === input(inst).rt) {
@@ -353,10 +399,11 @@ class CPU extends Component {
     }
 
 
-    produced(rfuData) := produced(rfuRdSrc) mux (
-      RFU_RD_SRC.cp0 -> cp0Read.produced(rfuData),
-      default        -> B(input(pc) + 8)
-    )
+//    produced(rfuData) := produced(rfuRdSrc) mux (
+//      RFU_RD_SRC.cp0 -> cp0Read.produced(rfuData),
+//      default        -> B(input(pc) + 8)
+//    )
+    produced(rfuData) := B(input(pc) + 8)
 
     when(
       EX.valid && EX.currentInput(rfuWe) &&
@@ -392,7 +439,24 @@ class CPU extends Component {
       }
 
       produced(inst) := icu.io.ibus.data
-      exceptionToRaise := icu.io.exception
+      // 异常
+      produced(instFetch) := False  //默认取值没有产生异常
+      exceptionToRaise := None
+      // TLB异常
+      if(ConstantVal.USE_TLB){
+        val refillException = mmu.io.instMapped & mmu.io.instRes.miss
+        val invalidException = mmu.io.instMapped & !mmu.io.instRes.miss & !mmu.io.instRes.valid
+        when(refillException | invalidException) {
+          exceptionToRaise := EXCEPTION.TLBL
+          produced(instFetch) := True
+        }
+      }
+      // 访存地址不对齐异常（更优先）
+      when(icu.io.exception.nonEmpty) {
+        exceptionToRaise := icu.io.exception
+        produced(instFetch) := True
+      }
+
     }
   }
 

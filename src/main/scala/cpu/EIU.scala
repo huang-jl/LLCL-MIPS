@@ -19,17 +19,21 @@ object EXCEPTION extends SpinalEnum {
   val Int,    // Interrupt
   AdEL, AdES, // Address Error
   RI,         // Instruction Validity Exceptions
-  Sys, Bp, Ov // Execution Exception
+  Sys, Bp, Ov, // Execution Exception
+  TLBL, TLBS, Mod // TLBException
   = newElement()
 
   defaultEncoding = SpinalEnumEncoding("ExcCode")(
     Int   -> 0x00,
+    Mod   -> 0x01,
+    TLBL  -> 0x02,
+    TLBS  -> 0x03,
+    AdEL  -> 0x04,
+    AdES  -> 0x05,
     RI    -> 0x0a,
     Sys   -> 0x08,
     Bp    -> 0x09,
-    Ov    -> 0x0c,
-    AdEL -> 0x04,
-    AdES -> 0x05
+    Ov    -> 0x0c
   )
 }
 
