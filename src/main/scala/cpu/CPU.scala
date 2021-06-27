@@ -282,13 +282,18 @@ class CPU extends Component {
       val mfc0_mtc0_harzard = input(cp0Re) & ME.currentInput(cp0We) &
         input(inst).rd === ME.currentInput(inst).rd &
         input(inst).sel === ME.currentInput(inst).sel
-      val mfc0_tlb_harzard = input(cp0Re) &
-        (
-          (ME.currentInput(tlbp) & input(inst).rd === 0 & input(inst).sel === 0) |
-            (ME.currentInput(tlbr) & Utils.equalAny(input(inst).rd, U(2), U(3), U(5), U(10)) & input(inst).sel === 0)
-          )
-      when(ME.valid & (mfc0_mtc0_harzard | mfc0_tlb_harzard)) {
+      when(ME.valid & mfc0_mtc0_harzard) {
         stalls := True
+      }
+      if(ConstantVal.USE_TLB) {
+        val mfc0_tlb_harzard = input(cp0Re) &
+          (
+            (ME.currentInput(tlbp) & input(inst).rd === 0 & input(inst).sel === 0) |
+              (ME.currentInput(tlbr) & Utils.equalAny(input(inst).rd, U(2), U(3), U(5), U(10)) & input(inst).sel === 0)
+            )
+        when(ME.valid & mfc0_tlb_harzard) {
+          stalls := True
+        }
       }
     }
   }

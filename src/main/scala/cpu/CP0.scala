@@ -483,11 +483,13 @@ class CP0 extends Component {
             | io.exceptionInput.memAddr).asBits
 
       }
-      when(Utils.equalAny(exc, EXCEPTION.TLBS, EXCEPTION.TLBL)) {
-        regs("EntryHi")("VPN2") :=
-          (io.exceptionInput.instFetch
-            ? io.exceptionInput.pc
-            | io.exceptionInput.memAddr)(31 downto 13).asBits
+      if(ConstantVal.USE_TLB){
+        when(Utils.equalAny(exc, EXCEPTION.TLBS, EXCEPTION.TLBL)) {
+          regs("EntryHi")("VPN2") :=
+            (io.exceptionInput.instFetch
+              ? io.exceptionInput.pc
+              | io.exceptionInput.memAddr)(31 downto 13).asBits
+        }
       }
 //      when(exc === EXCEPTION.AdEL || exc === EXCEPTION.AdES) {
 //        val isFromInstruction =
