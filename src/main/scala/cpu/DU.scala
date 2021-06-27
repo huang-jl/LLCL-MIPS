@@ -116,7 +116,7 @@ class DU extends Component {
     default(juPcSrc) to JU_PC_SRC.rs
     default(useRs) to False
     default(useRt) to False
-    default(exception) to Optional.fromNone(EXCEPTION())
+    default(exception) to Optional.noneOf(EXCEPTION())
     default(eret) to False
     default(tlbr) to False
     default(tlbw) to False
@@ -281,10 +281,10 @@ class DU extends Component {
 
     // Traps
     on(SYSCALL) {
-      set(exception) to Optional.from(EXCEPTION())(EXCEPTION.Sys())
+      set(exception) to Optional.some(EXCEPTION.Sys())
     }
     on(BREAK) {
-      set(exception) to Optional.from(EXCEPTION())(EXCEPTION.Bp())
+      set(exception) to Optional.some(EXCEPTION.Bp())
     }
     on(ERET) {
       set(eret) to True
