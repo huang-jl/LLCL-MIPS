@@ -187,6 +187,20 @@ class DU extends Component {
       }
     }
 
+    val countLeading = Map(
+      CLO -> ALU_OP.clo,
+      CLZ -> ALU_OP.clz
+    )
+    
+    for ((inst, op) <- countLeading) {
+      on(inst) {
+        set(useRs) to True
+        set(aluASrc) to ALU_A_SRC.rs
+        set(rfuRd) to RFU_RD.rd
+        set(rfuRdSrc) to RFU_RD_SRC.alu
+      }
+    }
+
     val ITypeArithmetics = Map(
       ADDI  -> ALU_OP.add,
       ADDIU -> ALU_OP.addu,

@@ -141,6 +141,9 @@ object InstructionSpec {
   val MULTU = special(fn = "011001").forceZero(Fields.rd)
   val MUL   = special2(fn = "000010")
 
+  val CLO = special2(fn = "100001")
+  val CLZ = special2(fn = "100000")
+
   val AND  = special(fn = "100100")
   val ANDI = IType(op = "001100")
   val LUI  = IType(op = "001111").forceZero(Fields.rs)
