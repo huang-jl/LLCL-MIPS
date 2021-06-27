@@ -141,7 +141,8 @@ class DU extends Component {
       SUB  -> ALU_OP.sub,
       SUBU -> ALU_OP.subu,
       SLT  -> ALU_OP.slt,
-      SLTU -> ALU_OP.sltu
+      SLTU -> ALU_OP.sltu,
+      MUL  -> ALU_OP.mult
     ) ++ Map(
       AND -> ALU_OP.and,
       NOR -> ALU_OP.nor,
@@ -155,8 +156,6 @@ class DU extends Component {
 
     for ((inst, op) <- RTypeArithmetics) {
       on(inst) {
-        set(rfuRd) to RFU_RD.rd
-        set(rfuRdSrc) to RFU_RD_SRC.alu
         set(aluBSrc) to ALU_B_SRC.rt
         set(aluOp) to op
         set(useRt) to True
@@ -173,11 +172,18 @@ class DU extends Component {
         }
       }
 
-      if (multDivs contains inst) on(inst) {
-        set(hluHiWe) to True
-        set(hluHiSrc) to HLU_SRC.alu
-        set(hluLoWe) to True
-        set(hluLoSrc) to HLU_SRC.alu
+      if (multDivs contains inst) {
+        on(inst) {
+          set(hluHiWe) to True
+          set(hluHiSrc) to HLU_SRC.alu
+          set(hluLoWe) to True
+          set(hluLoSrc) to HLU_SRC.alu
+        }
+      } else {
+        on(inst) {
+          set(rfuRd) to RFU_RD.rd
+          set(rfuRdSrc) to RFU_RD_SRC.alu
+        }
       }
     }
 

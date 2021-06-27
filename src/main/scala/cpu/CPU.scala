@@ -132,15 +132,15 @@ class CPU extends Component {
 
     val hluC = new StageComponent {
       hlu.hi_we := input(hluHiWe)
-      produced(hluHiData) := ((input(hluHiSrc) === HLU_SRC.rs)
-        ? input(rsValue)
-        | input(aluResultC).asBits)
-      hlu.new_hi := produced(hluHiData)
       hlu.lo_we := input(hluLoWe)
       produced(hluLoData) := ((input(hluLoSrc) === HLU_SRC.rs)
         ? input(rsValue)
-        | input(aluResultD).asBits)
+        | input(aluResultC).asBits)
       hlu.new_lo := produced(hluLoData)
+      produced(hluHiData) := ((input(hluHiSrc) === HLU_SRC.rs)
+        ? input(rsValue)
+        | input(aluResultD).asBits)
+      hlu.new_hi := produced(hluHiData)
 
       setInputReset(hluHiWe, False)
       setInputReset(hluLoWe, False)

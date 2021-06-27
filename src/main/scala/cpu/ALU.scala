@@ -118,25 +118,25 @@ class ALU extends Component {
     }
     is(mult) {
       val temp = U(S(a) * S(b))
-      c := temp(63 downto 32)
-      d := temp(31 downto 0)
+      c := temp(31 downto 0)
+      d := temp(63 downto 32)
     }
     is(multu) {
       val temp = a * b
-      c := temp(63 downto 32)
-      d := temp(31 downto 0)
+      c := temp(31 downto 0)
+      d := temp(63 downto 32)
     }
     is(div) {
-      c := divide.remainder.twoComplement(a(31))(0, 32 bits).asUInt
-      d := divide.quotient.twoComplement(a(31) ^ b(31))(0, 32 bits).asUInt
-      //      c := U(S(a) % S(b))
-      //      d := U(S(a) / S(b))
+      c := divide.quotient.twoComplement(a(31) ^ b(31))(0, 32 bits).asUInt
+      d := divide.remainder.twoComplement(a(31))(0, 32 bits).asUInt
+      //      c := U(S(a) / S(b))
+      //      d := U(S(a) % S(b))
     }
     is(divu) {
-      c := divide.remainder
-      d := divide.quotient
-      //      c := a % b
-      //      d := a / b
+      c := divide.quotient
+      d := divide.remainder
+      //      c := a / b
+      //      d := a % b
     }
     is(slt) {
       c := U(S(a) < S(b), 32 bits)
