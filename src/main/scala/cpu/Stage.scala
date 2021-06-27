@@ -77,9 +77,9 @@ class Stage extends Area with ValCallbackRec {
 
   // End of arbitration.
 
-  // Default linkings between I/O Records.
+  // Default linking between I/O Records.
 
-  val currentScope = GlobalData.get.currentScope
+  val currentScope = DslScopeStack.get
 
   def atTheBeginning(body: => Unit) = {
     currentScope.push()

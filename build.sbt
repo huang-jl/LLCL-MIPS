@@ -2,7 +2,7 @@ name := "LLCL-MIPS"
 version := "0.1"
 
 scalaVersion := "2.11.12"
-val spinalVersion = "1.4.3"
+val spinalVersion = "1.5.0"
 
 libraryDependencies ++= Seq(
   "com.github.spinalhdl" % "spinalhdl-core_2.11" % spinalVersion,
