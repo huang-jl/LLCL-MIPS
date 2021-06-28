@@ -20,4 +20,17 @@ package object Utils {
       signal
     }
   }
+
+  def equalAny[T <: Data](left: T, right: T*): Bool = {
+    val ans = Bits(right.length bits)
+    right.zipWithIndex.foreach(ele  => ans(ele._2) := (ele._1 === left))
+    ans.orR
+  }
+
+  def equalAny[T <: SpinalEnum](left: SpinalEnumCraft[T], right: SpinalEnumCraft[T]*): Bool = {
+    val ans = Bits(right.length bits)
+    right.zipWithIndex.foreach(ele  => ans(ele._2) := (ele._1 === left))
+    ans.orR
+  }
+
 }
