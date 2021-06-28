@@ -2,12 +2,20 @@ package cache
 
 import spinal.core._
 
+/**
+ * @param blockSize 数据块的大小, bytes
+ * @param wayNum 路个数
+ * @note Cache采用实Tag和虚Index，
+ *       因此Cache一路大小必须小于等于一个页的大小。
+ *       由于只支持4KiB的页，这里默认一路的大小为4KiB
+ * */
 case class CacheRamConfig(
-                           blockSize: Int = 32, //数据块的大小, bytes
-                           indexWidth: Int = 7, //Index的宽度
-                           wayNum: Int = 2, //路个数
-                           sim: Boolean = false //是否是仿真，会影响ram的生成
+                           blockSize: Int = 32,
+                           wayNum: Int = 2,
+                           sim: Boolean = true
                          ) {
+  def indexWidth: Int = log2Up(4 * 1024) - offsetWidth
+
   def tagWidth: Int = 32 - indexWidth - offsetWidth
 
   /** Cache Line的字节偏移宽度 */
@@ -33,7 +41,9 @@ case class CacheRamConfig(
   }
 }
 
-//blockSize: 一个数据块的大小:bytes
+/**
+ * @param blockSize 一个数据块的大小:bytes
+ */
 case class Block(blockSize: Int) extends Bundle {
   val banks = Vec(Bits(32 bits), blockSize / 4)
 }

@@ -4,73 +4,102 @@ import spinal.core._
 import spinal.lib._
 import spinal.lib.fsm._
 import spinal.lib.bus.amba4.axi._
+import ip.{DualPortBram, DualPortLutram, DualPortRam}
 
-import ip.{SinglePortBRam, SinglePortLUTRam}
+class CPUICacheInterface(config: CacheRamConfig) extends Bundle with IMasterSlave {
+  val stage1 = new Bundle {
+    val read = Bool //是否读
+    val index = UInt(config.indexWidth bits) //从地址中截取出虚索引
+    //    val cacheTags = Vec(Meta(config.tagWidth), config.wayNum) //读出来的各路tag
+    //    val cacheDatas = Vec(Block(config.blockSize), config.wayNum)  //读出来的各路数据
+    //    val replaceIndex = UInt(log2Up(config.wayNum) bits) //LRU读出来要替换的路编号
+  }
 
-class CPUICacheInterface extends Bundle with IMasterSlave {
-  val read = Bool
-  val addr = UInt(32 bits)
-  val data = Bits(32 bits)
-  val stall = Bool
+  val stage2 = new Bundle {
+    val en = Bool //如果stage1检测到异常，那么拉低该信号就不会再进行访存
+    val paddr = UInt(32 bits) //用来进行tag比较
+    val rdata = Bits(32 bits) //返回读出来的数据
+    val stall = Bool
+  }
 
   override def asMaster(): Unit = {
-    out(read, addr)
-    in(data, stall)
+    out(stage1.read, stage1.index, stage2.paddr, stage2.en)
+    //    in(stage2.rdata, stage2.stall, stage1.cacheTags, stage1.cacheDatas, stage1.replaceIndex)
+    in(stage2.rdata, stage2.stall)
   }
 
   def <<(that: CPUICacheInterface): Unit = that >> this
 
   def >>(that: CPUICacheInterface): Unit = {
     //this is master
-    that.read := this.read
-    that.addr := this.addr
-    this.data := that.data
-    this.stall := that.stall
+    that.stage1 := this.stage1
+    that.stage2.paddr := this.stage2.paddr
+    that.stage2.en := this.stage2.en
+    //    this.stage1.cacheTags := that.stage1.cacheTags
+    //    this.stage1.cacheDatas := that.stage1.cacheDatas
+    this.stage2.rdata := that.stage2.rdata
+    this.stage2.stall := that.stage2.stall
   }
 }
 
-object ICache {
-  def main(args: Array[String]): Unit = {
-    SpinalVerilog(new ICache(CacheRamConfig())).printPruned()
-  }
-}
-
+/**
+ * @note ICache采用两级流水：
+ *       第一级读Ram（包括data和tag等信息）
+ *       第二级若命中则更新cache并且返回数据；否则暂停流水线进行访存
+ * */
 class ICache(config: CacheRamConfig) extends Component {
   val io = new Bundle {
-    val cpu = slave(new CPUICacheInterface)
+    val cpu = slave(new CPUICacheInterface(config))
     val axi = master(new Axi4(Axi4Config(
       addressWidth = 32, dataWidth = 32, idWidth = 4,
       useRegion = false, useQos = false
     )))
   }
 
-  /*
-   * Signal and Area Definition
-   */
-
-  val inputAddr = new Area {
-    val tag: UInt = io.cpu.addr(config.offsetWidth + config.indexWidth, config.tagWidth bits)
-    val index: UInt = io.cpu.addr(config.offsetWidth, config.indexWidth bits)
-    val wordOffset: UInt = io.cpu.addr(2 until config.offsetWidth)
-  }
   val cacheRam = new Area {
-    //    val tags = Array.fill(config.wayNum)(Mem(Bits(Meta.getBitWidth(config.tagWidth) bits), config.setSize))
-    //    val datas = Array.fill(config.wayNum)(Mem(Bits(Block.getBitWidth(config.blockSize) bits), config.setSize))
-    val tags = if (!config.sim) Array.fill(config.wayNum)(new SinglePortLUTRam(Meta.getBitWidth(config.tagWidth),
-      1 << config.indexWidth)) else null
-    val datas = if (!config.sim) Array.fill(config.wayNum)(new SinglePortLUTRam(Block.getBitWidth(config.blockSize),
-      1 << config.indexWidth)) else null
-
-    val simTags = if (config.sim) Array.fill(config.wayNum)(Mem(Bits(Meta.getBitWidth(config.tagWidth) bits), config.setSize)) else null
-    val simDatas = if (config.sim) Array.fill(config.wayNum)(Mem(Bits(Block.getBitWidth(config.blockSize) bits), config.setSize)) else null
-    //仿真时初值
-    if (config.sim) {
-      for (i <- 0 until config.wayNum) {
-        simTags(i).init(for (i <- 0 until config.setSize) yield B(0))
-        simDatas(i).init(for (i <- 0 until config.setSize) yield B(0))
-      }
+    val tags = Array.fill(config.wayNum)(new DualPortLutram(Meta.getBitWidth(config.tagWidth)))
+    val datas = Array.fill(config.wayNum)(new DualPortBram(Block.getBitWidth(config.blockSize)))
+    for (i <- 0 until config.wayNum) {
+      tags(i).io.portA.en := True
+      tags(i).io.portB.en := True
+      datas(i).io.portA.en := True
+      datas(i).io.portB.en := True
     }
   }
+  val plru = Array.fill(config.setSize)(new LRUManegr(config.wayNum)) //setSize是组的个数，不是“设置大小”的意思
+  for(i <- 0 until config.setSize) {
+    plru(i).io.update
+  }
+
+  //stage1
+  // Read from Ram
+  val cacheTags = Vec(Meta(config.tagWidth), config.wayNum)
+  val cacheDatas = Vec(Block(config.blockSize), config.wayNum)
+  for (i <- 0 until config.wayNum) {
+    cacheRam.tags(i).io.portA.addr := io.cpu.stage1.index
+    cacheTags(i).assignFromBits(cacheRam.tags(i).io.portA.dout)
+    cacheDatas(i).assignFromBits(cacheRam.datas(i).io.portA.dout)
+  }
+  //Read from LRU
+  val plruAddr = Reg(UInt(log2Up(config.wayNum) bits)) init(0)
+  val plruAddr = Vec(UInt(log2Up(config.wayNum) bits), config.setSize)
+  for (i <- 0 until config.setSize) {
+    plruAddr(i) := plru(i).io.next
+    plru(i).io.update := (!io.cpu.stall) & (inputAddr.index === i)
+    plru(i).io.access := icache.hitPerWay
+  }
+
+  //要替换的那一路的地址
+  val replace = new Area {
+    val addr = UInt(log2Up(config.wayNum) bits)
+    addr := plruAddr(inputAddr.index)
+    for (i <- 0 until config.wayNum) {
+      when(!icache.rmeta(i).valid)(addr := i) //如果有未使用的cache line，优先替换它
+    }
+  }
+
+
+  val wordOffset: UInt = io.cpu.addr(2 until config.offsetWidth)
 
   val icache = new Area {
     val dataWE = Bits(config.wayNum bits) //写cache.data的使能
@@ -127,22 +156,6 @@ class ICache(config: CacheRamConfig) extends Component {
     }
   }
 
-  val plru = Array.fill(config.setSize)(new LRUManegr(config.wayNum)) //setSize是组的个数，不是“设置大小”的意思
-  val plruAddr = Vec(UInt(log2Up(config.wayNum) bits), config.setSize)
-  for (i <- 0 until config.setSize) {
-    plruAddr(i) := plru(i).io.next
-    plru(i).io.update := (!io.cpu.stall) & (inputAddr.index === i)
-    plru(i).io.access := icache.hitPerWay
-  }
-
-  //要替换的那一路的地址
-  val replace = new Area {
-    val addr = UInt(log2Up(config.wayNum) bits)
-    addr := plruAddr(inputAddr.index)
-    for (i <- 0 until config.wayNum) {
-      when(!icache.rmeta(i).valid)(addr := i) //如果有未使用的cache line，优先替换它
-    }
-  }
 
   val counter = Counter(0 to config.wordSize) //从内存读入数据的计数器
   val recvBlock = Reg(Block(config.blockSize)) init (Block.fromBits(B(0), config.blockSize)) //从内存中读出的一行的寄存器
@@ -236,3 +249,10 @@ class ICache(config: CacheRamConfig) extends Component {
   }
 
 }
+
+object ICache {
+  def main(args: Array[String]): Unit = {
+    SpinalVerilog(new ICache(CacheRamConfig())).printPruned()
+  }
+}
+
