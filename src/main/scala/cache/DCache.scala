@@ -60,7 +60,7 @@ object DCache {
 //并且byteEnable应该是0100
 
 class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
-  val writeBufferConfig = WriteBufferConfig(config.blockSize, config.tagWidth + config.indexWidth, fifoDepth, sim = config.sim)
+  val writeBufferConfig = WriteBufferConfig(config.blockSize, config.tagWidth + config.indexWidth, fifoDepth)
   val io = new Bundle {
     val cpu = slave(new CPUDCacheInterface)
     val axi = master(new Axi4(Axi4Config(
@@ -92,21 +92,10 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   }
 
   val cacheRam = new Area {
-    val simTags = if (config.sim) Array.fill(config.wayNum)(new Mem(
-      Bits(DMeta.getBitWidth(config.tagWidth) bits), config.setSize)) else null
-    val simDatas = if (config.sim) Array.fill(config.wayNum)(new Mem(
-      Bits(Block.getBitWidth(config.blockSize) bits), config.setSize)) else null
-    val tags = if (!config.sim) Array.fill(config.wayNum)(new SinglePortLUTRam(
-      DMeta.getBitWidth(config.tagWidth), 1 << config.indexWidth)) else null
-    val datas = if (!config.sim) Array.fill(config.wayNum)(new SinglePortLUTRam(
-      Block.getBitWidth(config.blockSize), 1 << config.indexWidth)) else null
-    if (config.sim) {
-      //仿真时初值
-      for (i <- 0 until config.wayNum) {
-        simTags(i).init(for (i <- 0 until config.setSize) yield B(0))
-        simDatas(i).init(for (i <- 0 until config.setSize) yield B(0))
-      }
-    }
+    val depth: Int = 4 * 1024 * 8 / Block.getBitWidth(config.blockSize)
+    val tags = Array.fill(config.wayNum)(new SinglePortLUTRam(
+      DMeta.getBitWidth(config.tagWidth), depth * DMeta.getBitWidth(config.tagWidth)))
+    val datas = Array.fill(config.wayNum)(new SinglePortLUTRam(Block.getBitWidth(config.blockSize)))
   }
 
   val dcache = new Area {
@@ -115,13 +104,11 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     /*
      * Cache地址和使能
      */
-    if (!config.sim) {
-      for (i <- 0 until config.wayNum) {
-        cacheRam.tags(i).io.addr := inputAddr.index
-        cacheRam.datas(i).io.addr := inputAddr.index
-        cacheRam.tags(i).io.en := True
-        cacheRam.datas(i).io.en := True
-      }
+    for (i <- 0 until config.wayNum) {
+      cacheRam.tags(i).io.addr := inputAddr.index
+      cacheRam.datas(i).io.addr := inputAddr.index
+      cacheRam.tags(i).io.en := True
+      cacheRam.datas(i).io.en := True
     }
     /*
      * Cache读端口
@@ -129,13 +116,8 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     val rdata = Vec(Block(config.blockSize), config.wayNum)
     val rmeta = Vec(DMeta(config.tagWidth), config.wayNum)
     for (i <- 0 until config.wayNum) {
-      if (config.sim) {
-        rmeta(i).assignFromBits(cacheRam.simTags(i).readAsync(inputAddr.index))
-        rdata(i).assignFromBits(cacheRam.simDatas(i).readAsync(inputAddr.index))
-      } else {
-        rdata(i).assignFromBits(cacheRam.datas(i).io.dout)
-        rmeta(i).assignFromBits(cacheRam.tags(i).io.dout)
-      }
+      rdata(i).assignFromBits(cacheRam.datas(i).io.dout)
+      rmeta(i).assignFromBits(cacheRam.tags(i).io.dout)
     }
     /*
      * Cache写端口
@@ -144,15 +126,10 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     val writeData = Bits(config.bitSize bits) //要写入cache的Block
     //TODO 加入invalidate功能后需要修改valid的逻辑
     for (i <- 0 until config.wayNum) {
-      if (config.sim) {
-        cacheRam.simTags(i).write(inputAddr.index, writeMeta.asBits, enable = tagWE(i))
-        cacheRam.simDatas(i).write(inputAddr.index, writeData, enable = dataWE(i))
-      } else {
-        cacheRam.tags(i).io.we := tagWE(i)
-        cacheRam.datas(i).io.we := dataWE(i)
-        cacheRam.tags(i).io.din := writeMeta.asBits
-        cacheRam.datas(i).io.din := writeData.asBits
-      }
+      cacheRam.tags(i).io.we := tagWE(i)
+      cacheRam.datas(i).io.we := dataWE(i)
+      cacheRam.tags(i).io.din := writeMeta.asBits
+      cacheRam.datas(i).io.din := writeData.asBits
     }
 
     val hitPerWay: Bits = Bits(config.wayNum bits) //cache每一路是否命中

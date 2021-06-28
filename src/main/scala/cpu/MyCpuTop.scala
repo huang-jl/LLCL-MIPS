@@ -107,5 +107,6 @@ object Generate {
   def main(args: Array[String]): Unit = {
     val report = SpinalVerilog(new MyCPUTop)
     report.mergeRTLSource("mergeRTL")
+    report.printPruned()
   }
 }

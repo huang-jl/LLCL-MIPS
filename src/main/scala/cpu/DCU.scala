@@ -114,6 +114,6 @@ class DCU(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
 
 object DCU {
   def main(args: Array[String]): Unit = {
-    SpinalVerilog(new DCU(CacheRamConfig(sim = true), 8))
+    SpinalVerilog(new DCU(CacheRamConfig(), 8))
   }
 }

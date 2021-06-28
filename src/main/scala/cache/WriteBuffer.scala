@@ -4,7 +4,7 @@ import spinal.core._
 import spinal.lib._
 
 //depth: Fifo的大小
-case class WriteBufferConfig(blockSize: Int, tagWidth: Int, depth: Int = 16, sim: Boolean) {
+case class WriteBufferConfig(blockSize: Int, tagWidth: Int, depth: Int = 16) {
   def dataWidth: Int = blockSize * 8 //数据的位宽
 
   def beWidth: Int = blockSize //byteEnable信号的宽度
@@ -16,7 +16,7 @@ case class WriteBufferConfig(blockSize: Int, tagWidth: Int, depth: Int = 16, sim
 
 object WriteBuffer {
   def main(args: Array[String]): Unit = {
-    SpinalVerilog(new WriteBuffer(WriteBufferConfig(32, 27, 8, false)))
+    SpinalVerilog(new WriteBuffer(WriteBufferConfig(32, 27, 8)))
   }
 }
 

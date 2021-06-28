@@ -6,17 +6,21 @@ import spinal.lib._
 /**
  * @param dataWidth 数据宽度，单位是bit
  * @param addrWidth ram地址宽度
+ * @param readOnly  是否是只读的端口
  * */
-case class RamPort(dataWidth: Int, addrWidth: Int) extends Bundle with IMasterSlave {
+case class RamPort(dataWidth: Int, addrWidth: Int, readOnly: Boolean = false) extends Bundle with IMasterSlave {
   val en = Bool
-  val we = Bool //write enable
-  val addr = UInt(log2Up(addrWidth) bits)
-  val din = in(Bits(dataWidth bits))
+  val we = if (!readOnly) Bool else null //write enable
+  val addr = UInt(addrWidth bits)
+  val din = if (!readOnly) in(Bits(dataWidth bits)) else null
   val dout = out(Bits(dataWidth bits))
 
   override def asMaster(): Unit = {
     in(dout)
-    out(en, we, addr, din)
+    out(en, addr)
+    if (!readOnly) {
+      out(we, din)
+    }
   }
 }
 
@@ -25,32 +29,38 @@ case class RamPort(dataWidth: Int, addrWidth: Int) extends Bundle with IMasterSl
  * @param size      ram总的大小，单位是bit
  * @param latency   读端口的延迟
  */
-class DualPortBram(dataWidth: Int = 32, size: Int = 4 * 1024 * 8,
-                   latency: Int = 1) extends BlackBox {
+case class BRamIPConfig(dataWidth: Int = 32, size: Int = 4 * 1024 * 8, latency: Int = 1,
+                        writeModeA: String = "no_change", writeModeB: String = "no_change") {
+  def depth = size / dataWidth
+}
+
+class DualPortBram(config: BRamIPConfig) extends BlackBox {
   setDefinitionName("dual_port_bram")
   val generic = new Generic {
-    val DATA_WIDTH = dataWidth
-    val DEPTH = size / dataWidth
+    val DATA_WIDTH = config.dataWidth
+    val DEPTH = config.depth
     val MEMORY_PRIMITIVE = "block"
-    val LATENCY = latency
-    val WRITE_MODE = "no_change"
+    val LATENCY = config.latency
+    val WRITE_MODE_A = config.writeModeA
+    val WRITE_MODE_B = config.writeModeB
   }
 
   val io = new Bundle {
     val clk = in Bool
     val rst = in Bool
-    val portA = slave(RamPort(dataWidth, log2Up(size / dataWidth)))
-    val portB = slave(RamPort(dataWidth, log2Up(size / dataWidth)))
+    val portA = slave(RamPort(config.dataWidth, log2Up(config.depth)))
+    val portB = slave(RamPort(config.dataWidth, log2Up(config.depth)))
   }
   mapClockDomain(clock = io.clk, reset = io.rst, resetActiveLevel = HIGH)
   noIoPrefix()
-  addPrePopTask{() => {
-    for(bt <- io.flatten) {
+  addPrePopTask { () => {
+    for (bt <- io.flatten) {
       val name = bt.getName()
-      if(name.startsWith("portA")) bt.setName(name.substring(name.indexOf('_') + 1) + 'a')
-      if(name.startsWith("portB")) bt.setName(name.substring(name.indexOf('_') + 1) + 'b')
+      if (name.startsWith("portA")) bt.setName(name.substring(name.indexOf('_') + 1) + 'a')
+      if (name.startsWith("portB")) bt.setName(name.substring(name.indexOf('_') + 1) + 'b')
     }
-  }}
+  }
+  }
   addRTLPath("./rtl/dual_port_ram.v")
 }
 
@@ -60,7 +70,7 @@ class DualPortBram(dataWidth: Int = 32, size: Int = 4 * 1024 * 8,
  * @param latency   读端口的延迟
  */
 class DualPortLutram(dataWidth: Int = 32, size: Int = 4 * 1024 * 8,
-                   latency: Int = 1) extends BlackBox {
+                     latency: Int = 1) extends BlackBox {
   setDefinitionName("dual_port_lutram")
   val generic = new Generic {
     val DATA_WIDTH = dataWidth
@@ -72,25 +82,26 @@ class DualPortLutram(dataWidth: Int = 32, size: Int = 4 * 1024 * 8,
     val clk = in Bool
     val rst = in Bool
     val portA = slave(RamPort(dataWidth, log2Up(size / dataWidth)))
-    val portB = slave(RamPort(dataWidth, log2Up(size / dataWidth)))
+    val portB = slave(RamPort(dataWidth, log2Up(size / dataWidth), readOnly = true))
   }
 
   mapClockDomain(clock = io.clk, reset = io.rst, resetActiveLevel = HIGH)
   noIoPrefix()
-  addPrePopTask{() => {
-    for(bt <- io.flatten) {
+  addPrePopTask { () => {
+    for (bt <- io.flatten) {
       val name = bt.getName()
-      if(name.startsWith("portA")) bt.setName(name.substring(name.indexOf('_') + 1) + 'a')
-      if(name.startsWith("portB")) bt.setName(name.substring(name.indexOf('_') + 1) + 'b')
+      if (name.startsWith("portA")) bt.setName(name.substring(name.indexOf('_') + 1) + 'a')
+      if (name.startsWith("portB")) bt.setName(name.substring(name.indexOf('_') + 1) + 'b')
     }
-  }}
+  }
+  }
   addRTLPath("./rtl/dual_port_ram.v")
 }
 
 object DualPortRam {
-  def main(args:Array[String]): Unit ={
+  def main(args: Array[String]): Unit = {
     SpinalVerilog(new Component {
-      val bram = new DualPortBram(32 * 8, 4 * 1024 * 8)
+      val bram = new DualPortBram(BRamIPConfig(32 * 8, 4 * 1024 * 8))
       val lutRam = new DualPortLutram(32 * 8, 4 * 1024 * 8, 0)
       bram.io.portA.addr.assignDontCare()
       bram.io.portA.en.assignDontCare()
