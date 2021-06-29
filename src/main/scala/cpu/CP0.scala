@@ -249,6 +249,9 @@ object CP0 {
 
     describeRegister("Count", 9, 0)
       .field("Count", 31 downto 0)
+    
+    describeRegister("Compare", 11, 0)
+      .field("Compare", 31 downto 0)
 
     describeRegister("Status", 12, 0)
       .field("Bev", 22, true)
@@ -456,7 +459,19 @@ class CP0 extends Component {
     }
   }
 
-  regs("Cause")("IP_HW") := io.externalInterrupt
+  // Count & Compare
+  val increaseCount = Reg(Bool) init False
+  increaseCount := !increaseCount
+  val count = regs("Count")("Count")
+  when(increaseCount) {
+    count := (count.asUInt + 1).asBits
+  }
+
+  val compare = regs("Compare")("Compare")
+  val timerInterrupt = count === compare
+
+  regs("Cause")("IP_HW")(5) := io.externalInterrupt(5) || timerInterrupt
+  regs("Cause")("IP_HW")(4 downto 0) := io.externalInterrupt(4 downto 0)
 
   val epc = regs("EPC")("EPC")
   val exl = regs("Status")("EXL")
