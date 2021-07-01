@@ -1,60 +1,80 @@
 package cpu
 
+import cpu.Stage.initVals
 import lib.{Key, Optional, Record, Updating}
 import spinal.core._
 
+import scala.Option
+import scala.collection.mutable
+
+object Stage {
+  val initVals = mutable.Map[Key[_ <: Data], Data]()
+
+  def setInputReset[T <: Data](key: Key[T], resetValue: T) = {
+    val pair = (key, resetValue)
+    initVals += pair
+//    stored(key) init resetValue
+//    when(will.output && (!will.input || prevException.nonEmpty)) { stored(key) := resetValue }
+  }
+}
+
 class Stage extends Area with ValCallbackRec {
   //
-  val stored = Record() // stage input
-  val input = Record() // stage component input
-  val output = Record() // stage component output
+  val stored   = Record() // stage input
+  val input    = Record() // stage component input
+  val output   = Record() // stage component output
   val produced = Record() // stage output
 
   //
   val exceptionToRaise = Optional(EXCEPTION()) default None // User settable
-  val prevException = Reg(Optional(EXCEPTION())) init None
-  val exception = Optional(EXCEPTION())
+  val prevException    = Reg(Optional(EXCEPTION())) init None
+  val exception        = Optional(EXCEPTION())
   exception := prevException orElse exceptionToRaise
 
   //
-  val is = new Area {
-    val empty = Reg(Bool)
-    val done = True.allowOverride // 用户定义
+  val is = new Bundle {
+    val empty = RegInit(True)      // 当前该流水段是否为空转
+    val done  = True.allowOverride // 当前该流水段是否已完成工作 用户定义
   }
   //
-  val can = new Area {
-    val flush = True.allowOverride // 用户定义
+  val can = new Bundle {
+    val flush = True.allowOverride // 当前该流水段能否进行结果的作废 用户定义
   }
   //
-  val want = new Area {
-    val flush = False.allowOverride // 用户定义
+  val want = new Bundle {
+    val flush = False.allowOverride // 是否要布置结果作废的任务 用户定义
   }
   //
-  val will = new Area {
-    val flush = Bool
-    val input = Bool
-    val output = Bool
+  val to = new Bundle {
+    val flush = RegInit(False) // 是否有结果作废的任务
   }
   //
-  val prev = new Area {
-    val is = new Area {
+  val will = new Bundle {
+    val flush  = Bool // 当前处理结果将被作废
+    val input  = Bool // 有一条有效指令将要移入
+    val output = Bool // 有一条有效指令将要移出
+  }
+  //
+  val prev = new Bundle {
+    val will = new Bundle {
+      val flush  = False.allowOverride
+      val output = True.allowOverride
+    }
+  }
+  val next = new Bundle {
+    val is = new Bundle {
       val empty = False.allowOverride
     }
-    val will = new Area {
-      val flush = False.allowOverride
-      val output = True.allowOverride
-    }
-  }
-  val next = new Area {
-    val will = new Area {
+    val will = new Bundle {
       val output = True.allowOverride
     }
   }
   //
-  is.empty := will.input ? prev.is.empty | will.output
-  will.flush := want.flush & can.flush
-  will.input := prev.will.output & !prev.will.flush // output 到 input
-  will.output := next.will.output & is.done | will.flush // output 到 input / output 到 trash
+  is.empty := !will.input & (is.empty | will.output)
+  to.flush := (to.flush | want.flush) & !can.flush
+  will.flush := (to.flush | want.flush) & can.flush
+  will.input := prev.will.output & !prev.will.flush
+  will.output := !is.empty & (will.flush | is.done & (next.is.empty | next.will.output))
 
   //
   val currentScope = GlobalData.get.currentScope
@@ -70,7 +90,12 @@ class Stage extends Area with ValCallbackRec {
 
   stored.whenAddedKey(new Record.AddedKeyCallback {
     def apply[T <: Data](key: Key[T], value: T) = atTheBeginning {
-      value.setAsReg
+      value.setAsReg()
+      if (initVals contains key) {
+        val resetValue = initVals(key).asInstanceOf[T]
+        value init resetValue
+        when(will.output && (!will.input || prevException.nonEmpty)) { value := resetValue }
+      }
     }
   })
 
@@ -88,6 +113,7 @@ class Stage extends Area with ValCallbackRec {
 
   produced.whenAddedKey(new Record.AddedKeyCallback {
     def apply[T <: Data](key: Key[T], value: T) = atTheBeginning {
+      value.allowOverride
       if (!(output contains key)) {
         value := stored(key)
       }
@@ -114,20 +140,21 @@ class Stage extends Area with ValCallbackRec {
 
   // Set reset value for a specific input key.
   // If not set, then that input is preserved een when willReset.
-  def setInputReset[T <: Data](key: Key[T], resetValue: T) = {
-    when(!will.input & will.output) {
-      stored(key) := resetValue
-    }
-  }
+//  def setInputReset[T <: Data](key: Key[T], resetValue: T) = {
+//    stored(key) init resetValue
+//    when(will.output && (!will.input || prevException.nonEmpty)) { stored(key) := resetValue }
+//  }
 
   def connect(next: Stage) = {
-    next.prev.is.empty := is.empty
     next.prev.will.flush := will.flush
     next.prev.will.output := will.output
+    this.next.is.empty := next.is.empty
     this.next.will.output := next.will.output
 
     when(next.will.input) {
       next.prevException := exception
+    } elsewhen (next.will.output) {
+      next.prevException := None
     }
 
     // Prioritize reset over send.
@@ -148,6 +175,6 @@ class Stage extends Area with ValCallbackRec {
 }
 
 class StageComponent extends Area {
-  val input = Record()
+  val input  = Record()
   val output = Record()
 }
