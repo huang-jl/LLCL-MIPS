@@ -11,6 +11,7 @@ class CPUICacheInterface(config: CacheRamConfig) extends Bundle with IMasterSlav
   val stage1 = new Bundle {
     val read = Bool //是否读
     val index = UInt(config.indexWidth bits) //从地址中截取出虚索引
+    val keepRData = Bool //当前周期拉高这个信号，那么后面会保持**当前输入**index所读出的值
     //    val cacheTags = Vec(Meta(config.tagWidth), config.wayNum) //读出来的各路tag
     //    val cacheDatas = Vec(Block(config.blockSize), config.wayNum)  //读出来的各路数据
     //    val replaceIndex = UInt(log2Up(config.wayNum) bits) //LRU读出来要替换的路编号
@@ -24,7 +25,7 @@ class CPUICacheInterface(config: CacheRamConfig) extends Bundle with IMasterSlav
   }
 
   override def asMaster(): Unit = {
-    out(stage1.read, stage1.index, stage2.paddr, stage2.en)
+    out(stage1.read, stage1.index, stage1.keepRData, stage2.paddr, stage2.en)
     //    in(stage2.rdata, stage2.stall, stage1.cacheTags, stage1.cacheDatas, stage1.replaceIndex)
     in(stage2.rdata, stage2.stall)
   }
@@ -120,15 +121,21 @@ class ICache(config: CacheRamConfig) extends Component {
     cacheRam.datas(i).io.portB.addr := io.cpu.stage1.index
   }
   // 读ram
-  val cacheTags = Vec(Meta(config.tagWidth), config.wayNum)
-  val cacheDatas = Vec(Block(config.blockSize), config.wayNum)
+  val keepRData = RegNext(io.cpu.stage1.keepRData) init (False)
+  val cacheTags = Vec(Updating(Meta(config.tagWidth)), config.wayNum)
+  val cacheDatas = Vec(Updating(Block(config.blockSize)), config.wayNum)
   for (i <- 0 until config.wayNum) {
-    cacheTags(i).assignFromBits(cacheRam.tags(i).io.portB.dout)
-    cacheDatas(i).assignFromBits(cacheRam.datas(i).io.portB.dout)
+    cacheTags(i).next.assignFromBits(cacheRam.tags(i).io.portB.dout)
+    cacheDatas(i).next.assignFromBits(cacheRam.datas(i).io.portB.dout)
+    when(keepRData) {
+      cacheTags(i).next := cacheTags(i).prev
+      cacheDatas(i).next := cacheDatas(i).prev
+    }
 
     //    cacheRam.tags(i).io.portB.din.assignDontCare()
     cacheRam.datas(i).io.portB.din.assignDontCare()
   }
+
   // 读LRU
   val plruAddr = Reg(UInt(log2Up(config.wayNum) bits)) init (0)
   plruAddr := LRU.replaceAddr(io.cpu.stage1.index)
@@ -151,11 +158,12 @@ class ICache(config: CacheRamConfig) extends Component {
 
 
   //选出可能替换的那一路的地址
+  //前传时需要使用wayIndex.prev
   val replace = new Area {
     val wayIndex = Updating(UInt(log2Up(config.wayNum) bits)) init (0)
     wayIndex.next := plruAddr
     for (i <- 0 until config.wayNum) {
-      when(!cacheTags(i).valid)(wayIndex.next := i) //如果有未使用的cache line，优先替换它
+      when(!cacheTags(i).next.valid)(wayIndex.next := i) //如果有未使用的cache line，优先替换它
     }
   }
 
@@ -174,13 +182,13 @@ class ICache(config: CacheRamConfig) extends Component {
   //判断是否命中cache
   val hitPerWay = Bits(config.wayNum bits) //每一路是否命中
   for (i <- 0 until config.wayNum) {
-    hitPerWay(i) := (cacheTags(i).tag === addr.tag) & cacheTags(i).valid
+    hitPerWay(i) := (cacheTags(i).next.tag === addr.tag) & cacheTags(i).next.valid
   }
   val hit: Bool = hitPerWay.orR
 
   //把命中的数据拿出来并返回
-  val hitLine: Block = MuxOH(hitPerWay, for (i <- 0 until config.wayNum) yield cacheDatas(i))
-  val hitTag: Meta = MuxOH(hitPerWay, for (i <- 0 until config.wayNum) yield cacheTags(i))
+  val hitLine: Block = MuxOH(hitPerWay, for (i <- 0 until config.wayNum) yield cacheDatas(i).next)
+  val hitTag: Meta = MuxOH(hitPerWay, for (i <- 0 until config.wayNum) yield cacheTags(i).next)
   io.cpu.stage2.rdata := hitLine(addr.wordOffset)
   //更新LRU
   for (i <- 0 until config.setSize) {
@@ -189,6 +197,7 @@ class ICache(config: CacheRamConfig) extends Component {
   }
 
   //不命中处理：访存，并且写Cache Ram
+  //这里使用Updating是为了寄存当前周期写入的值，从而让下一周期能够前传
   val writeMeta = Updating(Meta(config.tagWidth)) init (Meta.fromBits(0, config.tagWidth))
   val writeData = Updating(Block(config.blockSize)) init (Block.fromBits(0, config.blockSize))
   for (i <- 0 until config.wayNum) {
@@ -232,31 +241,26 @@ class ICache(config: CacheRamConfig) extends Component {
           LRU.plru(i).io.update := io.cpu.stage2.en & addr.index === i
           LRU.plru(i).io.access := B"1'b1" << replace.wayIndex.next
         }
+        //不命中则从writeData返回
+        io.cpu.stage2.rdata := writeData.next(addr.wordOffset)
         goto(stateBoot)
       }
     }
   }
 
-  //前传的时机
+  //前传的时机：需要在写回的时候前传
   forward := io.cpu.stage1.index === addr.index & !io.cpu.stage2.stall & icacheFSM.isActive(icacheFSM.readMem)
   //前传
   when(forward) {
-    cacheTags(replace.wayIndex.prev) := writeMeta.prev
-    cacheDatas(replace.wayIndex.prev) := writeData.prev
+    cacheTags(replace.wayIndex.prev).next := writeMeta.prev
+    cacheDatas(replace.wayIndex.prev).next.assignFromBits(writeData.prev.asBits)
   }
-
-
   //写回cache ram的数据
   writeMeta.next.tag := addr.tag
   writeMeta.next.valid := True
   writeData.next := recvBlock
   when(icacheFSM.isActive(icacheFSM.readMem)) {
     writeData.next.banks(config.wordSize - 1) := io.axi.r.data
-  }
-
-  //不命中则从writeData返回
-  when(!hit & io.cpu.stage2.en) {
-    io.cpu.stage2.rdata := writeData.next(addr.wordOffset)
   }
 
 }

@@ -65,6 +65,7 @@ class CPU extends Component {
   val rtValue    = Key(Bits(32 bits))
 
   val ifPaddr    = Key(UInt(32 bits))
+  val if2En      = Key(Bool)
   val mePaddr    = Key(UInt(32 bits))
 
   val tlbr       = Key(Bool)  //ID解码
@@ -437,12 +438,13 @@ class CPU extends Component {
       io.icacheAXI <> icu.io.axi
       //ibus
       icu.io.ibus.stage2.paddr := input(ifPaddr)
-      icu.io.ibus.stage2.en := prevException.isEmpty & firing
+//      icu.io.ibus.stage2.en := prevException.isEmpty & firing
+      icu.io.ibus.stage2.en := input(if2En)
       when(icu.io.ibus.stage2.stall) {
         stalls := True
         flushable := False
       }
-      produced(inst) := icu.io.ibus.stage2.rdata
+      produced(inst) := input(if2En) ? icu.io.ibus.stage2.rdata | ConstantVal.INST_NOP
     }
   }
 
@@ -456,6 +458,17 @@ class CPU extends Component {
       // MMU Translate
       mmu.io.instVaddr := input(pc)
       produced(ifPaddr) := mmu.io.instRes.paddr
+      produced(if2En) := True
+
+//      icu.io.ibus.stage1.keepRData := IF2.valid & !IF2.sending & !IF2.wantsFlush
+      icu.io.ibus.stage1.keepRData := IF2.valid & !IF2.receiving
+
+      // 一旦检测到跳转就
+      when(ID.valid) {
+        ID.currentOutput(jumpPc).whenIsDefined { _ =>
+          produced(if2En) := False
+        }
+      }
 
       // 异常
       produced(instFetch) := False  //默认取指没有产生异常
@@ -467,14 +480,15 @@ class CPU extends Component {
         when(refillException | invalidException) {
           exceptionToRaise := EXCEPTION.TLBL
           produced(instFetch) := True
+          produced(if2En) := False
         }
       }
       // 访存地址不对齐异常（更优先）
       when(icu.io.exception.nonEmpty) {
         exceptionToRaise := icu.io.exception
         produced(instFetch) := True
+        produced(if2En) := False
       }
-
     }
   }
 

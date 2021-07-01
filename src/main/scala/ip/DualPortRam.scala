@@ -6,7 +6,7 @@ import spinal.lib._
 /**
  * @param dataWidth 数据宽度，单位是bit
  * @param addrWidth ram地址宽度
- * @param readOnly  是否是只读的端口
+ * @param readOnly  是否是只读的端口，只读端口不会有we和din
  * */
 case class RamPort(dataWidth: Int, addrWidth: Int, readOnly: Boolean = false) extends Bundle with IMasterSlave {
   val en = Bool
