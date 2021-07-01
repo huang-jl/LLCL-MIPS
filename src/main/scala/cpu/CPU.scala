@@ -444,7 +444,10 @@ class CPU extends Component {
         stalls := True
         flushable := False
       }
-      produced(inst) := input(if2En) ? icu.io.ibus.stage2.rdata | ConstantVal.INST_NOP
+//      produced(inst) := input(if2En) ? icu.io.ibus.stage2.rdata | ConstantVal.INST_NOP
+      produced(inst) := icu.io.ibus.stage2.rdata
+
+      setInputReset(if2En, False)
     }
   }
 
@@ -463,10 +466,10 @@ class CPU extends Component {
 //      icu.io.ibus.stage1.keepRData := IF2.valid & !IF2.sending & !IF2.wantsFlush
       icu.io.ibus.stage1.keepRData := IF2.valid & !IF2.receiving
 
-      // 一旦检测到跳转就
+      // 一旦检测到跳转就清空
       when(ID.valid) {
         ID.currentOutput(jumpPc).whenIsDefined { _ =>
-          produced(if2En) := False
+          signalsFlush := True
         }
       }
 
