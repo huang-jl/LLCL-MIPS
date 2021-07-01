@@ -16,7 +16,6 @@ class CPU extends Component {
     val icacheAXI         = master(Axi4(ConstantVal.AXI_BUS_CONFIG))
     val dcacheAXI         = master(Axi4(ConstantVal.AXI_BUS_CONFIG))
     val uncacheAXI        = master(Axi4(ConstantVal.AXI_BUS_CONFIG))
-    val debug             = out(DebugInterface())
   }
   val icacehConfig = CacheRamConfig(blockSize = ConstantVal.IcacheLineSize, wayNum = ConstantVal.IcacheWayNum)
   val dcacehConfig = CacheRamConfig(blockSize = ConstantVal.IcacheLineSize, wayNum = ConstantVal.IcacheWayNum)
@@ -104,18 +103,12 @@ class CPU extends Component {
 
   val WB = new Stage {
     val rfuC = new StageComponent {
-      io.debug.wb.rf.wen := B(4 bits, default -> rfu.io.write.valid)
-      io.debug.wb.rf.wdata := rfu.io.write.data
-      io.debug.wb.rf.wnum := rfu.io.write.index
-
       rfu.io.write.valid := input(rfuWe)
       rfu.io.write.index := input(rfuAddr)
       rfu.io.write.data := input(rfuData)
     }
 
-    val pcDebug = new StageComponent {
-      io.debug.wb.pc := input(pc)
-    }
+    input(pc)
   }
 
   val ME = new Stage {

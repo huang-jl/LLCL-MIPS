@@ -88,8 +88,13 @@ class MyCPUTop extends Component {
       Array(cpu.io.icacheAXI, cpu.io.dcacheAXI, cpu.io.uncacheAXI),
       Array(io.axi))
     cpu.io.externalInterrupt := io.ext_int
-    io.debug := cpu.io.debug
     io.wid := 0
+
+    val wb = io.debug.wb
+    wb.rf.wen := B(4 bits, default -> cpu.WB.input(cpu.rfuWe).pull)
+    wb.rf.wdata := cpu.WB.input(cpu.rfuData).pull
+    wb.rf.wnum := cpu.WB.input(cpu.rfuAddr).pull
+    wb.pc := cpu.WB.input(cpu.pc).pull
   }
 
   noIoPrefix()
