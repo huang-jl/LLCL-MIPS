@@ -73,6 +73,18 @@ class CPU extends Component {
   val tlbp       = Key(Bool)  //ID解码
   val tlbIndexSrc= Key(TLBIndexSrc())  //ID解码
   val instFetch  = Key(Bool)  //异常是否是取值时发生的
+  val tlbr       = Key(Bool) //ID解码
+  val tlbw       = Key(Bool) //ID解码
+  val tlbp       = Key(Bool) //ID解码
+
+  Stage.setInputReset(rfuWe, False)
+  Stage.setInputReset(memRe, False)
+  Stage.setInputReset(memWe, False)
+  Stage.setInputReset(hluHiWe, False)
+  Stage.setInputReset(hluLoWe, False)
+  Stage.setInputReset(cp0We, False)
+  Stage.setInputReset(inst, ConstantVal.INST_NOP)
+  Stage.setInputReset(eret, False)
 
   //MMU input signal
   //目前MMU和CP0直接相连，MMU拿到的CP0寄存器值都是实时的
@@ -101,7 +113,6 @@ class CPU extends Component {
       rfu.io.write.valid := input(rfuWe)
       rfu.io.write.index := input(rfuAddr)
       rfu.io.write.data := input(rfuData)
-      setInputReset(rfuWe, False)
     }
 
     val pcDebug = new StageComponent {
@@ -123,31 +134,25 @@ class CPU extends Component {
       dcu.io.wdata := input(rtValue)
       // MMU translate
       mmu.io.dataVaddr := input(memAddr)
-      setInputReset(memRe, False)
-      setInputReset(memWe, False)
 
       when(dcu.io.stall) {
         stalls := True
         flushable := False
       }
 
-      produced(rfuData) := dcu.io.rdata
+      output(rfuData) := dcu.io.rdata
     }
 
     val hluC = new StageComponent {
       hlu.hi_we := input(hluHiWe)
-      produced(hluHiData) := ((input(hluHiSrc) === HLU_SRC.rs)
-        ? input(rsValue)
-        | input(aluResultC).asBits)
-      hlu.new_hi := produced(hluHiData)
-      hlu.lo_we := input(hluLoWe)
-      produced(hluLoData) := ((input(hluLoSrc) === HLU_SRC.rs)
-        ? input(rsValue)
-        | input(aluResultD).asBits)
-      hlu.new_lo := produced(hluLoData)
+      output(hluHiData) := ((input(hluHiSrc) === HLU_SRC.rs) ?
+        input(rsValue) | input(aluResultC).asBits)
+      hlu.new_hi := output(hluHiData)
 
-      setInputReset(hluHiWe, False)
-      setInputReset(hluLoWe, False)
+      hlu.lo_we := input(hluLoWe)
+      output(hluLoData) := ((input(hluLoSrc) === HLU_SRC.rs) ?
+        input(rsValue) | input(aluResultD).asBits)
+      hlu.new_lo := output(hluLoData)
     }
 
     val cp0C = new StageComponent {
@@ -156,31 +161,26 @@ class CPU extends Component {
       cp0.io.softwareWrite.addr.rd := input(inst).rd
       cp0.io.softwareWrite.addr.sel := input(inst).sel
       cp0.io.softwareWrite.data := input(rtValue)
-      setInputReset(cp0We, False)
 
-      cp0.io.exceptionInput.exception := exception.next
+      cp0.io.exceptionInput.exception := exception
       cp0.io.exceptionInput.eret := input(eret)
       cp0.io.exceptionInput.memAddr := input(memAddr)
       cp0.io.exceptionInput.pc := input(pc)
       cp0.io.exceptionInput.bd := input(bd)
       cp0.io.exceptionInput.instFetch := input(instFetch)
 
-      cp0.io.instStarting := RegNext(receiving)
-      when(cp0.io.interruptOnNextInst && receiving) {
-        // Causes stall to keep low
-        willReset := True
-      }
+      cp0.io.instStarting := RegNext(will.input)
+      //      when(cp0.io.interruptOnNextInst && will.input) {
+      //        // Causes stall to keep low
+      //        willReset := True
+      //      }
 
       cp0.io.externalInterrupt := io.externalInterrupt
-      when(valid && cp0.io.jumpPc.isDefined) {
-        signalsFlush := True
-      }
     }
 
     //TODO 是不是有点啰嗦
-    output(rfuData) := ((input(rfuRdSrc) === RFU_RD_SRC.mu)
-      ? produced(rfuData)
-      | input(rfuData))
+    produced(rfuData) := ((stored(rfuRdSrc) === RFU_RD_SRC.mu) ?
+      output(rfuData) | stored(rfuData))
 
       //只包括写MMU和写CP0的逻辑信号
     val cp0TLB = new StageComponent {
@@ -253,13 +253,12 @@ class CPU extends Component {
         ALU_B_SRC.imm -> input(inst).immExtended.asUInt
       )
 
-      produced(aluResultC) := alu.io.c
-      produced(aluResultD) := alu.io.d
-      exceptionToRaise := alu.io.exception
+      output(aluResultC) := alu.io.c
+      output(aluResultD) := alu.io.d
     }
 
     val aguC = new StageComponent {
-      produced(memAddr) := U(S(input(rsValue)) + input(inst).offset)
+      output(memAddr) := U(S(input(rsValue)) + input(inst).offset)
     }
 
     val cp0Read = new StageComponent {
@@ -268,169 +267,117 @@ class CPU extends Component {
       produced(rfuData) := cp0.io.read.data
     }
 
-    produced(rfuData) := input(rfuRdSrc) mux (
+    produced(rfuData) := stored(rfuRdSrc).mux(
       RFU_RD_SRC.alu -> produced(aluResultC).asBits,
-      RFU_RD_SRC.hi -> ((ME.valid && ME.currentInput(hluHiWe))
-        ? ME.currentOutput(hluHiData)
-        | hlu.hi_v),
-      RFU_RD_SRC.lo -> ((ME.valid && ME.currentInput(hluLoWe))
-        ? ME.currentOutput(hluLoData)
-        | hlu.lo_v),
-      RFU_RD_SRC.cp0 -> cp0Read.produced(rfuData),
-      default -> input(rfuData)
+      RFU_RD_SRC.hi  -> (ME.stored(hluHiWe) ? ME.produced(hluHiData) | hlu.hi_v),
+      RFU_RD_SRC.lo  -> (ME.stored(hluLoWe) ? ME.produced(hluLoData) | hlu.lo_v),
+      default        -> stored(rfuData)
     )
 
-    val cp0_RAW_harzard = new Area {
-      //当前指令mfc0，上一条指令mtc0 | tlbp | tlbr ，则需要暂停一个周期
-      val mfc0_mtc0_harzard = input(cp0Re) & ME.currentInput(cp0We) &
-        input(inst).rd === ME.currentInput(inst).rd &
-        input(inst).sel === ME.currentInput(inst).sel
-      when(ME.valid & mfc0_mtc0_harzard) {
-        stalls := True
-      }
-      if(ConstantVal.USE_TLB) {
-        val mfc0_tlb_harzard = input(cp0Re) &
-          (
-            (ME.currentInput(tlbp) & input(inst).rd === 0 & input(inst).sel === 0) |
-              (ME.currentInput(tlbr) & Utils.equalAny(input(inst).rd, U(2), U(3), U(5), U(10)) & input(inst).sel === 0)
-            )
-        when(ME.valid & mfc0_tlb_harzard) {
-          stalls := True
-        }
-      }
-    }
+    exceptionToRaise := alu.io.exception
   }
+
 
   val ID = new Stage {
     val duC = new StageComponent {
       du.io.inst := input(inst)
-      setInputReset(inst, ConstantVal.INST_NOP)
 
-      produced(aluOp) := du.io.alu_op
-      produced(aluASrc) := du.io.alu_a_src
-      produced(aluBSrc) := du.io.alu_b_src
-      produced(memRe) := du.io.dcu_re
-      produced(memWe) := du.io.dcu_we
-      produced(memBe) := du.io.dcu_be
-      produced(memEx) := du.io.mu_ex
-      produced(hluHiWe) := du.io.hlu_hi_we
-      produced(hluHiSrc) := du.io.hlu_hi_src
-      produced(hluLoWe) := du.io.hlu_lo_we
-      produced(hluLoSrc) := du.io.hlu_lo_src
-      produced(cp0Re) := du.io.cp0_re
-      produced(cp0We) := du.io.cp0_we
-      produced(rfuWe) := du.io.rfu_we
-      produced(rfuAddr) := du.io.rfu_rd
-      produced(rfuRdSrc) := du.io.rfu_rd_src
-      produced(useRs) := du.io.use_rs
-      produced(useRt) := du.io.use_rt
-      produced(eret) := du.io.eret
-      if(ConstantVal.USE_TLB){
-        produced(tlbr) := du.io.tlbr
-        produced(tlbw) := du.io.tlbw
-        produced(tlbp) := du.io.tlbp
-        produced(tlbIndexSrc) := du.io.tlbIndexSrc
+      output(aluOp) := du.io.alu_op
+      output(aluASrc) := du.io.alu_a_src
+      output(aluBSrc) := du.io.alu_b_src
+      output(memRe) := du.io.dcu_re
+      output(memWe) := du.io.dcu_we
+      output(memBe) := du.io.dcu_be
+      output(memEx) := du.io.mu_ex
+      output(hluHiWe) := du.io.hlu_hi_we
+      output(hluHiSrc) := du.io.hlu_hi_src
+      output(hluLoWe) := du.io.hlu_lo_we
+      output(hluLoSrc) := du.io.hlu_lo_src
+      output(cp0Re) := du.io.cp0_re
+      output(cp0We) := du.io.cp0_we
+      output(rfuWe) := du.io.rfu_we
+      output(rfuAddr) := du.io.rfu_rd
+      output(rfuRdSrc) := du.io.rfu_rd_src
+      output(useRs) := du.io.use_rs
+      output(useRt) := du.io.use_rt
+      output(eret) := du.io.eret
+      if (ConstantVal.USE_TLB) {
+        output(tlbr) := du.io.tlbr
+        output(tlbw) := du.io.tlbw
+        output(tlbp) := du.io.tlbp
+        output(tlbIndexSrc) := du.io.tlbIndexSrc
       }
-      exceptionToRaise := du.io.exception
     }
 
     val rfuRead = new StageComponent {
       rfu.io.ra.index := input(inst).rs
       rfu.io.rb.index := input(inst).rt
-      produced(rsValue) := rfu.io.ra.data
-      produced(rtValue) := rfu.io.rb.data
+      output(rsValue) := rfu.io.ra.data
+      output(rtValue) := rfu.io.rb.data
     }
 
 //    val cp0Read = new StageComponent {
 //      cp0.io.read.addr.rd := input(inst).rd
 //      cp0.io.read.addr.sel := input(inst).sel
-//      produced(rfuData) := cp0.io.read.data
-//    }
+//    output(rfuData) := cp0.io.read.data
+    //    }
 
     val juC = new StageComponent {
       ju.op := du.io.ju_op
-      ju.a := output(rsValue).asSInt
-      ju.b := output(rtValue).asSInt
+      ju.a := produced(rsValue).asSInt
+      ju.b := produced(rtValue).asSInt
       ju.pc_src := du.io.ju_pc_src
       ju.pc := input(pc) + 4
       ju.offset := input(inst).offset
       ju.index := input(inst).index
 
       when(ju.jump) {
-        produced(jumpPc) := ju.jump_pc
+        output(jumpPc) := ju.jump_pc
       } otherwise {
-        produced(jumpPc) := None
+        output(jumpPc) := None
       }
     }
 
-    val bdValue = Reg(Bool) init False
-    when(finishing) {
+    val bdValue = RegInit(False)
+    when(will.output) {
       bdValue := du.io.ju_op =/= JU_OP.f
     }
-    when(wantsFlush) {
+    when(will.flush) {
       bdValue := False
     }
-    produced(bd) := bdValue
+    output(bd) := bdValue
 
-    when(
-      EX.valid && EX.currentInput(rfuWe) &&
-        EX.currentInput(rfuAddr) === input(inst).rs
-    ) {
-      when(EX.stalls) (stalls := True)
-      output(rsValue) := EX.currentOutput(rfuData)
-    } elsewhen (ME.valid && ME.currentInput(rfuWe) &&
-      ME.currentInput(rfuAddr) === input(inst).rs) {
-      when(ME.stalls) (stalls := True)
-      output(rsValue) := ME.currentOutput(rfuData)
-    } elsewhen (WB.valid && WB.currentInput(rfuWe) &&
-      WB.currentInput(rfuAddr) === input(inst).rs) {
-      output(rsValue) := WB.currentInput(rfuData)
-    } otherwise {
-      output(rsValue) := produced(rsValue)
+    when(EX.stored(rfuWe) && EX.stored(rfuAddr) === stored(inst).rs) {
+      produced(rsValue) := EX.produced(rfuData)
+    } elsewhen (ME.stored(rfuWe) && ME.stored(rfuAddr) === stored(inst).rs) {
+      produced(rsValue) := ME.produced(rfuData)
+    } elsewhen (WB.stored(rfuWe) && WB.stored(rfuAddr) === stored(inst).rs) {
+      produced(rsValue) := WB.stored(rfuData)
     }
 
-    when(
-      EX.valid && EX.currentInput(rfuWe) &&
-        EX.currentInput(rfuAddr) === input(inst).rt
-    ) {
-      when(EX.stalls) (stalls := True)
-      output(rtValue) := EX.currentOutput(rfuData)
-    } elsewhen (ME.valid && ME.currentInput(rfuWe) &&
-      ME.currentInput(rfuAddr) === input(inst).rt) {
-      when(ME.stalls) (stalls := True)
-      output(rtValue) := ME.currentOutput(rfuData)
-    } elsewhen (WB.valid && WB.currentInput(rfuWe) &&
-      WB.currentInput(rfuAddr) === input(inst).rt) {
-      output(rtValue) := WB.currentInput(rfuData)
-    } otherwise {
-      output(rtValue) := produced(rtValue)
+    when(EX.stored(rfuWe) && EX.stored(rfuAddr) === stored(inst).rt) {
+      produced(rtValue) := EX.produced(rfuData)
+    } elsewhen (ME.stored(rfuWe) && ME.stored(rfuAddr) === stored(inst).rt) {
+      produced(rtValue) := ME.produced(rfuData)
+    } elsewhen (WB.stored(rfuWe) && WB.stored(rfuAddr) === stored(inst).rt) {
+      produced(rtValue) := WB.stored(rfuData)
     }
 
 
-//    produced(rfuData) := produced(rfuRdSrc) mux (
-//      RFU_RD_SRC.cp0 -> cp0Read.produced(rfuData),
+//    produced(rfuData) := output(rfuRdSrc) mux (
+//      RFU_RD_SRC.cp0 -> cp0Read.output(rfuData),
 //      default        -> B(input(pc) + 8)
 //    )
     produced(rfuData) := B(input(pc) + 8)
 
-    when(
-      EX.valid && EX.currentInput(rfuWe) &&
-        EX.currentInput(rfuRdSrc) === RFU_RD_SRC.mu &&
-        (EX.currentInput(rfuAddr) === input(inst).rs && produced(useRs) ||
-          EX.currentInput(rfuAddr) === input(inst).rt && produced(useRt))
-    ) {
-      stalls := True
-    }
+    val wantForwardFromEX =
+      EX.stored(rfuWe) && (EX.stored(rfuAddr) === stored(inst).rs && produced(useRs) ||
+        EX.stored(rfuAddr) === stored(inst).rt && produced(useRt))
+    val wantForwardFromME =
+      ME.stored(rfuWe) && (ME.stored(rfuAddr) === stored(inst).rs && produced(useRs) ||
+        ME.stored(rfuAddr) === stored(inst).rt && produced(useRt))
 
-    when(
-      du.io.ju_op =/= JU_OP.f && ME.valid && ME.stalls &&
-        ME.currentInput(rfuWe) && ME.currentInput(rfuRdSrc) === RFU_RD_SRC.mu &&
-        (ME.currentInput(rfuAddr) === input(inst).rs && produced(useRs) ||
-          ME.currentInput(rfuAddr) === input(inst).rt && produced(useRt))
-    ) {
-      stalls := True
-    }
-
+    exceptionToRaise := du.io.exception
   }
 
   val IF2 = new Stage {
@@ -501,7 +448,7 @@ class CPU extends Component {
 
     val wasSending = RegNext(sending) init False
     when(wasSending) { // Starting a new instruction
-      pcValue.next := IF1.currentInput(pc) + 4
+      pcValue.next := IF.currentInput(pc) + 4
     }
     when(ID.valid) {
       ID.currentOutput(jumpPc).whenIsDefined { jumpPc =>
@@ -522,8 +469,26 @@ class CPU extends Component {
     prev connect next
   }
 
-  PC.signalsFlush.allowOverride
-  PC.signalsFlush := False
+  IF.prevException := None
+  IF.is.done := !icu.io.ibus.stall
+  IF.can.flush := !icu.io.ibus.stall
+
+  ID.is.done :=
+    !(ID.wantForwardFromEX && EX.stored(rfuRdSrc) === RFU_RD_SRC.mu ||
+      ID.wantForwardFromME && ME.stored(rfuRdSrc) === RFU_RD_SRC.mu && !ME.is.done)
+
+  EX.is.done := !alu.io.stall
+  EX.can.flush := !alu.io.stall
+
+  ME.is.done := !dcu.io.stall
+  ME.can.flush := !dcu.io.stall
+
+  when(cp0.io.jumpPc.isDefined && !ME.to.flush) {
+    ME.want.flush := True
+    IF.want.flush := True
+    ID.want.flush := True
+    EX.want.flush := True
+  }
 }
 
 object CPU {
