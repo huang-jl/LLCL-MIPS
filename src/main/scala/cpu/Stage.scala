@@ -160,7 +160,7 @@ class Stage extends Area with ValCallbackRec {
     // Prioritize reset over send.
     atTheBeginning {
       when(next.will.input) {
-        next.stored.keys foreach { case key => next.stored(key) := produced(key) }
+        next.stored.keys foreach { case key => next.stored(key) := produced(key)}
       }
     }
   }

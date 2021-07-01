@@ -249,7 +249,7 @@ object CP0 {
 
     describeRegister("Count", 9, 0)
       .field("Count", 31 downto 0)
-    
+
     describeRegister("Compare", 11, 0)
       .field("Compare", 31 downto 0)
 
@@ -368,7 +368,7 @@ object CP0 {
     val memAddr = UInt(32 bits) //虚地址
     val pc = UInt(32 bits)
     val bd = Bool
-    val instFetch = Bool  //是否是取址时的异常
+    val instFetch = Bool //是否是取址时的异常
   }
 
   def main(args: Array[String]): Unit = {
@@ -470,8 +470,12 @@ class CP0 extends Component {
   val compare = regs("Compare")("Compare")
   val timerInterrupt = count === compare
 
-  regs("Cause")("IP_HW")(5) := io.externalInterrupt(5) || timerInterrupt
-  regs("Cause")("IP_HW")(4 downto 0) := io.externalInterrupt(4 downto 0)
+  if (ConstantVal.TimeInterruptEnable) {
+    regs("Cause")("IP_HW")(5) := io.externalInterrupt(5) || timerInterrupt
+    regs("Cause")("IP_HW")(4 downto 0) := io.externalInterrupt(4 downto 0)
+  } else {
+    regs("Cause")("IP_HW") := io.externalInterrupt
+  }
 
   val epc = regs("EPC")("EPC")
   val exl = regs("Status")("EXL")
@@ -498,22 +502,22 @@ class CP0 extends Component {
             | io.exceptionInput.memAddr).asBits
 
       }
-      if(ConstantVal.USE_TLB){
+      if (ConstantVal.USE_TLB) {
         when(Utils.equalAny(exc, EXCEPTION.TLBS, EXCEPTION.TLBL)) {
           regs("EntryHi")("VPN2") :=
             (io.exceptionInput.instFetch
               ? io.exceptionInput.pc
-              | io.exceptionInput.memAddr)(31 downto 13).asBits
+              | io.exceptionInput.memAddr) (31 downto 13).asBits
         }
       }
-//      when(exc === EXCEPTION.AdEL || exc === EXCEPTION.AdES) {
-//        val isFromInstruction =
-//          io.exceptionInput.pc(1) || io.exceptionInput.pc(0)
-//        regs("BadVAddr")("BadVAddr") :=
-//          (isFromInstruction
-//            ? io.exceptionInput.pc
-//            | io.exceptionInput.memAddr).asBits
-//      }
+      //      when(exc === EXCEPTION.AdEL || exc === EXCEPTION.AdES) {
+      //        val isFromInstruction =
+      //          io.exceptionInput.pc(1) || io.exceptionInput.pc(0)
+      //        regs("BadVAddr")("BadVAddr") :=
+      //          (isFromInstruction
+      //            ? io.exceptionInput.pc
+      //            | io.exceptionInput.memAddr).asBits
+      //      }
     }
   }
 

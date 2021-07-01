@@ -73,10 +73,8 @@ class CPU extends Component {
   val tlbp       = Key(Bool)  //ID解码
   val tlbIndexSrc= Key(TLBIndexSrc())  //ID解码
   val instFetch  = Key(Bool)  //异常是否是取值时发生的
-  val tlbr       = Key(Bool) //ID解码
-  val tlbw       = Key(Bool) //ID解码
-  val tlbp       = Key(Bool) //ID解码
 
+  Stage.setInputReset(if2En, False)
   Stage.setInputReset(rfuWe, False)
   Stage.setInputReset(memRe, False)
   Stage.setInputReset(memWe, False)
@@ -134,11 +132,6 @@ class CPU extends Component {
       dcu.io.wdata := input(rtValue)
       // MMU translate
       mmu.io.dataVaddr := input(memAddr)
-
-      when(dcu.io.stall) {
-        stalls := True
-        flushable := False
-      }
 
       output(rfuData) := dcu.io.rdata
     }
@@ -213,7 +206,7 @@ class CPU extends Component {
       }.elsewhen(modifiedException) (exceptionToRaise := EXCEPTION.Mod)
     }
     // 访存地址不对齐异常（更优先）
-    when(dcu.io.exception.nonEmpty) {
+    dcu.io.exception.whenIsDefined { _ =>
       exceptionToRaise := dcu.io.exception
     }
   }
@@ -237,11 +230,6 @@ class CPU extends Component {
 //        stalls := True
 //      }
 //    }
-    when(alu.io.stall) {
-      stalls := True
-      flushable := False
-    }
-
     val aluC = new StageComponent {
       alu.io.input.op := input(aluOp)
       alu.io.input.a := input(aluASrc).mux(
@@ -264,13 +252,14 @@ class CPU extends Component {
     val cp0Read = new StageComponent {
       cp0.io.read.addr.rd := input(inst).rd
       cp0.io.read.addr.sel := input(inst).sel
-      produced(rfuData) := cp0.io.read.data
+      output(rfuData) := cp0.io.read.data
     }
 
     produced(rfuData) := stored(rfuRdSrc).mux(
       RFU_RD_SRC.alu -> produced(aluResultC).asBits,
       RFU_RD_SRC.hi  -> (ME.stored(hluHiWe) ? ME.produced(hluHiData) | hlu.hi_v),
       RFU_RD_SRC.lo  -> (ME.stored(hluLoWe) ? ME.produced(hluLoData) | hlu.lo_v),
+      RFU_RD_SRC.cp0 -> cp0Read.output(rfuData),
       default        -> stored(rfuData)
     )
 
@@ -368,7 +357,7 @@ class CPU extends Component {
 //      RFU_RD_SRC.cp0 -> cp0Read.output(rfuData),
 //      default        -> B(input(pc) + 8)
 //    )
-    produced(rfuData) := B(input(pc) + 8)
+    output(rfuData) := B(input(pc) + 8)
 
     val wantForwardFromEX =
       EX.stored(rfuWe) && (EX.stored(rfuAddr) === stored(inst).rs && produced(useRs) ||
@@ -387,18 +376,37 @@ class CPU extends Component {
       icu.io.ibus.stage2.paddr := input(ifPaddr)
 //      icu.io.ibus.stage2.en := prevException.isEmpty & firing
       icu.io.ibus.stage2.en := input(if2En)
-      when(icu.io.ibus.stage2.stall) {
-        stalls := True
-        flushable := False
-      }
 //      produced(inst) := input(if2En) ? icu.io.ibus.stage2.rdata | ConstantVal.INST_NOP
-      produced(inst) := icu.io.ibus.stage2.rdata
-
-      setInputReset(if2En, False)
+      output(inst) := icu.io.ibus.stage2.rdata
     }
   }
 
   val IF1 = new Stage {
+
+    val toJump = Reg(Optional(UInt(32 bits)))
+    val toSet  = Reg(Optional(UInt(32 bits)))
+    stored(pc) init ConstantVal.INIT_PC
+    when(will.output) {
+      stored(pc) := stored(pc) + 4
+      toJump.whenIsDefined(v => stored(pc) := v)
+      when(ID.is.done) {
+        ID.output(jumpPc).whenIsDefined(v => stored(pc) := v)
+      }
+      toSet.whenIsDefined(v => stored(pc) := v)
+      when(ME.is.done) {
+        cp0.io.jumpPc.whenIsDefined(v => stored(pc) := v)
+      }
+      toJump := None
+      toSet := None
+    } otherwise {
+      when(ID.is.done) {
+        ID.output(jumpPc).whenIsDefined(v => toJump := v)
+      }
+      when(ME.is.done) {
+        cp0.io.jumpPc.whenIsDefined(v => toSet := v)
+      }
+    }
+
     val icuC = new StageComponent {
       //ibus
       icu.io.offset := input(pc)(0, icacehConfig.offsetWidth bits)
@@ -407,21 +415,14 @@ class CPU extends Component {
 
       // MMU Translate
       mmu.io.instVaddr := input(pc)
-      produced(ifPaddr) := mmu.io.instRes.paddr
-      produced(if2En) := True
+      output(ifPaddr) := mmu.io.instRes.paddr
+      output(if2En) := True
 
 //      icu.io.ibus.stage1.keepRData := IF2.valid & !IF2.sending & !IF2.wantsFlush
-      icu.io.ibus.stage1.keepRData := IF2.valid & !IF2.receiving
-
-      // 一旦检测到跳转就清空
-      when(ID.valid) {
-        ID.currentOutput(jumpPc).whenIsDefined { _ =>
-          signalsFlush := True
-        }
-      }
+      icu.io.ibus.stage1.keepRData := !IF2.is.empty & !IF2.will.input
 
       // 异常
-      produced(instFetch) := False  //默认取指没有产生异常
+      output(instFetch) := False  //默认取指没有产生异常
       exceptionToRaise := None
       // TLB异常
       if(ConstantVal.USE_TLB){
@@ -429,49 +430,28 @@ class CPU extends Component {
         val invalidException = mmu.io.instMapped & !mmu.io.instRes.miss & !mmu.io.instRes.valid
         when(refillException | invalidException) {
           exceptionToRaise := EXCEPTION.TLBL
-          produced(instFetch) := True
-          produced(if2En) := False
+          output(instFetch) := True
+          output(if2En) := False
         }
       }
       // 访存地址不对齐异常（更优先）
-      when(icu.io.exception.nonEmpty) {
+      icu.io.exception.whenIsDefined ( _ => {
         exceptionToRaise := icu.io.exception
-        produced(instFetch) := True
-        produced(if2En) := False
-      }
+        output(instFetch) := True
+        output(if2En) := False
+      })
     }
   }
 
-  // Pseudo-stage for producing PCU.
-  val PC = new Stage {
-    val pcValue = Updating(UInt(32 bits)) init ConstantVal.INIT_PC
 
-    val wasSending = RegNext(sending) init False
-    when(wasSending) { // Starting a new instruction
-      pcValue.next := IF.currentInput(pc) + 4
-    }
-    when(ID.valid) {
-      ID.currentOutput(jumpPc).whenIsDefined { jumpPc =>
-        pcValue.next := jumpPc
-      }
-    }
-    when(ME.valid) {
-      cp0.io.jumpPc.whenIsDefined { pc =>
-        pcValue.next := pc
-      }
-    }
-
-    produced(pc) := pcValue.next
-  }
-
-  val stages = Seq(PC, IF1, IF2, ID, EX, ME, WB)
+  val stages = Seq(IF1, IF2, ID, EX, ME, WB)
   for ((prev, next) <- (stages zip stages.tail).reverse) {
     prev connect next
   }
 
-  IF.prevException := None
-  IF.is.done := !icu.io.ibus.stall
-  IF.can.flush := !icu.io.ibus.stall
+  IF1.prevException := None
+  IF2.is.done := !icu.io.ibus.stage2.stall
+  IF2.can.flush := !icu.io.ibus.stage2.stall
 
   ID.is.done :=
     !(ID.wantForwardFromEX && EX.stored(rfuRdSrc) === RFU_RD_SRC.mu ||
@@ -485,9 +465,15 @@ class CPU extends Component {
 
   when(cp0.io.jumpPc.isDefined && !ME.to.flush) {
     ME.want.flush := True
-    IF.want.flush := True
+    IF1.want.flush := True
+    IF2.want.flush := True
     ID.want.flush := True
     EX.want.flush := True
+  }
+
+  // 一旦检测到跳转就让给IF2的指令无效
+  when(ID.is.done & ID.output(jumpPc).isDefined) {
+    IF1.want.flush := True
   }
 }
 

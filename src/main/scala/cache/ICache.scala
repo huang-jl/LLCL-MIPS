@@ -1,11 +1,12 @@
 package cache
 
+import cpu.defs.ConstantVal
+import ip.{DualPortBram, DualPortLutram, BRamIPConfig}
+import lib.Updating
 import spinal.core._
 import spinal.lib._
 import spinal.lib.fsm._
 import spinal.lib.bus.amba4.axi._
-import ip.{DualPortBram, DualPortLutram, BRamIPConfig}
-import lib.Updating
 
 class CPUICacheInterface(config: CacheRamConfig) extends Bundle with IMasterSlave {
   val stage1 = new Bundle {
@@ -262,7 +263,8 @@ class ICache(config: CacheRamConfig) extends Component {
   when(icacheFSM.isActive(icacheFSM.readMem)) {
     writeData.next.banks(config.wordSize - 1) := io.axi.r.data
   }
-
+  //如果没有enable，那么直接返回NOP
+  when(!io.cpu.stage2.en) (io.cpu.stage2.rdata := ConstantVal.INST_NOP.asBits)
 }
 
 object ICache {
