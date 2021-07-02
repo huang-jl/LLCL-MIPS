@@ -147,7 +147,7 @@ module dual_port_lutram #
 (
     parameter DATA_WIDTH = 32,  //default data width of xpm ram(bits)
     parameter DEPTH = 128,   //default depth of memory
-    parameter LATENCY = 0      //default latency is 1 cycle
+    parameter LATENCY = 1      //default latency is 1 cycle
 )
 (
    input wire                      clk,
