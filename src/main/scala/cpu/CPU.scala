@@ -3,7 +3,7 @@ package cpu
 import cache.CacheRamConfig
 import cpu.defs.Mips32InstImplicits._
 import cpu.defs.{ConstantVal, Mips32Inst}
-import lib.{Key, Optional}
+import lib.{Key, Optional, Task}
 import spinal.core._
 import spinal.lib.bus.amba4.axi._
 import spinal.lib.{cpu => _, _}
@@ -314,28 +314,13 @@ class CPU extends Component {
   }
 
   val IF = new Stage {
-    val toJump = Reg(Optional(UInt(32 bits)))
-    val toSet  = Reg(Optional(UInt(32 bits)))
+    val jumpTask =
+      Task(ID.is.done & ID.output(jumpPc).isDefined, ID.output(jumpPc).bits, will.output)
+    val setTask = Task(ME.is.done & cp0.io.jumpPc.isDefined, cp0.io.jumpPc.bits, will.output)
     stored(pc) init ConstantVal.INIT_PC
     when(will.output) {
-      stored(pc) := stored(pc) + 4
-      toJump.whenIsDefined(v => stored(pc) := v)
-      when(ID.is.done) {
-        ID.output(jumpPc).whenIsDefined(v => stored(pc) := v)
-      }
-      toSet.whenIsDefined(v => stored(pc) := v)
-      when(ME.is.done) {
-        cp0.io.jumpPc.whenIsDefined(v => stored(pc) := v)
-      }
-      toJump := None
-      toSet := None
-    } otherwise {
-      when(ID.is.done) {
-        ID.output(jumpPc).whenIsDefined(v => toJump := v)
-      }
-      when(ME.is.done) {
-        cp0.io.jumpPc.whenIsDefined(v => toSet := v)
-      }
+      stored(pc) := setTask.has ?
+        U(setTask.value) | (jumpTask.has ? U(jumpTask.value) | stored(pc) + 4)
     }
 
     val icuC = new StageComponent {
