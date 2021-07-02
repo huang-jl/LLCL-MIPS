@@ -6,6 +6,9 @@ import scala.collection.mutable
 class Record extends Bundle {
   private val data              = mutable.Map[Key[_ <: Data], Data]()
   private val addedKeyCallbacks = mutable.ArrayBuffer[Record.AddedKeyCallback]()
+  
+  private var direction: Option[IODirection] = None
+  private var btFlags = 0
 
   def keys   = data.keys
   def values = data.values
@@ -21,6 +24,14 @@ class Record extends Bundle {
       // Pretend the value was generated in the same scope as the record.
       parentScope.push()
       val value = key.`type`().setCompositeName(this, key.getName)
+      
+      direction match {
+        case Some(d) => d(value)
+        case None =>
+      }
+      if ((btFlags & BaseType.isRegMask) != 0) value.setAsReg()
+      if ((btFlags & BaseType.isAnalogMask) != 0) value.setAsAnalog()
+
       parentScope.pop()
 
       val pair = (key, value)
@@ -34,6 +45,46 @@ class Record extends Bundle {
 
   def whenAddedKey(cb: Record.AddedKeyCallback) = {
     addedKeyCallbacks += cb
+  }
+  
+  override def asInput(): this.type = {
+    direction = Some(in)
+    super.asInput()
+  }
+
+  override def asOutput(): this.type = {
+    direction = Some(out)
+    super.asOutput()
+  }
+
+  override def asInOut(): this.type = {
+    direction = Some(inout)
+    super.asInOut()
+  }
+
+  override def setAsDirectionLess(): this.type = {
+    direction = None
+    super.setAsDirectionLess()
+  }
+
+  override def copyDirectionOfImpl(that: Data): this.type = {
+    direction = that.asInstanceOf[Record].direction
+    super.copyDirectionOfImpl(that)
+  }
+
+  override def setAsReg(): this.type = {
+    btFlags |= BaseType.isRegMask
+    super.setAsReg()
+  }
+
+  override def setAsAnalog(): this.type = {
+    btFlags |= BaseType.isAnalogMask
+    super.setAsAnalog()
+  }
+
+  override def setAsComb(): this.type = {
+    btFlags &= ~(BaseType.isRegMask | BaseType.isAnalogMask)
+    super.setAsComb()
   }
 
   def contains[T <: Data](key: Key[T]) = data contains key

@@ -2,32 +2,31 @@ package lib
 
 import spinal.core._
 import spinal.lib._
-import spinal.core.internals.BitsLiteral
 
-class Optional[T <: Data](val `type`: HardType[T]) extends Bundle {
+case class Optional[T <: Data](dataType: HardType[T]) extends Bundle {
   // If necessary, may apply Rust-like niche optimization to this?
   val isDefined = Bool
-  val bits      = Bits(widthOf(`type`) bits)
+  val value     = dataType()
 
-  def copy() = Optional(`type`)
+  def copy() = Optional(dataType)
 
   def :=(data: T) = {
-    bits := data.asBits
+    value := data
     isDefined := True
   }
   def init(data: T) = {
-    bits init data.asBits
+    value init data
     isDefined init True
     this
   }
   def default(data: T): Optional[T] = {
-    bits default data.asBits
+    value default data
     isDefined default True
     this
   }
 
   def :=(none: None.type) = {
-    bits.assignDontCare()
+    value.assignDontCare()
     isDefined := False
   }
   def init(none: None.type) = {
@@ -35,9 +34,9 @@ class Optional[T <: Data](val `type`: HardType[T]) extends Bundle {
     this
   }
   def default(none: None.type) = {
-    val defaultValue = cloneOf(bits)
+    val defaultValue = dataType()
     defaultValue.assignDontCare()
-    bits default defaultValue
+    value default defaultValue
     isDefined default False
     this
   }
@@ -50,18 +49,16 @@ class Optional[T <: Data](val `type`: HardType[T]) extends Bundle {
 
   def get = {
     assert(isDefined)
-    val t = `type`()
-    t assignFromBits bits
-    t
+    value
   }
 
   def isEmpty  = !isDefined
   def nonEmpty = isDefined
 
   def getOrElse(other: T) = {
-    val result = `type`()
+    val result = dataType()
     when(isDefined) {
-      result assignFromBits bits
+      result := value
     } otherwise {
       result := other
     }
@@ -69,36 +66,32 @@ class Optional[T <: Data](val `type`: HardType[T]) extends Bundle {
   }
 
   def orElse(other: Optional[T]) = {
-    val result = Optional(`type`)
+    val result = Optional(dataType)
     when(isDefined) {
       result := this
-    } elsewhen (other.isDefined) {
-      result := other
     } otherwise {
-      result := None
+      result := other
     }
     result
   }
 
   def toFlow = {
-    val flow = Flow(`type`)
+    val flow = Flow(dataType)
     flow.valid := isDefined
-    flow.payload assignFromBits bits
+    flow.payload := value
     flow
   }
 }
 
 object Optional {
-  def apply[T <: Data](`type`: HardType[T]) = new Optional(`type`)
-
-  def fromNone[T <: Data](`type`: HardType[T]) = {
+  def noneOf[T <: Data](`type`: HardType[T]) = {
     val optional = new Optional(`type`)
     optional := None
     optional
   }
 
-  def from[T <: Data](`type`: HardType[T])(value: T) = {
-    val optional = new Optional(`type`)
+  def some[T <: Data](value: T) = {
+    val optional = new Optional(value)
     optional := value
     optional
   }

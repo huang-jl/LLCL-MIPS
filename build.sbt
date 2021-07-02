@@ -1,11 +1,9 @@
-// See README.md for license details.
-
-ThisBuild / scalaVersion     := "2.12.13"
+ThisBuild / scalaVersion     := "2.11.12"
 ThisBuild / version          := "1.0.0"
 ThisBuild / organization     := ""
 ThisBuild / transitiveClassifiers := Seq(Artifact.SourceClassifier)
 
-val spinalVersion = "1.4.3"
+val spinalVersion = "1.5.0"
 
 lazy val root = (project in file("."))
   .settings(
