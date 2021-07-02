@@ -16,30 +16,25 @@ class DividerIP(dataWidth: Int = 32, detectZero: Boolean = false, name: String =
     val aclk = in Bool
     /** 被除数 */
     val dividend = new Bundle {
+      setName("s_axis_dividend")
       val tdata = in UInt (alignedDataWidth bits)
       val tvalid = in Bool
     }
     val divisor = new Bundle {
+      setName("s_axis_divisor")
       val tdata = in UInt (alignedDataWidth bits)
       val tvalid = in Bool
     }
     val dout = new Bundle {
+      setName("m_axis_dout")
       val tdata = out UInt (2 * alignedDataWidth bits)
       val tvalid = out Bool
-      val divideByZero = if (detectZero) out(Bool) else null
+      val tuser = if (detectZero) out(Bool) else null
+      def divideByZero = tuser
     }
   }
 
   noIoPrefix()
-  addPrePopTask { () => {
-    for (bt <- io.flatten) {
-      val name = bt.getName()
-      if (name.startsWith("divi")) bt.setName("s_axis_" + name)
-      else if (name.startsWith("dout")) bt.setName("m_axis_" + name)
-      if (name.toLowerCase.contains("zero")) bt.setName("m_axis_dout_tuser")
-    }
-  }
-  }
   mapClockDomain(clock = io.aclk)
 }
 
