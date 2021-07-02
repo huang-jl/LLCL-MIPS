@@ -4,7 +4,7 @@ import spinal.core._
 import spinal.lib.{master, slave}
 import spinal.lib.bus.amba4.axi.Axi4
 import cache.{CPUDCacheInterface, CacheRamConfig, DCache}
-import cpu.Utils.{signExtend, zeroExtend}
+import Utils.{signExtend, zeroExtend}
 import defs.ConstantVal
 import lib.Optional
 
@@ -17,7 +17,7 @@ class DCU(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     val read = in Bool
     val write = in Bool
     val byteEnable = in UInt (2 bits)
-    val extend = in(MU_EX)
+    val extend = in(MU_EX())
     // out
     val rdata = out Bits (32 bits)
     val stall = out Bool

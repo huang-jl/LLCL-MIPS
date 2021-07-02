@@ -1,10 +1,9 @@
 package cpu
 
 import cpu.Stage.initVals
-import lib.{Key, Optional, Record, Updating}
+import lib.{Key, Optional, Record}
 import spinal.core._
 
-import scala.Option
 import scala.collection.mutable
 
 object Stage {
@@ -13,17 +12,15 @@ object Stage {
   def setInputReset[T <: Data](key: Key[T], resetValue: T) = {
     val pair = (key, resetValue)
     initVals += pair
-//    stored(key) init resetValue
-//    when(will.output && (!will.input || prevException.nonEmpty)) { stored(key) := resetValue }
   }
 }
 
 class Stage extends Area with ValCallbackRec {
   //
-  val stored   = Record() // stage input
-  val input    = Record() // stage component input
-  val output   = Record() // stage component output
-  val produced = Record() // stage output
+  val stored   = Record().setAsReg() // stage input
+  val input    = Record()            // stage component input
+  val output   = Record()            // stage component output
+  val produced = Record()            // stage output
 
   //
   val exceptionToRaise = Optional(EXCEPTION()) default None // User settable
@@ -77,7 +74,7 @@ class Stage extends Area with ValCallbackRec {
   will.output := !is.empty & (will.flush | is.done & (next.is.empty | next.will.output))
 
   //
-  val currentScope = GlobalData.get.currentScope
+  val currentScope = DslScopeStack.get
 
   // Add every StageComponent defined inside the body of this.
   override def valCallbackRec(obj: Any, name: String) = {
@@ -90,11 +87,12 @@ class Stage extends Area with ValCallbackRec {
 
   stored.whenAddedKey(new Record.AddedKeyCallback {
     def apply[T <: Data](key: Key[T], value: T) = atTheBeginning {
-      value.setAsReg()
       if (initVals contains key) {
         val resetValue = initVals(key).asInstanceOf[T]
         value init resetValue
-        when(will.output && (!will.input || prevException.nonEmpty)) { value := resetValue }
+        when(will.output && (!will.input || prevException.nonEmpty)) {
+          value := resetValue
+        }
       }
     }
   })
@@ -122,8 +120,12 @@ class Stage extends Area with ValCallbackRec {
 
   // Called at initialization of StageComponent.
   def addComponent(component: StageComponent) = {
-    component.input.keys foreach { case key => component.input(key) := input(key) }
-    component.output.keys foreach { case key => output(key) := component.output(key) }
+    component.input.keys foreach { case key =>
+      component.input(key) := input(key)
+    }
+    component.output.keys foreach { case key =>
+      output(key) := component.output(key)
+    }
 
     component.input.whenAddedKey(new Record.AddedKeyCallback {
       def apply[T <: Data](key: Key[T], value: T) = {
@@ -137,13 +139,6 @@ class Stage extends Area with ValCallbackRec {
       }
     })
   }
-
-  // Set reset value for a specific input key.
-  // If not set, then that input is preserved een when willReset.
-//  def setInputReset[T <: Data](key: Key[T], resetValue: T) = {
-//    stored(key) init resetValue
-//    when(will.output && (!will.input || prevException.nonEmpty)) { stored(key) := resetValue }
-//  }
 
   def connect(next: Stage) = {
     next.prev.will.flush := will.flush
@@ -160,7 +155,7 @@ class Stage extends Area with ValCallbackRec {
     // Prioritize reset over send.
     atTheBeginning {
       when(next.will.input) {
-        next.stored.keys foreach { case key => next.stored(key) := produced(key)}
+        next.stored.keys foreach { case key => next.stored(key) := produced(key) }
       }
     }
   }

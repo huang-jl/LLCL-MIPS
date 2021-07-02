@@ -1,127 +1,115 @@
-package lib.decoder
+package lib
 
-import lib.{Record, Key}
 import spinal.core._
+import spinal.idslplugin.PostInitCallback
 
-import scala.collection.mutable.{HashMap, HashSet}
+import scala.collection.mutable
 import scala.language.existentials
-
-case class DecoderConfig(
-    inputWidth: Int,
-    keys: Seq[Key[_ <: Data]],
-    defaults: Seq[(Key[T], () => T) forSome { type T <: Data }],
-    encodings: Map[MaskedLiteral, Seq[
-      (Key[T], () => T) forSome { type T <: Data }
-    ]]
-)
 
 object NotConsidered extends Key(Bool)
 
-class DecoderFactory(
-    val inputWidth: Int,
-    val enableNotConsidered: Boolean = false
-) {
-  // Mutable constituents of DecoderConfig
-  private[decoder] val keys     = HashSet[Key[_ <: Data]]()
-  private[decoder] val defaults = HashMap[Key[_ <: Data], () => Data]()
-  private[decoder] val encodings =
-    HashMap[MaskedLiteral, HashMap[Key[_ <: Data], () => Data]]()
+class Decoder(inputWidth: BitCount, enableNotConsidered: Boolean = false)
+    extends Component {
+  private val keys     = mutable.Set[Key[_ <: Data]]()
+  private val defaults = mutable.Map[Key[_ <: Data], () => Data]()
+  private val encodings =
+    mutable.Map[MaskedLiteral, mutable.Map[Key[_ <: Data], () => Data]]()
 
-  class When private[DecoderFactory] (
-      map: HashMap[Key[_ <: Data], () => Data]
-  ) {
-    def set[T <: Data](key: Key[T], value: => T): this.type = {
-      keys.add(key)
-      map(key) = () => value
-      this
-    }
+  val input  = in Bits(inputWidth)
+  val output = out(Record(keys.toSeq))
 
-    def set[T <: SpinalEnum](
-        key: Key[SpinalEnumCraft[T]],
-        value: SpinalEnumElement[T]
-    ): this.type = set(key, value())
-  }
-
-  def when(mask: MaskedLiteral) = {
-    assert(mask.width == inputWidth)
-    val result = new When(encodings.getOrElseUpdate(mask, HashMap()))
-    if (enableNotConsidered) {
-      result.set(NotConsidered, False)
-    }
-    result
-  }
-
-  def addDefault[T <: Data](key: Key[T], default: => T): this.type = {
-    assert(!defaults.contains(key))
+  case class default[T <: Data](key: Key[T]) {
     keys.add(key)
-    defaults(key) = () => default
-    this
-  }
 
-  def addDefault[T <: SpinalEnum](
-      key: Key[SpinalEnumCraft[T]],
-      default: SpinalEnumElement[T]
-  ): this.type =
-    addDefault(key, default())
+    def to(value: => T): Unit = {
+      assert(!(defaults contains key))
+      defaults(key) = () => value
+    }
+
+    def to[E <: SpinalEnum](value: => SpinalEnumElement[E])(implicit
+        ev: =:=[SpinalEnumCraft[E], T]
+    ): Unit = {
+      to(ev(value()))
+    }
+  }
 
   if (enableNotConsidered) {
-    addDefault(NotConsidered, True)
+    default(NotConsidered) to True
   }
 
-  def createDecoder(input: Bits) =
-    Decoder(
-      DecoderConfig( // Creates immutable DecoderConfig
-        inputWidth,
-        keys.toSeq,
-        defaults.toSeq
-          .asInstanceOf[Seq[(Key[T], () => T) forSome { type T <: Data }]],
-        encodings.map { case (maskedLiteral, map) =>
-          (maskedLiteral -> (map.toSeq.asInstanceOf[Seq[
-            (Key[T], () => T) forSome { type T <: Data }
-          ]]))
-        }.toMap
-      ),
-      input
+  private var currentOn: Option[on] = None
+
+  case class on(mask: MaskedLiteral) {
+    assert(mask.width == inputWidth.value)
+    assert(currentOn.isEmpty, "lib.Decoder: `on` must not be nested.")
+
+    val map = encodings.getOrElseUpdate(mask, mutable.Map())
+
+    def apply(body: => Unit) = {
+      currentOn = Some(this)
+      body
+      currentOn = None
+    }
+    
+    if (enableNotConsidered) {
+      apply {
+        set(NotConsidered) to False
+      }
+    }
+
+  }
+
+  case class set[T <: Data](key: Key[T]) {
+    assert(
+      currentOn.isDefined,
+      "lib.Decoder: `set` must be called within an `on`."
     )
-}
 
-case class Decoder(
-    config: DecoderConfig,
-    input: Bits
-) extends Area {
-  assert(widthOf(input) == config.inputWidth)
+    keys.add(key)
 
-  val keys = config.keys
-  val output = Record(keys)
+    def to(value: => T): Unit = {
+      currentOn.get.map(key) = () => value
+    }
 
-  val offsets = (keys
-    .scanLeft(0) { case (currentOffset, key) =>
-      currentOffset + widthOf(key.`type`)
-    })
-  val outputWidth = offsets.last
-
-  val outputVector = B(0, outputWidth bits)
-
-  val outputSegments: Map[Key[_ <: Data], Bits] = Map(
-    (for (i <- keys.indices)
-      yield (keys(i) -> outputVector(offsets(i) until offsets(i + 1)))): _*
-  )
-
-  for (key <- keys) {
-    output(key) assignFromBits outputSegments(key)
+    def to[E <: SpinalEnum](value: => SpinalEnumElement[E])(implicit
+        ev: =:=[SpinalEnumCraft[E], T]
+    ): Unit = { to(ev(value())) }
   }
 
-  // Naive implementation
-  for ((key, default) <- config.defaults) {
-    outputSegments(key) := default().asBits
-  }
+  private def build() = {
+    val keys = this.keys.toSeq
 
-  for ((maskedLiteral, map) <- config.encodings) {
-    // The === is aware of the mask
-    when(maskedLiteral === input) {
-      for ((key, value) <- map) {
-        outputSegments(key) := value().asBits
+    val offsets = (keys
+      .scanLeft(0) { case (currentOffset, key) =>
+        currentOffset + widthOf(key.`type`)
+      })
+    val outputWidth = offsets.last
+
+    val outputVector = B(0, outputWidth bits)
+
+    val outputSegments: Map[Key[_ <: Data], Bits] = Map(
+      (for (i <- keys.indices)
+        yield (keys(i) -> outputVector(offsets(i) until offsets(i + 1)))): _*
+    )
+
+    for (key <- keys) {
+      output(key) assignFromBits outputSegments(key)
+    }
+
+    // Naive implementation
+    for ((key, default) <- defaults) {
+      outputSegments(key) := default().asBits
+    }
+
+    for ((maskedLiteral, map) <- encodings) {
+      // The === is aware of the mask
+      when(maskedLiteral === input) {
+        for ((key, value) <- map) {
+          outputSegments(key) := value().asBits
+        }
       }
     }
   }
+
+  addPrePopTask(build)
 }
