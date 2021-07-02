@@ -154,12 +154,6 @@ class CPU extends Component {
       cp0.io.exceptionInput.pc := input(pc)
       cp0.io.exceptionInput.bd := input(bd)
 
-      cp0.io.instStarting := RegNext(will.input)
-      //      when(cp0.io.interruptOnNextInst && will.input) {
-      //        // Causes stall to keep low
-      //        willReset := True
-      //      }
-
       cp0.io.externalInterrupt := io.externalInterrupt
     }
 
@@ -357,6 +351,10 @@ class CPU extends Component {
 
     exceptionToRaise := icu.io.exception
   }
+
+  cp0.io.instOnInt.valid := !EX.is.empty
+  cp0.io.instOnInt.bd := EX.stored(bd)
+  cp0.io.instOnInt.pc := EX.stored(pc)
 
   val stages = Seq(IF, ID, EX, ME, WB)
   for ((prev, next) <- (stages zip stages.tail).reverse) {

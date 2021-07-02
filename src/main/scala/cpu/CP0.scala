@@ -1,40 +1,36 @@
 package cpu
 
-import defs.Mips32Inst
-import defs.ConstantVal
-import tlb.{TLBEntry, TLBConfig}
+import cpu.defs.{ConstantVal, Mips32Inst}
+import lib.{Optional, Updating}
 import spinal.core._
 import spinal.lib.{cpu => _, _}
-import lib.{Optional, Updating}
+import tlb.{TLBConfig, TLBEntry}
 
 import scala.collection.mutable
 
-
-/**
- * TLBR, TLBWI: 来源是Index寄存器
- * TLBWR: 来源是Random寄存器
- * */
+/** TLBR, TLBWI: 来源是Index寄存器
+  * TLBWR: 来源是Random寄存器
+  */
 object TLBIndexSrc extends SpinalEnum {
   val Index, Random = newElement()
 }
 
-/**
- * 从CP0中读和TLB相关值的接口
- * */
+/** 从CP0中读和TLB相关值的接口
+  */
 class TLBInterface extends Bundle with IMasterSlave {
-  val TLBIndexWidth:Int = log2Up(ConstantVal.TLBEntryNum)
+  val TLBIndexWidth: Int = log2Up(ConstantVal.TLBEntryNum)
 
   /** index is used for TLBWI and TLBWR, write to MMU */
-  val index = UInt(TLBIndexWidth bits)  //读出的index寄存器值
-  val random = UInt(TLBIndexWidth bits) //读出的random寄存器值
-  val tlbwEntry = new TLBEntry(ConstantVal.USE_MASK)  //从CP0读出要写入tlb的内容
+  val index     = UInt(TLBIndexWidth bits)           //读出的index寄存器值
+  val random    = UInt(TLBIndexWidth bits)           //读出的random寄存器值
+  val tlbwEntry = new TLBEntry(ConstantVal.USE_MASK) //从CP0读出要写入tlb的内容
 
   /** following is used for TLBR, write to CP0 */
-  val tlbr = Bool  //是否是TLBR而修改CP0
+  val tlbr      = Bool //是否是TLBR而修改CP0
   val tlbrEntry = new TLBEntry(ConstantVal.USE_MASK)
 
   /** following is used for tlbp to write Index Reg */
-  val tlbp = Bool
+  val tlbp       = Bool
   val probeIndex = Bits(32 bits)
 
   override def asMaster(): Unit = {
@@ -43,28 +39,9 @@ class TLBInterface extends Bundle with IMasterSlave {
   }
 }
 
-
-
 object CP0 {
-  object Field {
-    object Type extends Enumeration {
-      val ReadWrite, ReadOnly, Hardwired = Value
-    }
-
-    case class Description(
-        name: String,
-        fieldType: Type.Value,
-        range: Range,
-        init: Option[String]
-    ) {
-      assert(0 <= range.min && range.max < 32)
-      assert(range.step == 1 || range.step == -1)
-
-      for (s <- init) {
-        assert(s.length == range.length)
-        assert(s.forall("01" contains _))
-      }
-    }
+  def main(args: Array[String]): Unit = {
+    SpinalVerilog(new CP0)
   }
 
   case class RegisterDescription(
@@ -72,13 +49,27 @@ object CP0 {
       addr: (Int, Int),
       fields: mutable.ArrayBuffer[Field.Description] = mutable.ArrayBuffer()
   ) {
-    private def addField(field: Field.Description) = {
-      assert(fields.forall({ other =>
-        other.name != field.name && (other.range.max < field.range.min || field.range.max < other.range.min)
-      }))
-      fields += field
-      this
-    }
+    def field(name: String, index: Int, init: Boolean): RegisterDescription =
+      field(name, index to index, if (init) "1" else "0")
+
+    def field(name: String, range: Range, init: String) =
+      regField(name, Field.Type.ReadWrite, range, Some(init))
+
+    def field(name: String, index: Int): RegisterDescription =
+      field(name, index to index)
+
+    def field(name: String, range: Range) =
+      regField(name, Field.Type.ReadWrite, range, None)
+
+    def readOnlyField(
+        name: String,
+        index: Int,
+        init: Boolean
+    ): RegisterDescription =
+      readOnlyField(name, index to index, if (init) "1" else "0")
+
+    def readOnlyField(name: String, range: Range, init: String) =
+      regField(name, Field.Type.ReadOnly, range, Some(init))
 
     private def regField(
         name: String,
@@ -87,34 +78,19 @@ object CP0 {
         init: Option[String]
     ) = addField(Field.Description(name, fieldType, range, init))
 
-    def field(name: String, range: Range, init: String) =
-      regField(name, Field.Type.ReadWrite, range, Some(init))
-    def field(name: String, range: Range) =
-      regField(name, Field.Type.ReadWrite, range, None)
+    private def addField(field: Field.Description) = {
+      assert(fields.forall({ other =>
+        other.name != field.name && (other.range.max < field.range.min || field.range.max < other.range.min)
+      }))
+      fields += field
+      this
+    }
 
-    def readOnlyField(name: String, range: Range, init: String) =
-      regField(name, Field.Type.ReadOnly, range, Some(init))
-    def readOnlyField(name: String, range: Range) =
-      regField(name, Field.Type.ReadOnly, range, None)
-
-    def hardwiredField(name: String, range: Range, init: String) =
-      addField(Field.Description(name, Field.Type.Hardwired, range, Some(init)))
-    def hardwiredField(name: String, range: Range) =
-      addField(Field.Description(name, Field.Type.Hardwired, range, None))
-
-    def field(name: String, index: Int, init: Boolean): RegisterDescription =
-      field(name, index to index, if (init) "1" else "0")
-    def field(name: String, index: Int): RegisterDescription =
-      field(name, index to index)
-
-    def readOnlyField(
-        name: String,
-        index: Int,
-        init: Boolean
-    ): RegisterDescription =
-      readOnlyField(name, index to index, if (init) "1" else "0")
     def readOnlyField(name: String, index: Int): RegisterDescription =
       readOnlyField(name, index to index)
+
+    def readOnlyField(name: String, range: Range) =
+      regField(name, Field.Type.ReadOnly, range, None)
 
     def hardwiredField(
         name: String,
@@ -122,8 +98,15 @@ object CP0 {
         init: Boolean
     ): RegisterDescription =
       hardwiredField(name, index to index, if (init) "1" else "0")
+
+    def hardwiredField(name: String, range: Range, init: String) =
+      addField(Field.Description(name, Field.Type.Hardwired, range, Some(init)))
+
     def hardwiredField(name: String, index: Int): RegisterDescription =
       hardwiredField(name, index to index)
+
+    def hardwiredField(name: String, range: Range) =
+      addField(Field.Description(name, Field.Type.Hardwired, range, None))
 
     def softwareWriteMask = B(
       (0 until 32)
@@ -202,21 +185,19 @@ object CP0 {
       }
     }
 
-    /**
-     * @param data 要写的各个域的值，按照起始bit的降序（从高到低）排列
-     * @note 这个方法用于硬件自己写，但是只能写Hardwired和ReadWrite
-     * */
-    def write(data:Seq[Bits]):Unit = {
-      for((field, index) <- description.fields.sortBy(x => x.range.max).reverse.zipWithIndex) {
+    /** @param data 要写的各个域的值，按照起始bit的降序（从高到低）排列
+      * @note 这个方法用于硬件自己写，但是只能写Hardwired和ReadWrite
+      */
+    def write(data: Seq[Bits]): Unit = {
+      for ((field, index) <- description.fields.sortBy(x => x.range.max).reverse.zipWithIndex) {
         this.next(field.name) := data(index)
       }
     }
 
-    /**
-     * @param data 要写的各个域的值，按照起始bit的降序（从高到低）排列
-     * @note 这个方法用于硬件自己写，但是只能写Hardwired和ReadWrite
-     * */
-    def write(data: Bits):Unit = {
+    /** @param data 要写的各个域的值，按照起始bit的降序（从高到低）排列
+      * @note 这个方法用于硬件自己写，但是只能写Hardwired和ReadWrite
+      */
+    def write(data: Bits): Unit = {
       for (field <- description.fields) {
         if (field.fieldType != Field.Type.Hardwired) {
           this.next(field.name) := data(field.range)
@@ -227,10 +208,68 @@ object CP0 {
     def apply(name: String) = field.apply(name)
   }
 
-  object Register {
-    def apply(description: RegisterDescription) = new Register(description)
+  case class Addr() extends Bundle {
+    val rd  = UInt(5 bits)
+    val sel = UInt(3 bits)
 
+    def :=(that: (Int, Int)) = {
+      rd := that._1
+      sel := that._2
+    }
+
+    def =/=(that: (Int, Int)) = !(this === that)
+
+    def ===(that: (Int, Int)) = rd === that._1 && sel === that._2
+  }
+
+  case class Read() extends Bundle with IMasterSlave {
+    val addr = Addr()
+    val data = Bits(32 bits)
+
+    override def asMaster() = {
+      out(addr)
+      in(data)
+    }
+  }
+
+  case class Write() extends Bundle {
+    val addr = Addr()
+    val data = Bits(32 bits)
+  }
+
+  case class ExceptionInput() extends Bundle {
+    val exception = Optional(EXCEPTION())
+    val eret      = Bool
+    val memAddr   = UInt(32 bits)
+    val pc        = UInt(32 bits)
+    val bd        = Bool
+  }
+
+  object Field {
+    case class Description(
+        name: String,
+        fieldType: Type.Value,
+        range: Range,
+        init: Option[String]
+    ) {
+      assert(0 <= range.min && range.max < 32)
+      assert(range.step == 1 || range.step == -1)
+
+      for (s <- init) {
+        assert(s.length == range.length)
+        assert(s.forall("01" contains _))
+      }
+    }
+
+    object Type extends Enumeration {
+      val ReadWrite, ReadOnly, Hardwired = Value
+    }
+  }
+
+  object Register {
     val allDescriptions = mutable.HashMap[(Int, Int), RegisterDescription]()
+
+    def apply(description: RegisterDescription) = new Register(description)
 
     def describeRegister(name: String, number: Int, sel: Int) = {
       val description = RegisterDescription(name, (number, sel))
@@ -261,8 +300,8 @@ object CP0 {
       .field("EPC", 31 downto 0)
 
     //CP0 Reg for TLB-based MMU
-    if(ConstantVal.USE_TLB) {
-      val TLBIndexWidth:Int = log2Up(ConstantVal.TLBEntryNum)
+    if (ConstantVal.USE_TLB) {
+      val TLBIndexWidth: Int = log2Up(ConstantVal.TLBEntryNum)
       describeRegister("EntryLo0", number = 2, sel = 0)
         //31 downto (PABITS - 6) is hardwire to 0
         .field("PFN", (ConstantVal.PABITS - 7) downto 6)
@@ -289,35 +328,26 @@ object CP0 {
         //In Release1 VPN2X(12 downto 11) and (10 downto 8) is hardwired to 0
         .field("ASID", 7 downto 0, "0" * TLBConfig.asidWidth)
 
-      if(ConstantVal.USE_MASK) {
+      if (ConstantVal.USE_MASK) {
         describeRegister("PageMask", number = 5, sel = 0)
           //(31 downto 29) is hardwired to 0
-          .field("Mask", 28 downto 13, "0" * TLBConfig.maskWidth)  //1 means do not participate in TLB match
+          .field(
+            "Mask",
+            28 downto 13,
+            "0" * TLBConfig.maskWidth
+          ) //1 means do not participate in TLB match
         //In Release1 MaskX(12 downto 11) is hardwired to 0
       }
 
       //TODO Random be set with (TLBEntryNum - 1)  when Reset Exception and write wired register
       //Random Range : [Wired, TLBEntryNum - 1]
-      describeRegister("Random", number = 1 , sel = 0)
+      describeRegister("Random", number = 1, sel = 0)
         .readOnlyField("Random", 0 until TLBIndexWidth, "1" * TLBIndexWidth)
 
       //TODO Wired is set to 0 when Reset Exception
       describeRegister("Wired", number = 6, sel = 0)
         .field("Wired", 0 until TLBIndexWidth, "0" * TLBIndexWidth)
     }
-    }
-
-  case class Addr() extends Bundle {
-    val rd  = UInt(5 bits)
-    val sel = UInt(3 bits)
-
-    def :=(that: (Int, Int)) = {
-      rd := that._1
-      sel := that._2
-    }
-
-    def ===(that: (Int, Int)) = rd === that._1 && sel === that._2
-    def =/=(that: (Int, Int)) = !(this === that)
   }
 
   object AddrImplicits {
@@ -335,33 +365,6 @@ object CP0 {
       def addr = new InstHasAddr(bits).addr
     }
   }
-
-  case class Read() extends Bundle with IMasterSlave {
-    val addr = Addr()
-    val data = Bits(32 bits)
-
-    override def asMaster() = {
-      out(addr)
-      in(data)
-    }
-  }
-
-  case class Write() extends Bundle {
-    val addr = Addr()
-    val data = Bits(32 bits)
-  }
-
-  case class ExceptionInput() extends Bundle {
-    val exception = Optional(EXCEPTION())
-    val eret      = Bool
-    val memAddr   = UInt(32 bits)
-    val pc        = UInt(32 bits)
-    val bd        = Bool
-  }
-
-  def main(args:Array[String]): Unit = {
-    SpinalVerilog(new CP0)
-  }
 }
 
 class CP0 extends Component {
@@ -371,14 +374,19 @@ class CP0 extends Component {
     val softwareWrite = slave Flow (Write())
     val read          = slave(Read())
 
-    val tlbBus     = if(ConstantVal.USE_TLB) slave(new TLBInterface) else null //tlbBus
+    val tlbBus = if (ConstantVal.USE_TLB) slave(new TLBInterface) else null //tlbBus
 
     val externalInterrupt = in Bits (6 bits)
     val exceptionInput    = in(ExceptionInput())
     val jumpPc            = out(Optional(UInt(32 bits)))
 
-    val instStarting        = in Bool
     val interruptOnNextInst = out Bool
+
+    val instOnInt = new Bundle {
+      val valid = in Bool
+      val bd    = in Bool
+      val pc    = in UInt (32 bits)
+    }
   }
 
   // Register constructions, read and write.
@@ -399,16 +407,19 @@ class CP0 extends Component {
   }
 
   // TLB related logic and register
-  if(ConstantVal.USE_TLB){
+  if (ConstantVal.USE_TLB) {
     val TLBRelated = new Area {
-      val entryHi = regs("EntryHi")
+      val entryHi  = regs("EntryHi")
       val entryLo0 = regs("EntryLo0")
       val entryLo1 = regs("EntryLo1")
-      val index = regs("Index")
-      val random = regs("Random")
+      val index    = regs("Index")
+      val random   = regs("Random")
       //reset random when write Wired Reg
-      when(io.softwareWrite.valid & io.softwareWrite.addr ===  (6, 0)) {
-        random.next("Random") := B(ConstantVal.TLBEntryNum - 1, log2Up(ConstantVal.TLBEntryNum) bits)
+      when(io.softwareWrite.valid & io.softwareWrite.addr === (6, 0)) {
+        random.next("Random") := B(
+          ConstantVal.TLBEntryNum - 1,
+          log2Up(ConstantVal.TLBEntryNum) bits
+        )
       }
       //tlbBus signal
       io.tlbBus.index := index("Index").asUInt
@@ -418,7 +429,7 @@ class CP0 extends Component {
         index.write(io.tlbBus.probeIndex)
       }
       //read from cp0
-      io.tlbBus.tlbwEntry.vpn2 := entryHi("VPN2")   //如果激活了Mask，那么TLB模块会自己做Mask处理
+      io.tlbBus.tlbwEntry.vpn2 := entryHi("VPN2") //如果激活了Mask，那么TLB模块会自己做Mask处理
       io.tlbBus.tlbwEntry.asid := entryHi("ASID")
       io.tlbBus.tlbwEntry.G := (entryLo0("G") & entryLo1("G")).asBool
       io.tlbBus.tlbwEntry.pfn1 := entryLo1("PFN")
@@ -432,15 +443,29 @@ class CP0 extends Component {
       //write to cp0 for TLBR
       when(io.tlbBus.tlbr) {
         entryHi.write(Array(io.tlbBus.tlbrEntry.vpn2, io.tlbBus.tlbrEntry.asid))
-        entryLo0.write(Array(io.tlbBus.tlbrEntry.pfn0, io.tlbBus.tlbrEntry.C0,
-          io.tlbBus.tlbrEntry.D0.asBits, io.tlbBus.tlbrEntry.V0.asBits, io.tlbBus.tlbrEntry.G.asBits))
-        entryLo1.write(Array(io.tlbBus.tlbrEntry.pfn1, io.tlbBus.tlbrEntry.C1,
-          io.tlbBus.tlbrEntry.D1.asBits, io.tlbBus.tlbrEntry.V1.asBits, io.tlbBus.tlbrEntry.G.asBits))
+        entryLo0.write(
+          Array(
+            io.tlbBus.tlbrEntry.pfn0,
+            io.tlbBus.tlbrEntry.C0,
+            io.tlbBus.tlbrEntry.D0.asBits,
+            io.tlbBus.tlbrEntry.V0.asBits,
+            io.tlbBus.tlbrEntry.G.asBits
+          )
+        )
+        entryLo1.write(
+          Array(
+            io.tlbBus.tlbrEntry.pfn1,
+            io.tlbBus.tlbrEntry.C1,
+            io.tlbBus.tlbrEntry.D1.asBits,
+            io.tlbBus.tlbrEntry.V1.asBits,
+            io.tlbBus.tlbrEntry.G.asBits
+          )
+        )
       }
-      if(ConstantVal.USE_MASK) {
+      if (ConstantVal.USE_MASK) {
         val pageMask = regs("PageMask")
-        val vpnMask = ~pageMask("Mask").resize(TLBConfig.vpn2Width)
-        val pfnMask = ~pageMask("Mask").resize(TLBConfig.pfnWidth)
+        val vpnMask  = ~pageMask("Mask").resize(TLBConfig.vpn2Width)
+        val pfnMask  = ~pageMask("Mask").resize(TLBConfig.pfnWidth)
         //read from cp0
         io.tlbBus.tlbwEntry.mask := pageMask("Mask")
         //write to cp0 for TLBR
@@ -449,10 +474,24 @@ class CP0 extends Component {
           val vpnMask = ~io.tlbBus.tlbrEntry.mask.resize(TLBConfig.vpn2Width)
           val pfnMask = ~io.tlbBus.tlbrEntry.mask.resize(TLBConfig.pfnWidth)
           entryHi.write(Array(io.tlbBus.tlbrEntry.vpn2 & vpnMask, io.tlbBus.tlbrEntry.asid))
-          entryLo0.write(Array(io.tlbBus.tlbrEntry.pfn0 & pfnMask, io.tlbBus.tlbrEntry.C0,
-            io.tlbBus.tlbrEntry.D0.asBits, io.tlbBus.tlbrEntry.V0.asBits, io.tlbBus.tlbrEntry.G.asBits))
-          entryLo1.write(Array(io.tlbBus.tlbrEntry.pfn1 & pfnMask, io.tlbBus.tlbrEntry.C1,
-            io.tlbBus.tlbrEntry.D1.asBits, io.tlbBus.tlbrEntry.V1.asBits, io.tlbBus.tlbrEntry.G.asBits))
+          entryLo0.write(
+            Array(
+              io.tlbBus.tlbrEntry.pfn0 & pfnMask,
+              io.tlbBus.tlbrEntry.C0,
+              io.tlbBus.tlbrEntry.D0.asBits,
+              io.tlbBus.tlbrEntry.V0.asBits,
+              io.tlbBus.tlbrEntry.G.asBits
+            )
+          )
+          entryLo1.write(
+            Array(
+              io.tlbBus.tlbrEntry.pfn1 & pfnMask,
+              io.tlbBus.tlbrEntry.C1,
+              io.tlbBus.tlbrEntry.D1.asBits,
+              io.tlbBus.tlbrEntry.V1.asBits,
+              io.tlbBus.tlbrEntry.G.asBits
+            )
+          )
         }
       }
     }
@@ -503,16 +542,16 @@ class CP0 extends Component {
   when(interrupts.orR && !exl.asBool) {
     interruptOnNextInst.next := True
   }
-  when(interruptOnNextInst.prev && io.instStarting) {
+  when(interruptOnNextInst.prev && io.instOnInt.valid) {
     interruptOnNextInst.next := False
     io.jumpPc := U"hBFC00380"
     exl := True.asBits
-    when(io.exceptionInput.bd) {
-      epc := (io.exceptionInput.pc - 4).asBits
+    when(io.instOnInt.bd) {
+      epc := (io.instOnInt.pc - 4).asBits
     } otherwise {
-      epc := io.exceptionInput.pc.asBits
+      epc := io.instOnInt.pc.asBits
     }
-    regs("Cause")("BD") := io.exceptionInput.bd.asBits
+    regs("Cause")("BD") := io.instOnInt.bd.asBits
     regs("Cause")("ExcCode") := EXCEPTION.Int.asBits.resized
   }
 }
