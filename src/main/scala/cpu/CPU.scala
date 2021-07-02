@@ -123,8 +123,8 @@ class CPU extends Component {
       io.dcacheAXI <> dcu.io.axi
       io.uncacheAXI <> dcu.io.uncacheAXI
       //dbus
-      dcu.io.read := input(memRe)
-      dcu.io.write := input(memWe)
+      dcu.io.read := input(memRe) & exception.isEmpty
+      dcu.io.write := input(memWe) & exception.isEmpty
       dcu.io.byteEnable := input(memBe)
       dcu.io.extend := input(memEx)
       dcu.io.addr := mmu.io.dataRes.paddr
@@ -206,8 +206,9 @@ class CPU extends Component {
       }.elsewhen(modifiedException) (exceptionToRaise := EXCEPTION.Mod)
     }
     // 访存地址不对齐异常（更优先）
-    dcu.io.exception.whenIsDefined { _ =>
-      exceptionToRaise := dcu.io.exception
+    when(!dcu.io.addrValid) {
+      when(input(memRe)) (exceptionToRaise := EXCEPTION.AdEL)
+        .elsewhen(input(memWe))(exceptionToRaise := EXCEPTION.AdES)
     }
   }
 
@@ -262,6 +263,23 @@ class CPU extends Component {
       RFU_RD_SRC.cp0 -> cp0Read.output(rfuData),
       default        -> stored(rfuData)
     )
+
+    // CP0 harzard : 暂停EX阶段
+    val cp0_RAW_hazard = new Area {
+      //当前指令mfc0，上一条指令mtc0 | tlbp | tlbr ，则需要暂停一个周期
+      val mfc0_mtc0_hazard:Bool = !ME.is.empty & input(cp0Re) & ME.stored(cp0We) &
+        input(inst).rd === ME.stored(inst).rd &
+        input(inst).sel === ME.stored(inst).sel
+
+      val mfc0_tlb_hazard = if(ConstantVal.USE_TLB) Bool else null
+      if(ConstantVal.USE_TLB) {
+        mfc0_tlb_hazard := !ME.is.empty & input(cp0Re) &
+          (
+            (ME.stored(tlbp) & input(inst).rd === 0 & input(inst).sel === 0) |
+              (ME.stored(tlbr) & Utils.equalAny(input(inst).rd, U(2), U(3), U(5), U(10)) & input(inst).sel === 0)
+            )
+      }
+    }
 
     exceptionToRaise := alu.io.exception
   }
@@ -460,9 +478,19 @@ class CPU extends Component {
   EX.is.done := !alu.io.stall
   EX.can.flush := !alu.io.stall
 
+  when(EX.cp0_RAW_hazard.mfc0_mtc0_hazard) {
+    EX.is.done := False
+  }
+  if(ConstantVal.USE_TLB) {
+    when(EX.cp0_RAW_hazard.mfc0_tlb_hazard) {
+      EX.is.done := False
+    }
+  }
+
   ME.is.done := !dcu.io.stall
   ME.can.flush := !dcu.io.stall
 
+  // 异常清空流水线
   when(cp0.io.jumpPc.isDefined && !ME.to.flush) {
     ME.want.flush := True
     IF1.want.flush := True
