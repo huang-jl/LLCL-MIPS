@@ -14,7 +14,6 @@ class DividerIP(dataWidth: Int = 32, detectZero: Boolean = false, name: String =
   val alignedDataWidth = ((dataWidth + 7) / 8) * 8
   val io = new Bundle {
     val aclk   = in Bool
-    val aclken = in Bool
 
     /** 被除数 */
     val dividend = new Bundle {

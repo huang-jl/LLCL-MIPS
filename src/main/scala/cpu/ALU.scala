@@ -1,7 +1,7 @@
 package cpu
 
 import ip.DividerIP
-import lib.Optional
+import lib.{Optional, Task}
 import spinal.core._
 
 object ALU_OP extends SpinalEnum {
@@ -66,15 +66,16 @@ class ALU extends Component {
     divider.io.dividend.tdata := dividend
     divider.io.divisor.tdata := divisor
 
+    val outputTask = Task(divider.io.dout.tvalid, divider.io.dout.tdata, io.will.output)
+
     val isNew      = RegNext(io.will.input)
     val useDivider = (unsignedDiv | signedDiv) & !divideByZero
     divider.io.dividend.tvalid := useDivider & isNew
     divider.io.divisor.tvalid := useDivider & isNew
-    divider.io.aclken := !divider.io.dout.tvalid | io.will.output
-    io.stall := useDivider & !divider.io.dout.tvalid
+    io.stall := useDivider & !outputTask.has
 
-    quotient := divider.io.dout.tdata(32, 32 bits)
-    remainder := divider.io.dout.tdata(0, 32 bits)
+    quotient := outputTask.value(32, 32 bits)
+    remainder := outputTask.value(0, 32 bits)
   }
 
   d := 0
