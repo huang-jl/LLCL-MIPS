@@ -1,19 +1,7 @@
 package cpu
 
-import cpu.Stage.initVals
 import lib.{Key, Optional, Record}
 import spinal.core._
-
-import scala.collection.mutable
-
-object Stage {
-  val initVals = mutable.Map[Key[_ <: Data], Data]()
-
-  def setInputReset[T <: Data](key: Key[T], resetValue: T) = {
-    val pair = (key, resetValue)
-    initVals += pair
-  }
-}
 
 class Stage extends Area with ValCallbackRec {
   //
@@ -79,20 +67,20 @@ class Stage extends Area with ValCallbackRec {
   // Add every StageComponent defined inside the body of this.
   override def valCallbackRec(obj: Any, name: String) = {
     obj match {
-      case stageComponent: StageComponent =>
-        addComponent(stageComponent)
-      case _ => super.valCallbackRec(obj, name)
+      case stageComponent: StageComponent => addComponent(stageComponent)
+      case _                              => super.valCallbackRec(obj, name)
     }
   }
 
   stored.whenAddedKey(new Record.AddedKeyCallback {
     def apply[T <: Data](key: Key[T], value: T) = atTheBeginning {
-      if (initVals contains key) {
-        val resetValue = initVals(key).asInstanceOf[T]
-        value init resetValue
-        when(will.output && (!will.input || prevException.nonEmpty)) {
-          value := resetValue
-        }
+      value.setAsReg()
+
+      key.emptyValue match {
+        case Some(v) =>
+          value init v
+          when(will.output && (!will.input || prevException.nonEmpty)) { value := v }
+        case None =>
       }
     }
   })
