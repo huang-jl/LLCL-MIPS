@@ -57,6 +57,9 @@ simWorkspace/
 tmp/
 null
 
+official/soft/func/bin.lds
+official/soft/func/convert
+official/soft/func/**/obj
 tests/func/bin.lds
 tests/func/convert
 tests/func/**/obj
