@@ -75,10 +75,6 @@ class ICache(config: CacheRamConfig) extends Component {
       plruOutput(i) := plru(i).io.next
     }
     val replaceAddr = Reg(UInt(log2Up(config.wayNum) bits)) init(0)
-    //如果需要保持住当前阶段读出的值（比如EX.stall住了），那么直接保持replaceAddr
-    when(!keepRData) {
-      replaceAddr := plruOutput(io.cpu.stage1.index)  //stage 2 会使用这个值，用来进行替换
-    }
   }
 
   val axiDefault = new Area {
@@ -141,6 +137,10 @@ class ICache(config: CacheRamConfig) extends Component {
       cacheDatas(i).next := cacheDatas(i).prev
     }
   }
+  //如果需要保持住当前阶段读出的值（比如EX.stall住了），那么直接保持replaceAddr
+  when(!keepRData) {
+    LRU.replaceAddr := LRU.plruOutput(io.cpu.stage1.index)  //stage 2 会使用这个值，用来进行替换
+  }
 
 
   /** *********************************
@@ -157,7 +157,6 @@ class ICache(config: CacheRamConfig) extends Component {
   //判断是否前传
   //前传发生在：两个阶段索引相同，第二个阶段没有stall，并且在readMem阶段（也就是readMem即将进入stateBoot的时候）
   val forward = Reg(Bool) init (False)
-
 
   //选出可能替换的那一路的地址，同时保存替换的index，前传需要用到
   val replace = new Area {

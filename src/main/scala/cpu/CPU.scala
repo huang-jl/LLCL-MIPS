@@ -111,23 +111,38 @@ class CPU extends Component {
     input(pc)
   }
 
-  val ME = new Stage {
+  val ME2 = new Stage {
     val dcuC = new StageComponent {
       io.dcacheAXI <> dcu.io.axi
       io.uncacheAXI <> dcu.io.uncacheAXI
       //dbus
-      dcu.io.read := input(memRe) & exception.isEmpty
-      dcu.io.write := input(memWe) & exception.isEmpty
-      dcu.io.byteEnable := input(memBe)
+      dcu.io.dbus.stage2.read := input(memRe)
+      dcu.io.dbus.stage2.write := input(memWe)
+      dcu.io.dbus.stage2.byteEnable := input(memBe)
+      dcu.io.dbus.stage2.paddr := mmu.io.dataRes.paddr
       dcu.io.extend := input(memEx)
-      dcu.io.addr := mmu.io.dataRes.paddr
-      dcu.io.uncache := !mmu.io.dataCached
-      dcu.io.wdata := input(rtValue)
-      // MMU translate
-      mmu.io.dataVaddr := input(memAddr)
+      dcu.io.dbus.stage2.uncache := !mmu.io.dataCached
+      dcu.io.dbus.stage2.wdata := input(rtValue)
 
-      output(rfuData) := dcu.io.rdata
+      output(rfuData) := dcu.io.dbus.stage2.rdata
     }
+
+
+    //TODO 是不是有点啰嗦
+    produced(rfuData) := ((stored(rfuRdSrc) === RFU_RD_SRC.mu) ?
+      output(rfuData) | stored(rfuData))
+
+  }
+
+  val ME1 = new Stage {
+    val dcuC = new StageComponent {
+      dcu.io.offset := input(memAddr)(0, dcacehConfig.offsetWidth bits)
+      dcu.io.dbus.stage1.index := input(memAddr)(dcacehConfig.offsetWidth, dcacehConfig.indexWidth bits)
+      dcu.io.dbus.stage1.keepRData := !ME2.is.empty & !ME2.will.input
+      dcu.io.byteEnable := input(memBe)
+    }
+    // MMU translate
+    mmu.io.dataVaddr := input(memAddr)
 
     val hluC = new StageComponent {
       hlu.hi_we := input(hluHiWe)
@@ -164,11 +179,8 @@ class CPU extends Component {
       cp0.io.externalInterrupt := io.externalInterrupt
     }
 
-    //TODO 是不是有点啰嗦
-    produced(rfuData) := ((stored(rfuRdSrc) === RFU_RD_SRC.mu) ?
-      output(rfuData) | stored(rfuData))
 
-      //只包括写MMU和写CP0的逻辑信号
+    //TLB相关：写MMU和写CP0的逻辑信号
     val cp0TLB = new StageComponent {
       if(ConstantVal.USE_TLB){
         //used for TLBR
@@ -185,6 +197,7 @@ class CPU extends Component {
         }
       }
     }
+
     // 异常
     exceptionToRaise := None
     // TLB异常
@@ -455,7 +468,7 @@ class CPU extends Component {
   }
 
 
-  val stages = Seq(IF1, IF2, ID, EX, ME, WB)
+  val stages = Seq(IF1, IF2, ID, EX, ME1, ME2, WB)
   for ((prev, next) <- (stages zip stages.tail).reverse) {
     prev connect next
   }
