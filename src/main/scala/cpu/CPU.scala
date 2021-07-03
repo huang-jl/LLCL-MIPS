@@ -121,17 +121,16 @@ class CPU extends Component {
       io.dcacheAXI <> dcu.io.axi
       io.uncacheAXI <> dcu.io.uncacheAXI
       //dbus
-      dcu.io.dbus.stage2.read := input(memRe)
-      dcu.io.dbus.stage2.write := input(memWe)
-      dcu.io.dbus.stage2.byteEnable := input(memBe)
-      dcu.io.dbus.stage2.paddr := mmu.io.dataRes.paddr
-      dcu.io.extend := input(memEx)
-      dcu.io.dbus.stage2.uncache := !mmu.io.dataCached
-      dcu.io.dbus.stage2.wdata := input(rtValue)
+      dcu.io.stage2.read := input(memRe)
+      dcu.io.stage2.write := input(memWe)
+      dcu.io.stage2.byteEnable := input(memBe)
+      dcu.io.stage2.paddr := mmu.io.dataRes.paddr
+      dcu.io.stage2.extend := input(memEx)
+      dcu.io.stage2.uncache := !mmu.io.dataCached
+      dcu.io.stage2.wdata := input(rtValue)
 
-      output(rfuData) := dcu.io.dbus.stage2.rdata
+      output(rfuData) := dcu.io.stage2.rdata
     }
-
 
     //TODO 是不是有点啰嗦
     produced(rfuData) := ((stored(rfuRdSrc) === RFU_RD_SRC.mu) ?
@@ -141,10 +140,10 @@ class CPU extends Component {
 
   val ME1 = new Stage {
     val dcuC = new StageComponent {
-      dcu.io.offset := input(memAddr)(0, dcacehConfig.offsetWidth bits)
-      dcu.io.dbus.stage1.index := input(memAddr)(dcacehConfig.offsetWidth, dcacehConfig.indexWidth bits)
-      dcu.io.dbus.stage1.keepRData := !ME2.is.empty & !ME2.will.input
-      dcu.io.byteEnable := input(memBe)
+      dcu.io.stage1.offset := input(memAddr)(0, dcacehConfig.offsetWidth bits)
+      dcu.io.stage1.index := input(memAddr)(dcacehConfig.offsetWidth, dcacehConfig.indexWidth bits)
+      dcu.io.stage1.keepRData := !ME2.is.empty & !ME2.will.input
+      dcu.io.stage1.byteEnable := input(memBe)
     }
     // MMU translate
     mmu.io.dataVaddr := input(memAddr)
@@ -219,7 +218,7 @@ class CPU extends Component {
       }.elsewhen(modifiedException) (exceptionToRaise := EXCEPTION.Mod)
     }
     // 访存地址不对齐异常（更优先）
-    when(!dcu.io.addrValid) {
+    when(!dcu.io.stage1.addrValid) {
       when(input(memRe)) (exceptionToRaise := EXCEPTION.AdEL)
         .elsewhen(input(memWe))(exceptionToRaise := EXCEPTION.AdES)
     }
@@ -369,16 +368,20 @@ class CPU extends Component {
 
     when(EX.stored(rfuWe) && EX.stored(rfuAddr) === stored(inst).rs) {
       produced(rsValue) := EX.produced(rfuData)
-    } elsewhen (ME.stored(rfuWe) && ME.stored(rfuAddr) === stored(inst).rs) {
-      produced(rsValue) := ME.produced(rfuData)
+    } elsewhen (ME1.stored(rfuWe) && ME1.stored(rfuAddr) === stored(inst).rs) {
+      produced(rsValue) := ME1.produced(rfuData)
+    }elsewhen(ME2.stored(rfuWe) && ME2.stored(rfuAddr) === stored(inst).rs) {
+      produced(rsValue) := ME2.produced(rfuData)
     } elsewhen (WB.stored(rfuWe) && WB.stored(rfuAddr) === stored(inst).rs) {
       produced(rsValue) := WB.stored(rfuData)
     }
 
     when(EX.stored(rfuWe) && EX.stored(rfuAddr) === stored(inst).rt) {
       produced(rtValue) := EX.produced(rfuData)
-    } elsewhen (ME.stored(rfuWe) && ME.stored(rfuAddr) === stored(inst).rt) {
-      produced(rtValue) := ME.produced(rfuData)
+    } elsewhen (ME1.stored(rfuWe) && ME1.stored(rfuAddr) === stored(inst).rt) {
+      produced(rtValue) := ME1.produced(rfuData)
+    }elsewhen (ME2.stored(rfuWe) && ME2.stored(rfuAddr) === stored(inst).rt){
+      produced(rtValue) := ME2.produced(rfuData)
     } elsewhen (WB.stored(rfuWe) && WB.stored(rfuAddr) === stored(inst).rt) {
       produced(rtValue) := WB.stored(rfuData)
     }
@@ -393,9 +396,12 @@ class CPU extends Component {
     val wantForwardFromEX =
       EX.stored(rfuWe) && (EX.stored(rfuAddr) === stored(inst).rs && produced(useRs) ||
         EX.stored(rfuAddr) === stored(inst).rt && produced(useRt))
-    val wantForwardFromME =
-      ME.stored(rfuWe) && (ME.stored(rfuAddr) === stored(inst).rs && produced(useRs) ||
-        ME.stored(rfuAddr) === stored(inst).rt && produced(useRt))
+    val wantForwardFromME1 =
+      ME1.stored(rfuWe) && (ME1.stored(rfuAddr) === stored(inst).rs && produced(useRs) ||
+        ME1.stored(rfuAddr) === stored(inst).rt && produced(useRt))
+    val wantForwardFromME2 =
+      ME2.stored(rfuWe) && (ME2.stored(rfuAddr) === stored(inst).rs && produced(useRs) ||
+        ME2.stored(rfuAddr) === stored(inst).rt && produced(useRt))
 
     exceptionToRaise := du.io.exception
   }
@@ -486,7 +492,8 @@ class CPU extends Component {
 
   ID.is.done :=
     !(ID.wantForwardFromEX && EX.stored(rfuRdSrc) === RFU_RD_SRC.mu ||
-      ID.wantForwardFromME && ME.stored(rfuRdSrc) === RFU_RD_SRC.mu && !ME.is.done)
+      ID.wantForwardFromME1 && ME1.stored(rfuRdSrc) === RFU_RD_SRC.mu && !ME1.is.done ||
+      ID.wantForwardFromME2 && ME2.stored(rfuRdSrc) === RFU_RD_SRC.mu && !ME2.is.done)
 
   EX.is.done := !alu.io.stall
   EX.can.flush := !alu.io.stall
@@ -500,12 +507,12 @@ class CPU extends Component {
     }
   }
 
-  ME.is.done := !dcu.io.stall
-  ME.can.flush := !dcu.io.stall
+  ME2.is.done := !dcu.io.stage2.stall
+  ME2.can.flush := !dcu.io.stage2.stall
 
   // 异常清空流水线
-  when(cp0.io.jumpPc.isDefined && !ME.to.flush) {
-    ME.want.flush := True
+  when(cp0.io.jumpPc.isDefined && !ME1.to.flush) {
+    ME1.want.flush := True
     IF1.want.flush := True
     IF2.want.flush := True
     ID.want.flush := True
