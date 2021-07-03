@@ -2,18 +2,19 @@ package ip
 
 import spinal.core._
 
-/**
- * @param dataWidth  被除数和除数的宽度
- * @param detectZero 是否检测除0
- * @note Vivado的IP会自动把除数和被除数8字节对齐
- *       假设你的输入是33bit，那么输入会到40bit（文档没明确说怎么填充多余的位，估计是高7位填充0）
- *       此时输出的格式是B(0, 7 bits) ## 商(32 bit) ## B(0, 7 bits) ## 余数(32 bit)
- * */
-class DividerIP(dataWidth: Int = 32, detectZero: Boolean = false, name: String = "divider") extends BlackBox {
+/** @param dataWidth  被除数和除数的宽度
+  * @param detectZero 是否检测除0
+  * @note Vivado的IP会自动把除数和被除数8字节对齐
+  *       假设你的输入是33bit，那么输入会到40bit（文档没明确说怎么填充多余的位，估计是高7位填充0）
+  *       此时输出的格式是B(0, 7 bits) ## 商(32 bit) ## B(0, 7 bits) ## 余数(32 bit)
+  */
+class DividerIP(dataWidth: Int = 32, detectZero: Boolean = false, name: String = "divider")
+    extends BlackBox {
   setDefinitionName(name)
   val alignedDataWidth = ((dataWidth + 7) / 8) * 8
   val io = new Bundle {
-    val aclk = in Bool
+    val aclk   = in Bool
+
     /** 被除数 */
     val dividend = new Bundle {
       setName("s_axis_dividend")

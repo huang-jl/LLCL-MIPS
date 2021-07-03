@@ -12,27 +12,34 @@ import spinal.lib._
 import spinal.lib.fsm._
 import spinal.lib.bus.amba4.axi.Axi4
 
-
 class CPUDCacheInterface(config: CacheRamConfig) extends Bundle with IMasterSlave {
   val stage1 = new Bundle {
-    val index = UInt(config.indexWidth bits) //要读的cache对应的索引index
-    val keepRData = Bool //是否保持住第一阶段读出来的cache值
+    val index     = UInt(config.indexWidth bits) //要读的cache对应的索引index
+    val keepRData = Bool                         //是否保持住第一阶段读出来的cache值
   }
 
   val stage2 = new Bundle {
-    val read = Bool //对应load
-    val write = Bool //对应store
-    val uncache = Bool //是否是uncache操作
-    val paddr = UInt(32 bits) //物理地址
-    val wdata: Bits = Bits(32 bits) //希望写入内存的内容
-    val byteEnable: Bits = Bits(4 bits) //???1 -> enable byte0, ??1? -> enable byte1....
+    val read             = Bool          //对应load
+    val write            = Bool          //对应store
+    val uncache          = Bool          //是否是uncache操作
+    val paddr            = UInt(32 bits) //物理地址
+    val wdata: Bits      = Bits(32 bits) //希望写入内存的内容
+    val byteEnable: Bits = Bits(4 bits)  //???1 -> enable byte0, ??1? -> enable byte1....
 
-    val rdata = Bits(32 bits) //读出来的内容
-    val stall: Bool = Bool //是否暂停
+    val rdata       = Bits(32 bits) //读出来的内容
+    val stall: Bool = Bool          //是否暂停
   }
 
   override def asMaster(): Unit = {
-    out(stage1, stage2.read, stage2.write, stage2.paddr, stage2.wdata, stage2.byteEnable, stage2.uncache)
+    out(
+      stage1,
+      stage2.read,
+      stage2.write,
+      stage2.paddr,
+      stage2.wdata,
+      stage2.byteEnable,
+      stage2.uncache
+    )
     in(stage2.rdata, stage2.stall)
   }
 }
@@ -57,29 +64,37 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     //之所以和DCache放在一起，是保证uncached和cached的一致（受一个状态机管理）
     val uncacheAXI = master(new Axi4(ConstantVal.AXI_BUS_CONFIG))
   }
+
   /** **********************
-   * WRITE BUFFER
-   * ********************** */
+    * WRITE BUFFER
+    * **********************
+    */
   // write buffer需要记录cache的tag和index
-  val writeBufferConfig = WriteBufferConfig(config.blockSize, config.tagWidth + config.indexWidth, fifoDepth)
+  val writeBufferConfig =
+    WriteBufferConfig(config.blockSize, config.tagWidth + config.indexWidth, fifoDepth)
   val writeBuffer = new WriteBuffer(writeBufferConfig)
-  val fifo = new WriteBufferInterface(writeBufferConfig)
+  val fifo        = new WriteBufferInterface(writeBufferConfig)
   fifo <> writeBuffer.io
 
   /** **********************
-   * CACHE RAM
-   * ********************** */
+    * CACHE RAM
+    * **********************
+    */
   val cacheRam = new Area {
     val ramIPConfig = BRamIPConfig(Block.getBitWidth(config.blockSize))
-    val depth: Int = 4 * 1024 * 8 / Block.getBitWidth(config.blockSize)
-    val tags = Array.fill(config.wayNum)(new DualPortLutram(
-      DMeta.getBitWidth(config.tagWidth), depth * DMeta.getBitWidth(config.tagWidth)))
+    val depth: Int  = 4 * 1024 * 8 / Block.getBitWidth(config.blockSize)
+    val tags = Array.fill(config.wayNum)(
+      new DualPortLutram(
+        DMeta.getBitWidth(config.tagWidth),
+        depth * DMeta.getBitWidth(config.tagWidth)
+      )
+    )
     val datas = Array.fill(config.wayNum)(new DualPortBram(ramIPConfig))
   }
 
   val LRU = new Area {
-    val plru = Array.fill(config.setSize)(new LRUManegr(config.wayNum)) //setSize是组的个数，不是“设置大小”的意思
-    val plruOut = Vec(UInt(log2Up(config.wayNum) bits), config.setSize)
+    val plru        = Array.fill(config.setSize)(new LRUManegr(config.wayNum)) //setSize是组的个数，不是“设置大小”的意思
+    val plruOut     = Vec(UInt(log2Up(config.wayNum) bits), config.setSize)
     val replaceAddr = Reg(UInt(log2Up(config.wayNum) bits)) init (0)
     for (i <- 0 until config.setSize) {
       plruOut(i) := plru(i).io.next
@@ -88,10 +103,10 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     }
   }
 
-
   /** *********************************
-   * ************ STAGE   1 **********
-   * ********************************* */
+    * ************ STAGE   1 **********
+    * *********************************
+    */
   //only drive portB for read
   //第一阶段做的事情就是单纯读ram和lru的信息
   for (i <- 0 until config.wayNum) {
@@ -104,8 +119,8 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     cacheRam.datas(i).io.portB.din.assignDontCare()
   }
 
-  val keepRData = RegNext(io.cpu.stage1.keepRData) init (False)
-  val cacheTags = Vec(Updating(DMeta(config.tagWidth)), config.wayNum)
+  val keepRData  = RegNext(io.cpu.stage1.keepRData) init (False)
+  val cacheTags  = Vec(Updating(DMeta(config.tagWidth)), config.wayNum)
   val cacheDatas = Vec(Updating(Block(config.blockSize)), config.wayNum)
   for (i <- 0 until config.wayNum) {
     cacheTags(i).next.assignFromBits(cacheRam.tags(i).io.portB.dout)
@@ -120,13 +135,15 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   }
 
   /** *********************************
-   * ************ STAGE   2 **********
-   * ********************************* */
+    * ************ STAGE   2 **********
+    * *********************************
+    */
   //解析Stage 2的物理地址
   val paddr = new Area {
     val wordOffset: UInt = io.cpu.stage2.paddr(2, config.wordOffsetWidth bits)
-    val index: UInt = io.cpu.stage2.paddr(config.offsetWidth, config.indexWidth bits)
-    val tag: UInt = io.cpu.stage2.paddr(config.offsetWidth + config.indexWidth, config.tagWidth bits)
+    val index: UInt      = io.cpu.stage2.paddr(config.offsetWidth, config.indexWidth bits)
+    val tag: UInt =
+      io.cpu.stage2.paddr(config.offsetWidth + config.indexWidth, config.tagWidth bits)
   }
 
   //选出可能替换的那一路的地址
@@ -138,11 +155,11 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     }
   }
   //上一个周期可能修改的路地址，用于前传
-  val prevModifiedWayIndex = Reg(UInt(log2Up(config.wayNum) bits)) init(0)
+  val prevModifiedWayIndex = Reg(UInt(log2Up(config.wayNum) bits)) init (0)
 
   //only drive portA for write
   val dataWE = Bits(config.wayNum bits) //写哪一路cache.data的使能
-  val tagWE = Bits(config.wayNum bits) //写哪一路cache.meta的使能
+  val tagWE  = Bits(config.wayNum bits) //写哪一路cache.meta的使能
   for (i <- 0 until config.wayNum) {
     cacheRam.tags(i).io.portA.en := True
     cacheRam.tags(i).io.portA.we := tagWE(i)
@@ -152,8 +169,9 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     cacheRam.datas(i).io.portA.we := dataWE(i)
     cacheRam.datas(i).io.portA.addr := paddr.index
   }
-  val writeMeta = Updating(DMeta(config.tagWidth)) init(DMeta.fromBits(0, config.tagWidth)) //要写入cache的Meta
-  val writeData = Updating(Bits(config.bitSize bits)) init(B(0)) //要写入cache的Block
+  val writeMeta =
+    Updating(DMeta(config.tagWidth)) init (DMeta.fromBits(0, config.tagWidth)) //要写入cache的Meta
+  val writeData = Updating(Bits(config.bitSize bits)) init (B(0)) //要写入cache的Block
   //TODO 加入invalidate功能后需要修改valid的逻辑
   for (i <- 0 until config.wayNum) {
     cacheRam.tags(i).io.portA.din := writeMeta.next.asBits
@@ -161,10 +179,10 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   }
 
   val cache = new Area {
-    val read: Bool = io.cpu.stage2.read & !io.cpu.stage2.uncache
+    val read: Bool  = io.cpu.stage2.read & !io.cpu.stage2.uncache
     val write: Bool = io.cpu.stage2.write & !io.cpu.stage2.uncache
-    val wdata = io.cpu.stage2.wdata
-    val rdata = Bits(32 bits)
+    val wdata       = io.cpu.stage2.wdata
+    val rdata       = Bits(32 bits)
 
     val hitPerWay: Bits = Bits(config.wayNum bits) //cache每一路是否命中
     /** cache是否直接命中 */
@@ -182,17 +200,16 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   }
 
   val uncache = new Area {
-    val read: Bool = io.cpu.stage2.read & io.cpu.stage2.uncache
+    val read: Bool  = io.cpu.stage2.read & io.cpu.stage2.uncache
     val write: Bool = io.cpu.stage2.write & io.cpu.stage2.uncache
-    val wdata = io.cpu.stage2.wdata
-    val rdata = Bits(32 bits)
+    val wdata       = io.cpu.stage2.wdata
+    val rdata       = Bits(32 bits)
   }
 
-
   val wb = new Area {
-    val tag = Reg(UInt(config.tagWidth bits)) init (0)
-    val index = Reg(UInt(config.indexWidth bits)) init (0)
-    val data = Reg(Block(config.blockSize)) init (Block.fromBits(0, config.blockSize))
+    val tag           = Reg(UInt(config.tagWidth bits)) init (0)
+    val index         = Reg(UInt(config.indexWidth bits)) init (0)
+    val data          = Reg(Block(config.blockSize)) init (Block.fromBits(0, config.blockSize))
     val writing: Bool = Bool //当前是否正在写回内存
     //正在写回内存的数据命中读请求
     val hit: Bool = tag === paddr.tag & index === paddr.index & writing
@@ -286,11 +303,10 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     io.uncacheAXI.b.ready := True
   }
 
-
   /*
    * Logic
    */
-  val readMiss = Bool
+  val readMiss  = Bool
   val writeMiss = Bool
   val recvBlock = Reg(new Block(config.blockSize)) init (Block.fromBits(B(0), config.blockSize))
   val counter = new Area {
@@ -298,7 +314,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     val send = Counter(0 until config.wordSize) //写内存的计数器
   }
 
-  readMiss := !cache.hit & !fifo.readHit & cache.read //读缺失
+  readMiss := !cache.hit & !fifo.readHit & cache.read    //读缺失
   writeMiss := !cache.hit & !fifo.writeHit & cache.write //写缺失
 
   tagWE := 0
@@ -309,15 +325,15 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   //这个状态机不包括写内存
   //写内存的逻辑是单独一个状态机，直接和fifo进行交互
   val dcacheFSM = new StateMachine {
-    val waitWb = new State //用来等待write_back的状态，并且会从cache中移动对应的数据到FIFO中
+    val waitWb       = new State //用来等待write_back的状态，并且会从cache中移动对应的数据到FIFO中
     val waitAXIReady = new State //等待arready信号
-    val readMem = new State //读内存
+    val readMem      = new State //读内存
 
-    val uncacheReadWaitAXIReady = new State
-    val uncacheReadMem = new State
+    val uncacheReadWaitAXIReady  = new State
+    val uncacheReadMem           = new State
     val uncacheWriteWaitAXIReady = new State
-    val uncacheWriteMem = new State
-    val uncacheWaitAXIBValid = new State
+    val uncacheWriteMem          = new State
+    val uncacheWaitAXIBValid     = new State
 
     setEntry(stateBoot)
     disableAutoStart()
@@ -376,8 +392,8 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   }
 
   val wbFSM = new StateMachine {
-    val waitAXIReady = new State //等待aw.ready
-    val writeMem = new State
+    val waitAXIReady  = new State //等待aw.ready
+    val writeMem      = new State
     val waitAXIBValid = new State //等待b.value
     setEntry(stateBoot)
     disableAutoStart()
@@ -550,4 +566,3 @@ object DCache {
     SpinalVerilog(new DCache(CacheRamConfig(), 16)).printPruned()
   }
 }
-

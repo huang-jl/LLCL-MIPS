@@ -2,17 +2,16 @@ package cache
 
 import spinal.core._
 
-/**
- * @param blockSize 数据块的大小, bytes
- * @param wayNum    路个数
- * @note Cache采用实Tag和虚Index，
- *       因此Cache一路大小必须小于等于一个页的大小。
- *       由于只支持4KiB的页，这里默认一路的大小为4KiB
- * */
+/** @param blockSize 数据块的大小, bytes
+  * @param wayNum    路个数
+  * @note Cache采用实Tag和虚Index，
+  *       因此Cache一路大小必须小于等于一个页的大小。
+  *       由于只支持4KiB的页，这里默认一路的大小为4KiB
+  */
 case class CacheRamConfig(
-                           blockSize: Int = 32,
-                           wayNum: Int = 2
-                         ) {
+    blockSize: Int = 32,
+    wayNum: Int = 2
+) {
   def indexWidth: Int = log2Up(4 * 1024) - offsetWidth
 
   def tagWidth: Int = 32 - indexWidth - offsetWidth
@@ -33,7 +32,7 @@ case class CacheRamConfig(
   def setSize: Int = 1 << indexWidth
 
   def lruLength: Int = {
-    var sum = 0
+    var sum  = 0
     var temp = wayNum / 2
     while (temp > 0) {
       sum += temp
@@ -43,9 +42,8 @@ case class CacheRamConfig(
   }
 }
 
-/**
- * @param blockSize 一个数据块的大小:bytes
- */
+/** @param blockSize 一个数据块的大小:bytes
+  */
 case class Block(blockSize: Int) extends Bundle {
   val banks = Vec(Bits(32 bits), blockSize / 4)
 
@@ -69,7 +67,7 @@ object Block {
 }
 
 case class Meta(tagWidth: Int) extends Bundle {
-  val tag = Bits(tagWidth bits)
+  val tag   = Bits(tagWidth bits)
   val valid = Bool
 }
 
@@ -84,7 +82,7 @@ object Meta {
 }
 
 case class DMeta(tagWidth: Int) extends Bundle {
-  val tag = Bits(tagWidth bits)
+  val tag   = Bits(tagWidth bits)
   val valid = Bool
   val dirty = Bool
 }
