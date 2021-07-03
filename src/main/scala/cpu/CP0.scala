@@ -248,10 +248,10 @@ object CP0 {
       .readOnlyField("BadVAddr", 31 downto 0)
 
     describeRegister("Count", 9, 0)
-      .field("Count", 31 downto 0)
+      .field("Count", 31 downto 0, "0" * 32)
 
     describeRegister("Compare", 11, 0)
-      .field("Compare", 31 downto 0)
+      .field("Compare", 31 downto 0, "1" * 32)
 
     describeRegister("Status", 12, 0)
       .field("Bev", 22, true)

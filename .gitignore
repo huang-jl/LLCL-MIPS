@@ -76,3 +76,5 @@ core/*.v
 !**/xilinx_ip/data_ram/*.xci
 **/xilinx_ip/inst_ram/*
 !**/xilinx_ip/inst_ram/*.xci
+
+vivado.conf

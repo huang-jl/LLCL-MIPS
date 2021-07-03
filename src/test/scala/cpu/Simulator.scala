@@ -44,7 +44,7 @@ case class Simulator(config: Simulator.Config) {
   def run(): Unit = {
     val includeDir = VivadoConf.vivadoPath + "/data/verilog/src/xeclib"
     SimConfig.withWave
-      .withConfig(SpinalConfig().includeSimulation.dumpWave())
+      .withConfig(SpinalConfig().includeSimulation)
       .allOptimisation
       .addSimulatorFlag("-Wno-TIMESCALEMOD")
       .addSimulatorFlag("-Wno-INITIALDLY")
@@ -66,6 +66,8 @@ case class Simulator(config: Simulator.Config) {
       clock = soc.io.cpuClock
     )
     cpuClockDomain.forkStimulus(period = config.cpuClockPeriod)
+
+    soc.io.externalInterrupt #= 0
 
     val memorySim = AxiMemorySim(soc.io.axi, sysClockDomain, config.mem)
     for (MemSection(addr, data) <- config.initSections) {
