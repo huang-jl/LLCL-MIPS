@@ -18,8 +18,8 @@ module dual_port_bram #
    input wire [$clog2(DEPTH) -1:0] addrb,
    input wire [DATA_WIDTH - 1:0]    dina,    //write data
    input wire [DATA_WIDTH - 1:0]    dinb,    //write data
-   input wire [DATA_WIDTH - 1:0]    douta,
-   input wire [DATA_WIDTH - 1:0]    doutb
+   output wire [DATA_WIDTH - 1:0]    douta,
+   output wire [DATA_WIDTH - 1:0]    doutb
 );
    // xpm_memory_tdpram: True Dual Port RAM
    // Xilinx Parameterized Macro, version 2019.2
@@ -158,8 +158,8 @@ module dual_port_lutram #
    input wire [$clog2(DEPTH) -1:0] addra,
    input wire [$clog2(DEPTH) -1:0] addrb,
    input wire [DATA_WIDTH - 1:0]    dina,    //write data
-   input wire [DATA_WIDTH - 1:0]    douta,
-   input wire [DATA_WIDTH - 1:0]    doutb
+   output wire [DATA_WIDTH - 1:0]    douta,
+   output wire [DATA_WIDTH - 1:0]    doutb
 );
 
    // xpm_memory_dpdistram: Dual Port Distributed RAM

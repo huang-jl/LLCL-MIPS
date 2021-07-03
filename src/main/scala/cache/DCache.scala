@@ -129,14 +129,16 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     val tag: UInt = io.cpu.stage2.paddr(config.offsetWidth + config.indexWidth, config.tagWidth bits)
   }
 
-  //选出可能替换的那一路的地址，同时保存替换的index，前传需要用到
+  //选出可能替换的那一路的地址
   val replace = new Area {
-    val wayIndex = Updating(UInt(log2Up(config.wayNum) bits)) init (0)
-    wayIndex.next := LRU.replaceAddr
+    val wayIndex = UInt(log2Up(config.wayNum) bits)
+    wayIndex := LRU.replaceAddr
     for (i <- 0 until config.wayNum) {
-      when(!cacheTags(i).next.valid)(wayIndex.next := i) //如果有未使用的cache line，优先替换它
+      when(!cacheTags(i).next.valid)(wayIndex := i) //如果有未使用的cache line，优先替换它
     }
   }
+  //上一个周期可能修改的路地址，用于前传
+  val prevModifiedWayIndex = Reg(UInt(log2Up(config.wayNum) bits)) init(0)
 
   //only drive portA for write
   val dataWE = Bits(config.wayNum bits) //写哪一路cache.data的使能
@@ -150,8 +152,8 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     cacheRam.datas(i).io.portA.we := dataWE(i)
     cacheRam.datas(i).io.portA.addr := paddr.index
   }
-  val writeMeta = Updating(DMeta(config.tagWidth)) //要写入cache的Meta
-  val writeData = Updating(Bits(config.bitSize bits)) //要写入cache的Block
+  val writeMeta = Updating(DMeta(config.tagWidth)) init(DMeta.fromBits(0, config.tagWidth)) //要写入cache的Meta
+  val writeData = Updating(Bits(config.bitSize bits)) init(B(0)) //要写入cache的Block
   //TODO 加入invalidate功能后需要修改valid的逻辑
   for (i <- 0 until config.wayNum) {
     cacheRam.tags(i).io.portA.din := writeMeta.next.asBits
@@ -427,12 +429,13 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
         recvBlock.banks(counter.recv.value) := io.axi.r.data
       }
       when(io.axi.r.valid & io.axi.r.last) {
-        tagWE(replace.wayIndex.next) := True
-        dataWE(replace.wayIndex.next) := True
+        tagWE(replace.wayIndex) := True
+        dataWE(replace.wayIndex) := True
+        prevModifiedWayIndex := replace.wayIndex
         //发生行替换的时候需要更新LRU
         for (i <- 0 until config.setSize) {
           LRU.plru(i).io.update := (cache.read | cache.write) & paddr.index === i
-          LRU.plru(i).io.access := B"1'b1" << replace.wayIndex.next
+          LRU.plru(i).io.access := B"1'b1" << replace.wayIndex
         }
       }
     }
@@ -456,10 +459,10 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   //前传发生在：两个阶段索引相同，第二个阶段没有stall，并且即将写ram的阶段
   val forward = Reg(Bool) init (False)
   forward := io.cpu.stage1.index === paddr.index & !io.cpu.stage2.stall &
-    (dcacheFSM.isActive(dcacheFSM.readMem) | dcacheFSM.isActive(dcacheFSM.waitWb))
+    (dcacheFSM.isActive(dcacheFSM.readMem) | dcacheFSM.isActive(dcacheFSM.waitWb) | cache.write)
   when(forward) {
-    cacheTags(replace.wayIndex.prev).next := writeMeta.prev
-    cacheDatas(replace.wayIndex.prev).next.assignFromBits(writeData.prev.asBits)
+    cacheTags(prevModifiedWayIndex).next := writeMeta.prev
+    cacheDatas(prevModifiedWayIndex).next.assignFromBits(writeData.prev.asBits)
   }
 
   //cache读出的数据可能是
@@ -480,11 +483,11 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
 
   wb.writing := !wbFSM.isActive(wbFSM.stateBoot) //write buffer正在写回
 
-  //和fifo相关的信号
+  //和fifo相关的信号，fifo用来存放从cache中替换出去的行
   fifo.push := dcacheFSM.isActive(dcacheFSM.waitWb) &
-    cacheTags(replace.wayIndex.next).next.valid & cacheTags(replace.wayIndex.next).next.dirty
-  fifo.pushTag := cacheTags(replace.wayIndex.next).next.tag ## paddr.index
-  fifo.pushData := cacheDatas(replace.wayIndex.next).next.asBits
+    cacheTags(replace.wayIndex).next.valid & cacheTags(replace.wayIndex).next.dirty
+  fifo.pushTag := cacheTags(replace.wayIndex).next.tag ## paddr.index
+  fifo.pushData := cacheDatas(replace.wayIndex).next.asBits
   fifo.queryTag := paddr.tag ## paddr.index
   fifo.queryWData := 0
   fifo.queryWData(paddr.wordOffset << 5, 32 bits) := cache.wdata //byteOffset << 3对应cpu.addr的bit偏移
@@ -499,12 +502,13 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   writeMeta.next.tag := paddr.tag.asBits
   dcacheFSM.waitWb.whenIsActive {
     when(wb.hit) {
-      tagWE(replace.wayIndex.next) := True
-      dataWE(replace.wayIndex.next) := True
+      tagWE(replace.wayIndex) := True
+      dataWE(replace.wayIndex) := True
+      prevModifiedWayIndex := replace.wayIndex
       //发生行替换的时候需要更新LRU
       for (i <- 0 until config.setSize) {
         LRU.plru(i).io.update := (cache.read | cache.write) & paddr.index === i
-        LRU.plru(i).io.access := B"1'b1" << replace.wayIndex.next
+        LRU.plru(i).io.access := B"1'b1" << replace.wayIndex
       }
     }
   }
@@ -515,6 +519,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     when(cache.write & cache.hit) {
       tagWE := cache.hitPerWay
       dataWE := cache.hitPerWay
+      prevModifiedWayIndex := OHToUInt(cache.hitPerWay)
     }
   }
   //写入dache ram的数据

@@ -65,7 +65,7 @@ class CPU extends Component {
 
   val ifPaddr    = Key(UInt(32 bits))
   val if2En      = Key(Bool)
-  val mePaddr    = Key(UInt(32 bits))
+  val me2Uncache = Key(Bool)  //ME2是否经过cache
 
   val tlbr       = Key(Bool)  //ID解码
   val tlbw       = Key(Bool)  //ID解码
@@ -124,9 +124,9 @@ class CPU extends Component {
       dcu.io.stage2.read := input(memRe)
       dcu.io.stage2.write := input(memWe)
       dcu.io.stage2.byteEnable := input(memBe)
-      dcu.io.stage2.paddr := mmu.io.dataRes.paddr
+      dcu.io.stage2.paddr := input(memAddr)
       dcu.io.stage2.extend := input(memEx)
-      dcu.io.stage2.uncache := !mmu.io.dataCached
+      dcu.io.stage2.uncache := input(me2Uncache)
       dcu.io.stage2.wdata := input(rtValue)
 
       output(rfuData) := dcu.io.stage2.rdata
@@ -147,6 +147,8 @@ class CPU extends Component {
     }
     // MMU translate
     mmu.io.dataVaddr := input(memAddr)
+    output(memAddr) := mmu.io.dataRes.paddr
+    output(me2Uncache) := !mmu.io.dataCached
 
     //因为写hi lo的指令以及写cp0本身不会触发异常
     //因此全部放到ME第一阶段完成
@@ -492,7 +494,7 @@ class CPU extends Component {
 
   ID.is.done :=
     !(ID.wantForwardFromEX && EX.stored(rfuRdSrc) === RFU_RD_SRC.mu ||
-      ID.wantForwardFromME1 && ME1.stored(rfuRdSrc) === RFU_RD_SRC.mu && !ME1.is.done ||
+      ID.wantForwardFromME1 && ME1.stored(rfuRdSrc) === RFU_RD_SRC.mu ||
       ID.wantForwardFromME2 && ME2.stored(rfuRdSrc) === RFU_RD_SRC.mu && !ME2.is.done)
 
   EX.is.done := !alu.io.stall

@@ -91,4 +91,9 @@ case class DMeta(tagWidth: Int) extends Bundle {
 
 object DMeta {
   def getBitWidth(tagWidth: Int): Int = tagWidth + 2
+  def fromBits(value: Bits, tagWidth: Int): DMeta = {
+    val res = DMeta(tagWidth)
+    res.assignFromBits(value.resize(res.getBitsWidth))
+    res
+  }
 }

@@ -13,7 +13,7 @@ module single_port_ram #
     input wire                      we,    //write enable
     input wire [$clog2(DEPTH) -1:0] addr,
     input wire [DATA_WIDTH - 1:0]    din,    //write data
-    input wire [DATA_WIDTH - 1:0]    dout
+    output wire [DATA_WIDTH - 1:0]    dout
 );
 
 
