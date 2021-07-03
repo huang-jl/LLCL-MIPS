@@ -82,6 +82,11 @@ class CPU extends Component {
   Stage.setInputReset(cp0We, False)
   Stage.setInputReset(inst, ConstantVal.INST_NOP)
   Stage.setInputReset(eret, False)
+  if(ConstantVal.USE_TLB) {
+    Stage.setInputReset(tlbw, False)
+    Stage.setInputReset(tlbp, False)
+    Stage.setInputReset(tlbr, False)
+  }
 
   //MMU input signal
   //目前MMU和CP0直接相连，MMU拿到的CP0寄存器值都是实时的
@@ -144,6 +149,8 @@ class CPU extends Component {
     // MMU translate
     mmu.io.dataVaddr := input(memAddr)
 
+    //因为写hi lo的指令以及写cp0本身不会触发异常
+    //因此全部放到ME第一阶段完成
     val hluC = new StageComponent {
       hlu.hi_we := input(hluHiWe)
       output(hluHiData) := ((input(hluHiSrc) === HLU_SRC.rs) ?
@@ -264,25 +271,25 @@ class CPU extends Component {
 
     produced(rfuData) := stored(rfuRdSrc).mux(
       RFU_RD_SRC.alu -> produced(aluResultC).asBits,
-      RFU_RD_SRC.hi  -> (ME.stored(hluHiWe) ? ME.produced(hluHiData) | hlu.hi_v),
-      RFU_RD_SRC.lo  -> (ME.stored(hluLoWe) ? ME.produced(hluLoData) | hlu.lo_v),
+      RFU_RD_SRC.hi  -> (ME1.stored(hluHiWe) ? ME1.produced(hluHiData) | hlu.hi_v),
+      RFU_RD_SRC.lo  -> (ME1.stored(hluLoWe) ? ME1.produced(hluLoData) | hlu.lo_v),
       RFU_RD_SRC.cp0 -> cp0Read.output(rfuData),
       default        -> stored(rfuData)
     )
 
-    // CP0 harzard : 暂停EX阶段
+    // CP0 harzard : 根据ME1的情况暂停EX阶段
     val cp0_RAW_hazard = new Area {
       //当前指令mfc0，上一条指令mtc0 | tlbp | tlbr ，则需要暂停一个周期
-      val mfc0_mtc0_hazard:Bool = !ME.is.empty & input(cp0Re) & ME.stored(cp0We) &
-        input(inst).rd === ME.stored(inst).rd &
-        input(inst).sel === ME.stored(inst).sel
+      val mfc0_mtc0_hazard:Bool = !ME1.is.empty & input(cp0Re) & ME1.stored(cp0We) &
+        input(inst).rd === ME1.stored(inst).rd &
+        input(inst).sel === ME1.stored(inst).sel
 
       val mfc0_tlb_hazard = if(ConstantVal.USE_TLB) Bool else null
       if(ConstantVal.USE_TLB) {
-        mfc0_tlb_hazard := !ME.is.empty & input(cp0Re) &
+        mfc0_tlb_hazard := !ME1.is.empty & input(cp0Re) &
           (
-            (ME.stored(tlbp) & input(inst).rd === 0 & input(inst).sel === 0) |
-              (ME.stored(tlbr) & Utils.equalAny(input(inst).rd, U(2), U(3), U(5), U(10)) & input(inst).sel === 0)
+            (ME1.stored(tlbp) & input(inst).rd === 0 & input(inst).sel === 0) |
+              (ME1.stored(tlbr) & Utils.equalAny(input(inst).rd, U(2), U(3), U(5), U(10)) & input(inst).sel === 0)
             )
       }
     }
@@ -417,7 +424,7 @@ class CPU extends Component {
         ID.output(jumpPc).whenIsDefined(v => stored(pc) := v)
       }
       toSet.whenIsDefined(v => stored(pc) := v)
-      when(ME.is.done) {
+      when(ME1.is.done) {
         cp0.io.jumpPc.whenIsDefined(v => stored(pc) := v)
       }
       toJump := None
@@ -426,7 +433,7 @@ class CPU extends Component {
       when(ID.is.done) {
         ID.output(jumpPc).whenIsDefined(v => toJump := v)
       }
-      when(ME.is.done) {
+      when(ME1.is.done) {
         cp0.io.jumpPc.whenIsDefined(v => toSet := v)
       }
     }
