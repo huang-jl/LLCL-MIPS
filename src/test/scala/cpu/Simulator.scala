@@ -3,6 +3,8 @@ package cpu
 import spinal.core._
 import spinal.core.sim._
 import spinal.lib.bus.amba4.axi.sim.{AxiMemorySim, AxiMemorySimConfig, SparseMemory}
+import util.VivadoConf
+
 import scala.collection.mutable
 
 object Simulator {
@@ -40,7 +42,16 @@ case class Simulator(config: Simulator.Config) {
   }
 
   def run(): Unit = {
-    SimConfig.withWave.compile(new SimulationSoc).doSimUntilVoid(this.doSim _)
+    val includeDir = VivadoConf.vivadoPath + "/data/verilog/src/xeclib"
+    SimConfig.withWave
+      .withConfig(SpinalConfig().includeSimulation.dumpWave())
+      .allOptimisation
+      .addSimulatorFlag("-Wno-TIMESCALEMOD")
+      .addSimulatorFlag("-Wno-INITIALDLY")
+      // .addIncludeDir(includeDir)
+      .addSimulatorFlag(s"-I${includeDir}")
+      .compile(new SimulationSoc)
+      .doSimUntilVoid(this.doSim _)
   }
 
   def doSim(soc: SimulationSoc): Unit = {
@@ -61,6 +72,12 @@ case class Simulator(config: Simulator.Config) {
       memorySim.memory.writeArray(addr.toLong, data)
     }
     memorySim.start()
+
+    for (job <- soc.jobs) {
+      fork {
+        job()
+      }
+    }
 
     val threadInput = Context(
       soc = soc,

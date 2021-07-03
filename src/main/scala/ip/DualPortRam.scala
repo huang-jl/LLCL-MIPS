@@ -1,108 +1,120 @@
 package ip
 
+import ip.RamPortDelayedPipelineImplicits._
 import spinal.core._
+import spinal.core.sim._
 import spinal.lib._
 
-/**
- * @param dataWidth 数据宽度，单位是bit
- * @param addrWidth ram地址宽度
- * @param readOnly  是否是只读的端口，只读端口不会有we和din
- * */
-case class RamPort(dataWidth: Int, addrWidth: Int, readOnly: Boolean = false) extends Bundle with IMasterSlave {
-  val en = Bool
-  val we = if (!readOnly) Bool else null //write enable
-  val addr = UInt(addrWidth bits)
-  val din = if (!readOnly) in(Bits(dataWidth bits)) else null
-  val dout = out(Bits(dataWidth bits))
-
-  override def asMaster(): Unit = {
-    in(dout)
-    out(en, addr)
-    if (!readOnly) {
-      out(we, din)
-    }
-  }
-}
-
-/**
- * @param dataWidth 数据宽度，单位是bit
- * @param size      ram总的大小，单位是bit
- * @param latency   读端口的延迟
- */
-case class BRamIPConfig(dataWidth: Int = 32, size: Int = 4 * 1024 * 8, latency: Int = 1,
-                        writeModeA: String = "no_change", writeModeB: String = "no_change") {
+/** @param dataWidth 数据宽度，单位是bit
+  * @param size      ram总的大小，单位是bit
+  * @param latency   读端口的延迟
+  */
+case class BRamIPConfig(
+    dataWidth: Int = 32,
+    size: Int = 4 * 1024 * 8,
+    latency: Int = 1,
+    writeModeA: WriteMode.Value = WriteMode.NoChange,
+    writeModeB: WriteMode.Value = WriteMode.NoChange
+) {
   def depth = size / dataWidth
 }
 
-class DualPortBram(config: BRamIPConfig) extends BlackBox {
+class DualPortBRam(config: BRamIPConfig) extends BlackBox {
   setDefinitionName("dual_port_bram")
   val generic = new Generic {
-    val DATA_WIDTH = config.dataWidth
-    val DEPTH = config.depth
+    val DATA_WIDTH       = config.dataWidth
+    val DEPTH            = config.depth
     val MEMORY_PRIMITIVE = "block"
-    val LATENCY = config.latency
-    val WRITE_MODE_A = config.writeModeA
-    val WRITE_MODE_B = config.writeModeB
+    val LATENCY          = config.latency
+    val WRITE_MODE_A     = config.writeModeA.toString
+    val WRITE_MODE_B     = config.writeModeB.toString
   }
 
   val io = new Bundle {
-    val clk = in Bool
-    val rst = in Bool
-    val portA = slave(RamPort(config.dataWidth, log2Up(config.depth)))
-    val portB = slave(RamPort(config.dataWidth, log2Up(config.depth)))
-  }
+    val clk   = in Bool
+    val rst   = in Bool
+    val portA = slave(RamPort(config.dataWidth, log2Up(config.depth), config.writeModeA))
+    val portB = slave(RamPort(config.dataWidth, log2Up(config.depth), config.writeModeB))
+  }.simPublic()
+
   mapClockDomain(clock = io.clk, reset = io.rst, resetActiveLevel = HIGH)
   noIoPrefix()
-  addPrePopTask { () => {
-    for (bt <- io.flatten) {
-      val name = bt.getName()
-      if (name.startsWith("portA")) bt.setName(name.substring(name.indexOf('_') + 1) + 'a')
-      if (name.startsWith("portB")) bt.setName(name.substring(name.indexOf('_') + 1) + 'b')
+  addPrePopTask { () =>
+    {
+      for (bt <- io.flatten) {
+        val name = bt.getName()
+        if (name.startsWith("portA")) bt.setName(name.substring(name.indexOf('_') + 1) + 'a')
+        if (name.startsWith("portB")) bt.setName(name.substring(name.indexOf('_') + 1) + 'b')
+      }
     }
   }
-  }
+
   addRTLPath("./rtl/dual_port_ram.v")
+
+  if (simUtils.isInSim) {
+    val storage = Array.fill[BigInt](config.size / config.dataWidth)(0)
+    simUtils.addJob(
+      simUtils
+        .DelayedPipeline(config.latency)
+        .handlePort(io.portA, storage)
+        .handlePort(io.portB, storage)
+        .toJob
+    )
+  }
 }
 
-/**
- * @param dataWidth 数据宽度，单位是bit
- * @param size      ram总的大小，单位是bit
- * @param latency   读端口的延迟
- */
-class DualPortLutram(dataWidth: Int = 32, size: Int = 4 * 1024 * 8,
-                     latency: Int = 1) extends BlackBox {
+/** @param dataWidth 数据宽度，单位是bit
+  * @param size      ram总的大小，单位是bit
+  * @param latency   读端口的延迟
+  */
+class DualPortLutRam(dataWidth: Int = 32, size: Int = 4 * 1024 * 8, latency: Int = 1)
+    extends BlackBox {
   setDefinitionName("dual_port_lutram")
   val generic = new Generic {
     val DATA_WIDTH = dataWidth
-    val DEPTH = size / dataWidth
-    val LATENCY = latency
+    val DEPTH      = size / dataWidth
+    val LATENCY    = latency
   }
 
   val io = new Bundle {
     val clk = in Bool
     val rst = in Bool
-    val portA = slave(RamPort(dataWidth, log2Up(size / dataWidth)))
-    val portB = slave(RamPort(dataWidth, log2Up(size / dataWidth), readOnly = true))
-  }
+    // TODO: Is it write first?
+    val portA = slave(RamPort(dataWidth, log2Up(size / dataWidth), WriteMode.WriteFirst))
+    val portB = slave(ReadOnlyRamPort(dataWidth, log2Up(size / dataWidth)))
+  }.simPublic()
 
   mapClockDomain(clock = io.clk, reset = io.rst, resetActiveLevel = HIGH)
   noIoPrefix()
-  addPrePopTask { () => {
-    for (bt <- io.flatten) {
-      val name = bt.getName()
-      if (name.startsWith("portA")) bt.setName(name.substring(name.indexOf('_') + 1) + 'a')
-      if (name.startsWith("portB")) bt.setName(name.substring(name.indexOf('_') + 1) + 'b')
+  addPrePopTask { () =>
+    {
+      for (bt <- io.flatten) {
+        val name = bt.getName()
+        if (name.startsWith("portA")) bt.setName(name.substring(name.indexOf('_') + 1) + 'a')
+        if (name.startsWith("portB")) bt.setName(name.substring(name.indexOf('_') + 1) + 'b')
+      }
     }
   }
-  }
+
   addRTLPath("./rtl/dual_port_ram.v")
+
+  if (simUtils.isInSim) {
+    val storage = Array.fill[BigInt](size / dataWidth)(0)
+    simUtils.addJob(
+      simUtils
+        .DelayedPipeline(latency)
+        .handlePort(io.portA, storage)
+        .handlePort(io.portB, storage)
+        .toJob
+    )
+  }
 }
 
 object DualPortRam {
   def main(args: Array[String]): Unit = {
     SpinalVerilog(new Component {
-      val bram = new DualPortBram(BRamIPConfig(32 * 8, 4 * 1024 * 8))
-      val lutRam = new DualPortLutram(32 * 8, 4 * 1024 * 8, 0)
+      val bram   = new DualPortBRam(BRamIPConfig(32 * 8, 4 * 1024 * 8))
+      val lutRam = new DualPortLutRam(32 * 8, 4 * 1024 * 8, 0)
       bram.io.portA.addr.assignDontCare()
       bram.io.portA.en.assignDontCare()
       bram.io.portA.we.assignDontCare()
@@ -118,8 +130,6 @@ object DualPortRam {
       lutRam.io.portA.din.assignDontCare()
       lutRam.io.portB.addr.assignDontCare()
       lutRam.io.portB.en.assignDontCare()
-      lutRam.io.portB.we.assignDontCare()
-      lutRam.io.portB.din.assignDontCare()
     })
   }
 }

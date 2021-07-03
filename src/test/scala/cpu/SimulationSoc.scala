@@ -1,12 +1,14 @@
 package cpu
 
 import cpu.defs.ConstantVal
+import ip.simUtils.JobCollector
 import spinal.core._
+import spinal.core.sim._
 import spinal.lib._
 import spinal.lib.bus.amba4.axi.Axi4
 
 /** 对 MyCPUTop 的简单封装，使得其适用于仿真 */
-class SimulationSoc extends Component {
+class SimulationSoc extends Component with JobCollector {
   val io = new Bundle {
     val sysClock = in Bool
     val cpuClock = in Bool
@@ -25,4 +27,7 @@ class SimulationSoc extends Component {
   cpu.io.aresetn := io.reset
   cpu.io.axi >> io.axi
   io.debugInterface := cpu.io.debug
+
+  cpu.io.aclk.pull().simPublic()
+  cpu.io.aresetn.pull().simPublic()
 }

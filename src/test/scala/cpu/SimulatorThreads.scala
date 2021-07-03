@@ -9,11 +9,10 @@ import java.io.{BufferedWriter, File, FileWriter}
 object TerminatorThread {
   import Simulator._
   def apply(finalPc: Long): Thread = { context =>
-    // 等待 CPU 开始运行
-    context.sysClockDomain.waitSampling()
+    context.sysClockDomain.waitSamplingWhere(
+      context.soc.io.debugInterface.wb.pc.toLong == finalPc
+    )
 
-    // 等待写回 PC 到达给定地址
-    waitUntil(context.soc.io.debugInterface.wb.pc.toLong == finalPc)
     simSuccess()
   }
 }

@@ -71,6 +71,7 @@ case class CrossBarIP(m: Int, n: Int) extends BlackBox {
         val lock = out Bits (n bits)
         val cache = out Bits (4 * n bits)
         val prot = out Bits (3 * n bits)
+        val region = out Bits (4 * n bits)
         val qos = out Bits (4 * n bits)
         val valid = out Bits (n bits)
         val ready = in Bits (n bits)
@@ -97,6 +98,7 @@ case class CrossBarIP(m: Int, n: Int) extends BlackBox {
         val lock = out Bits (n bits)
         val cache = out Bits (4 * n bits)
         val prot = out Bits (3 * n bits)
+        val region = out Bits(4 * n bits)
         val qos = out Bits (4 * n bits)
         val valid = out Bits (n bits)
         val ready = in Bits (n bits)
@@ -123,6 +125,10 @@ case class CrossBarIP(m: Int, n: Int) extends BlackBox {
     })
   })
 
+  if (simUtils.isInSim) {
+    addRTLPath("./rtl/axi_crossbar_3x1_sim_netlist.v"
+    )
+  }
 }
 
 object CrossBarIP {

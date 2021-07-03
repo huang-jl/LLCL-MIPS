@@ -10,7 +10,7 @@ import spinal.lib._
 import spinal.lib.fsm._
 import spinal.lib.bus.amba4.axi.{Axi4, Axi4Config}
 
-import ip.{SinglePortBRam, SinglePortLUTRam}
+import ip.SinglePortLUTRam
 
 class CPUDCacheInterface extends Bundle with IMasterSlave {
   val read: Bool = Bool
@@ -105,10 +105,10 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
      * Cache地址和使能
      */
     for (i <- 0 until config.wayNum) {
-      cacheRam.tags(i).io.addr := inputAddr.index
-      cacheRam.datas(i).io.addr := inputAddr.index
-      cacheRam.tags(i).io.en := True
-      cacheRam.datas(i).io.en := True
+      cacheRam.tags(i).io.port.addr := inputAddr.index
+      cacheRam.datas(i).io.port.addr := inputAddr.index
+      cacheRam.tags(i).io.port.en := True
+      cacheRam.datas(i).io.port.en := True
     }
     /*
      * Cache读端口
@@ -116,8 +116,8 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     val rdata = Vec(Block(config.blockSize), config.wayNum)
     val rmeta = Vec(DMeta(config.tagWidth), config.wayNum)
     for (i <- 0 until config.wayNum) {
-      rdata(i).assignFromBits(cacheRam.datas(i).io.dout)
-      rmeta(i).assignFromBits(cacheRam.tags(i).io.dout)
+      rdata(i).assignFromBits(cacheRam.datas(i).io.port.dout)
+      rmeta(i).assignFromBits(cacheRam.tags(i).io.port.dout)
     }
     /*
      * Cache写端口
@@ -126,10 +126,10 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     val writeData = Bits(config.bitSize bits) //要写入cache的Block
     //TODO 加入invalidate功能后需要修改valid的逻辑
     for (i <- 0 until config.wayNum) {
-      cacheRam.tags(i).io.we := tagWE(i)
-      cacheRam.datas(i).io.we := dataWE(i)
-      cacheRam.tags(i).io.din := writeMeta.asBits
-      cacheRam.datas(i).io.din := writeData.asBits
+      cacheRam.tags(i).io.port.we := tagWE(i)
+      cacheRam.datas(i).io.port.we := dataWE(i)
+      cacheRam.tags(i).io.port.din := writeMeta.asBits
+      cacheRam.datas(i).io.port.din := writeData.asBits
     }
 
     val hitPerWay: Bits = Bits(config.wayNum bits) //cache每一路是否命中

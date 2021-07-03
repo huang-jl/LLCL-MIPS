@@ -7,16 +7,16 @@ module single_port_ram #
     parameter WRITE_MODE = "write_first"
 )
 (
-    input wire                      clk,
-    input wire                      rst,
-    input wire                      en,    //ram enable
-    input wire                      we,    //write enable
-    input wire [$clog2(DEPTH) -1:0] addr,
-    input wire [DATA_WIDTH - 1:0]    din,    //write data
-    input wire [DATA_WIDTH - 1:0]    dout
+    input wire                      clk /* verilator public */,
+    input wire                      rst /* verilator public */,
+    input wire                      en /* verilator public */,    //ram enable
+    input wire                      we /* verilator public */,    //write enable
+    input wire [$clog2(DEPTH) -1:0] addr /* verilator public */,
+    input wire [DATA_WIDTH - 1:0]    din /* verilator public */,    //write data
+    input wire [DATA_WIDTH - 1:0]    dout /* verilator public */
 );
 
-
+`ifndef VERILATOR
    // xpm_memory_spram: Single Port RAM
    // Xilinx Parameterized Macro, version 2019.2
 
@@ -62,5 +62,6 @@ module single_port_ram #
    );
 
    // End of xpm_memory_spram_inst instantiation
+`endif
     
 endmodule

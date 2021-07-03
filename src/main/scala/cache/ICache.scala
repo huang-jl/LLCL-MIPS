@@ -1,7 +1,7 @@
 package cache
 
 import cpu.defs.ConstantVal
-import ip.{DualPortBram, DualPortLutram, BRamIPConfig}
+import ip.{DualPortBRam, DualPortLutRam, BRamIPConfig}
 import lib.Updating
 import spinal.core._
 import spinal.lib._
@@ -62,9 +62,9 @@ class ICache(config: CacheRamConfig) extends Component {
   val cacheRam = new Area {
     val ramIPConfig = BRamIPConfig(Block.getBitWidth(config.blockSize))
     val depth: Int = 4 * 1024 * 8 / Block.getBitWidth(config.blockSize)
-    val tags = Array.fill(config.wayNum)(new DualPortLutram(
+    val tags = Array.fill(config.wayNum)(new DualPortLutRam(
       Meta.getBitWidth(config.tagWidth), depth * Meta.getBitWidth(config.tagWidth)))
-    val datas = Array.fill(config.wayNum)(new DualPortBram(ramIPConfig))
+    val datas = Array.fill(config.wayNum)(new DualPortBRam(ramIPConfig))
   }
 
   val LRU = new Area {

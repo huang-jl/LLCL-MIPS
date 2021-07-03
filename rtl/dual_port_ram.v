@@ -8,19 +8,21 @@ module dual_port_bram #
     parameter WRITE_MODE_B = "no_change"
 )
 (
-   input wire                      clk,
-   input wire                      rst,
-   input wire                      ena,    //ram enable
-   input wire                      enb,    //ram enable
-   input wire                      wea,    //write enable
-   input wire                      web,    //write enable
-   input wire [$clog2(DEPTH) -1:0] addra,
-   input wire [$clog2(DEPTH) -1:0] addrb,
-   input wire [DATA_WIDTH - 1:0]    dina,    //write data
-   input wire [DATA_WIDTH - 1:0]    dinb,    //write data
-   input wire [DATA_WIDTH - 1:0]    douta,
-   input wire [DATA_WIDTH - 1:0]    doutb
+   input wire                      clk /* verilator public */,
+   input wire                      rst /* verilator public */,
+   input wire                      ena /* verilator public */,    //ram enable
+   input wire                      enb /* verilator public */,    //ram enable
+   input wire                      wea /* verilator public */,    //write enable
+   input wire                      web /* verilator public */,    //write enable
+   input wire [$clog2(DEPTH) -1:0] addra /* verilator public */,
+   input wire [$clog2(DEPTH) -1:0] addrb /* verilator public */,
+   input wire [DATA_WIDTH - 1:0]    dina /* verilator public */,    //write data
+   input wire [DATA_WIDTH - 1:0]    dinb /* verilator public */,    //write data
+   input wire [DATA_WIDTH - 1:0]    douta /* verilator public */,
+   input wire [DATA_WIDTH - 1:0]    doutb /* verilator public */
 );
+
+`ifndef VERILATOR
    // xpm_memory_tdpram: True Dual Port RAM
    // Xilinx Parameterized Macro, version 2019.2
 
@@ -138,6 +140,7 @@ module dual_port_bram #
    );
 
    // End of xpm_memory_tdpram_inst instantiation
+`endif
 
 endmodule
 
@@ -150,18 +153,19 @@ module dual_port_lutram #
     parameter LATENCY = 0      //default latency is 1 cycle
 )
 (
-   input wire                      clk,
-   input wire                      rst,
-   input wire                      ena,    //ram enable
-   input wire                      enb,    //ram enable
-   input wire                      wea,    //write enable
-   input wire [$clog2(DEPTH) -1:0] addra,
-   input wire [$clog2(DEPTH) -1:0] addrb,
-   input wire [DATA_WIDTH - 1:0]    dina,    //write data
-   input wire [DATA_WIDTH - 1:0]    douta,
-   input wire [DATA_WIDTH - 1:0]    doutb
+   input wire                      clk /* verilator public */,
+   input wire                      rst /* verilator public */,
+   input wire                      ena /* verilator public */,    //ram enable
+   input wire                      enb /* verilator public */,    //ram enable
+   input wire                      wea /* verilator public */,    //write enable
+   input wire [$clog2(DEPTH) -1:0] addra /* verilator public */,
+   input wire [$clog2(DEPTH) -1:0] addrb /* verilator public */,
+   input wire [DATA_WIDTH - 1:0]    dina /* verilator public */,    //write data
+   input wire [DATA_WIDTH - 1:0]    douta /* verilator public */,
+   input wire [DATA_WIDTH - 1:0]    doutb /* verilator public */
 );
 
+`ifndef VERILATOR
    // xpm_memory_dpdistram: Dual Port Distributed RAM
    // Xilinx Parameterized Macro, version 2019.2
 
@@ -223,5 +227,6 @@ module dual_port_lutram #
    );
 
    // End of xpm_memory_dpdistram_inst instantiation
+`endif
 
 endmodule
