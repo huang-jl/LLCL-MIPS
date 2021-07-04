@@ -7,23 +7,75 @@ import spinal.core.sim._
 import spinal.lib._
 import spinal.lib.bus.amba4.axi._
 import spinal.lib.bus.amba4.axi.sim._
+import util.binary._
 
+import scala.collection.immutable.NumericRange
 import scala.collection.mutable
 import scala.util.Random
 
-case class AxiJob(
-    address: Long,
-    burstLength: Int,
-    id: Int
-)
+trait MappedIODevice {
+  def read(addr: Long, length: Int): Array[Byte]
+  def write(addr: Long, data: Array[Byte]): Unit
+}
 
 case class AxiMemorySim(axi: Axi4, clockDomain: ClockDomain, config: AxiMemorySimConfig) {
-  val memory         = SparseMemory()
-  val pending_reads  = new mutable.Queue[AxiJob]
-  val pending_writes = new mutable.Queue[AxiJob]
+  val memory        = SparseMemory()
+  val pendingReads  = new mutable.Queue[(AxiJob, MappedIODevice)]
+  val pendingWrites = new mutable.Queue[(AxiJob, MappedIODevice)]
+
+  private val mappedIODevices = mutable.ArrayBuffer[(NumericRange[Long], MappedIODevice)]()
+
+  /** Reading and writing to memory, as a pseudo-device. */
+  private val memoryDevice = new MappedIODevice {
+    override def read(addr: Long, length: Int) = {
+      memory.readArray(addr, length)
+    }
+
+    override def write(addr: Long, data: Array[Byte]): Unit = {
+      memory.writeArray(addr, data)
+    }
+  }
 
   /** Bus word width in bytes */
   val busWordWidth = axi.config.dataWidth / 8
+
+  case class AxiJob(
+      address: Long,
+      burstLength: Int,
+      size: Int,
+      id: Int
+  ) {
+    def numberBytes    = 1 << size
+    def alignedAddress = address / numberBytes * numberBytes
+
+    def beat(i: Int) = AxiBeat(
+      startAddr = (alignedAddress + i * numberBytes) max address,
+      endAddr = alignedAddress + (i + 1) * numberBytes
+    )
+
+    /** Not inclusive */
+    def endAddress = alignedAddress + (burstLength + 1) * size
+
+    def addrRange = address until endAddress
+  }
+
+  /** endAddr not included */
+  case class AxiBeat(startAddr: Long, endAddr: Long) {
+    def length = (endAddr - startAddr).toInt
+    def bytesRange =
+      (startAddr % busWordWidth).toInt until ((endAddr - 1) % busWordWidth + 1).toInt
+  }
+
+  def addMappedIO(addrRange: NumericRange[Long], device: MappedIODevice) = {
+    assert(
+      assertion = mappedIODevices.forall { case (range, _) =>
+        range.max < addrRange.min || addrRange.max < range.min
+      },
+      message = "Mapped IO range intersects"
+    )
+
+    mappedIODevices += ((addrRange, device))
+  }
 
   def start(): Unit = {
     fork {
@@ -43,6 +95,17 @@ case class AxiMemorySim(axi: Axi4, clockDomain: ClockDomain, config: AxiMemorySi
     }
   }
 
+  private def findIODevice(job: AxiJob): Option[MappedIODevice] = {
+    for ((range, device) <- mappedIODevices) {
+      if ((range contains job.address) && (range contains job.endAddress)) {
+        return Some(device)
+      } else if ((job.addrRange contains range.min) || (job.addrRange contains range.max)) {
+        return None
+      }
+    }
+    return Some(memoryDevice)
+  }
+
   def handleAr(ar: Stream[Axi4Ar]): Unit = {
     println("Handling AXI4 Master read cmds...")
 
@@ -53,19 +116,31 @@ case class AxiMemorySim(axi: Axi4, clockDomain: ClockDomain, config: AxiMemorySi
       clockDomain.waitSamplingWhere(ar.valid.toBoolean)
       ar.ready #= false
 
-      assert(
-        assertion = (ar.payload.len.toBigInt + (ar.payload.addr.toBigInt & 4095)) <= 4095,
-        message = s"Read request crossing 4k boundary (addr=${ar.payload.addr.toBigInt
-          .toString(16)}, len=${ar.payload.len.toLong.toHexString}"
+      val job = AxiJob(
+        address = ar.payload.addr.toLong,
+        burstLength = ar.payload.len.toInt,
+        size = if (axi.config.useSize) ar.payload.size.toInt else log2Up(busWordWidth),
+        id = if (axi.config.useId) ar.payload.id.toInt else 0
       )
 
-      val id = if (ar.config.useId) ar.payload.id.toInt else 0
-      pending_reads += AxiJob(ar.payload.addr.toLong, ar.payload.len.toInt, id)
+      assert(
+        assertion = ((job.burstLength << job.size) + (job.alignedAddress & 4095)) <= 4095,
+        message =
+          f"Read request crossing 4k boundary (addr=${job.address}%x, len=${job.burstLength}%x, size=${job.size})"
+      )
+
+      val device = findIODevice(job).getOrElse {
+        simFailure(
+          f"Read request cross different devices (addr=${job.address}%x, len=${job.burstLength}%x, size=${job.size})"
+        )
+      }
+
+      pendingReads += ((job, device))
 
       //println("AXI4 read cmd: addr=0x" + ar.payload.addr.toLong.toHexString + " count=" + (ar.payload.len.toBigInt+1))
 
-      if (pending_reads.length >= config.maxOutstandingReads)
-        clockDomain.waitSamplingWhere(pending_reads.length < config.maxOutstandingReads)
+      if (pendingReads.length >= config.maxOutstandingReads)
+        clockDomain.waitSamplingWhere(pendingReads.length < config.maxOutstandingReads)
     }
   }
 
@@ -82,12 +157,12 @@ case class AxiMemorySim(axi: Axi4, clockDomain: ClockDomain, config: AxiMemorySi
 
       // todo: implement read issuing delay
 
-      if (pending_reads.nonEmpty) {
-        var job = pending_reads.front
+      if (pendingReads.nonEmpty) {
+        val (job, device) = pendingReads.front
 
         r.valid #= true
-        if (r.config.useId) r.id #= job.id
-        if (r.config.useResp) r.resp #= 0 // OKAY
+        if (axi.config.useId) r.id #= job.id
+        if (axi.config.useResp) r.resp #= 0 // OKAY
 
         var i = 0
         while (i <= job.burstLength) {
@@ -98,7 +173,21 @@ case class AxiMemorySim(axi: Axi4, clockDomain: ClockDomain, config: AxiMemorySi
           } else {
             if (i == job.burstLength)
               r.payload.last #= true
-            r.payload.data #= memory.readBigInt(job.address + i * busWordWidth, busWordWidth)
+
+            val beat = job.beat(i)
+
+            val readData = device.read(beat.startAddr, beat.length)
+
+            // Pad random bytes around readData
+            val validRange = beat.bytesRange
+            val padded     = Array.fill(busWordWidth)(0.toByte)
+            random.nextBytes(padded)
+            for (i <- validRange) {
+              padded(i) = readData(i - validRange.min)
+            }
+
+            r.payload.data #= padded
+
             clockDomain.waitSamplingWhere(r.ready.toBoolean)
             i = i + 1
           }
@@ -107,7 +196,7 @@ case class AxiMemorySim(axi: Axi4, clockDomain: ClockDomain, config: AxiMemorySi
         r.valid #= false
         r.payload.last #= false
 
-        pending_reads.dequeue()
+        pendingReads.dequeue()
 
         //println("AXI4 read rsp: addr=0x" + job.address.toLong.toHexString + " count=" + (job.burstLength+1))
       }
@@ -124,19 +213,31 @@ case class AxiMemorySim(axi: Axi4, clockDomain: ClockDomain, config: AxiMemorySi
       clockDomain.waitSamplingWhere(aw.valid.toBoolean)
       aw.ready #= false
 
-      assert(
-        assertion = (aw.payload.len.toBigInt + (aw.payload.addr.toBigInt & 4095)) <= 4095,
-        message = s"Write request crossing 4k boundary (addr=${aw.payload.addr.toBigInt
-          .toString(16)}, len=${aw.payload.len.toLong.toHexString}"
+      val job = AxiJob(
+        address = aw.payload.addr.toLong,
+        burstLength = aw.payload.len.toInt,
+        size = if (axi.config.useSize) aw.payload.size.toInt else log2Up(busWordWidth),
+        id = if (axi.config.useId) aw.payload.id.toInt else 0
       )
 
-      val id = if (aw.config.useId) aw.payload.id.toInt else 0
-      pending_writes += AxiJob(aw.payload.addr.toLong, aw.payload.len.toInt, id)
+      assert(
+        assertion = ((job.burstLength << job.size) + (job.alignedAddress & 4095)) <= 4095,
+        message =
+          f"Write request crossing 4k boundary (addr=${job.address}%x, len=${job.burstLength}%x, size=${job.size})"
+      )
+
+      val device = findIODevice(job).getOrElse {
+        simFailure(
+          f"Write request cross different devices (addr=${job.address}%x, len=${job.burstLength}%x, size=${job.size})"
+        )
+      }
+
+      pendingWrites += ((job, device))
 
       //println("AXI4 write cmd: addr=0x" + aw.payload.addr.toLong.toHexString + " count=" + (aw.payload.len.toBigInt+1))
 
-      if (pending_writes.length >= config.maxOutstandingWrites)
-        clockDomain.waitSamplingWhere(pending_writes.length < config.maxOutstandingWrites)
+      if (pendingWrites.length >= config.maxOutstandingWrites)
+        clockDomain.waitSamplingWhere(pendingWrites.length < config.maxOutstandingWrites)
     }
   }
 
@@ -149,15 +250,22 @@ case class AxiMemorySim(axi: Axi4, clockDomain: ClockDomain, config: AxiMemorySi
     while (true) {
       clockDomain.waitSampling(10)
 
-      if (pending_writes.nonEmpty) {
-        var job   = pending_writes.front
-        var count = job.burstLength
+      if (pendingWrites.nonEmpty) {
+        val (job, device) = pendingWrites.front
 
         w.ready #= true
 
         for (i <- 0 to job.burstLength) {
           clockDomain.waitSamplingWhere(w.valid.toBoolean)
-          memory.writeBigInt(job.address + i * busWordWidth, w.payload.data.toBigInt, busWordWidth)
+
+          val beat = job.beat(i)
+
+          /** Data written contains invalid bytes around valid ones */
+          val padded     = w.payload.data.toBigInt.toBinary(busWordWidth)
+          val validRange = beat.bytesRange
+          val writtenData = padded.slice(validRange.min, validRange.max + 1)
+
+          device.write(beat.startAddr, writtenData)
         }
 
         w.ready #= false
@@ -165,12 +273,12 @@ case class AxiMemorySim(axi: Axi4, clockDomain: ClockDomain, config: AxiMemorySi
         clockDomain.waitSampling(config.writeResponseDelay)
 
         b.valid #= true
-        if (b.config.useResp) b.resp #= 0 // OKAY
-        if (b.config.useId) b.id #= job.id
+        if (axi.config.useResp) b.resp #= 0 // OKAY
+        if (axi.config.useId) b.id #= job.id
         clockDomain.waitSamplingWhere(b.ready.toBoolean)
         b.valid #= false
 
-        pending_writes.dequeue()
+        pendingWrites.dequeue()
 
         //println("AXI4 write: addr=0x" + job.address.toLong.toHexString + " count=" + (job.burstLength+1))
       }

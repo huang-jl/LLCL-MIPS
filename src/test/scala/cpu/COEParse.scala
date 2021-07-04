@@ -1,11 +1,12 @@
 package cpu
 
 import util.Using
+import util.binary._
 
 import java.io.File
-import scala.io.Source
-import scala.util.{Success, Try}
 import scala.collection.mutable
+import scala.io.Source
+import scala.util.Try
 
 object COEParse {
   val radixRegex  = raw"memory_initialization_radix = ([1-9][0-9]*);?".r
@@ -30,12 +31,12 @@ object COEParse {
 
       val widthInBytes = 4
 
+      var x = 0
       for (line <- lines if line.trim.nonEmpty) {
         val numeral = if (line.last == ',') line.init else line
 
-        val bytes  = BigInt(numeral, radix = radix).toByteArray
-        val filledToWidth = Array.fill[Byte](widthInBytes - bytes.length)(0) ++ bytes
-        for (byte <- filledToWidth.reverseIterator.take(widthInBytes)) {
+        x += 1
+        for (byte <- BigInt(numeral, radix = radix).toBinary(widthInBytes)) {
           buffer += byte
         }
       }
