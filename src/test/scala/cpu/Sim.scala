@@ -104,6 +104,8 @@ object Sim {
       )
     ).addThread(PCBroadcastThread(10000))
 
+    simulator.addThread(confreg.funcTestThread)
+
     for (finalPc <- config.finalPc) {
       simulator.addThread(TerminatorThread(finalPc))
     }

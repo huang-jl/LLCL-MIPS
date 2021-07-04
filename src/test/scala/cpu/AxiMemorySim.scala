@@ -18,6 +18,67 @@ trait MappedIODevice {
   def write(addr: Long, data: Array[Byte]): Unit
 }
 
+trait PerByte {
+  this: MappedIODevice =>
+
+  def readByte(addr: Long): Byte
+  def writeByte(addr: Long, data: Byte): Unit
+
+  override def read(addr: Long, length: Int) =
+    ((addr until (addr + length)) map readByte).toArray
+
+  override def write(addr: Long, data: Array[Byte]) =
+    data.zipWithIndex foreach { case (b, i) => writeByte(addr + i, b) }
+}
+
+trait PerWord {
+  this: MappedIODevice =>
+
+  // addr will be aligned by 4
+  def readWord(addr: Long): Int
+  def writeWord(addr: Long, data: Int): Unit
+
+  override def read(addr: Long, length: Int) = {
+    val startPaddingLength = (addr % 4).toInt
+    val endPaddingLength   = 3 - ((addr + length + 3) % 4).toInt
+
+    if (startPaddingLength != 0 || endPaddingLength != 0)
+      println("Unaligned read to PerWord MappedIODevice")
+
+    val start = addr - startPaddingLength
+    val end   = addr + length + endPaddingLength
+
+    val words = (start until end by 4) map readWord
+    val bytes = for (w <- words; i <- 0 until 4) yield (w >> (i * 8)).toByte
+    bytes.drop(startPaddingLength).take(length).toArray
+  }
+
+  override def write(addr: Long, data: Array[Byte]) = {
+    val length             = data.length
+    val startPaddingLength = (addr % 4).toInt
+    val endPaddingLength   = 3 - ((addr + length + 3) % 4).toInt
+
+    val bytes = if (startPaddingLength != 0 || endPaddingLength != 0) {
+      println("Unaligned read to PerWord MappedIODevice")
+
+      val startPadding = Array.fill(startPaddingLength)(0.toByte)
+      Random.nextBytes(startPadding)
+      val endPadding = Array.fill(endPaddingLength)(0.toByte)
+      Random.nextBytes(endPadding)
+
+      startPadding ++ data ++ endPadding
+    } else {
+      data
+    }
+    assert(bytes.length % 4 == 0)
+
+    val start = addr - startPaddingLength
+    for (i <- data.indices by 4) {
+      writeWord(start + i, (0 until 4) map { j => bytes(i + j).toInt << (j * 8) } reduce { _ | _ })
+    }
+  }
+}
+
 case class AxiMemorySim(axi: Axi4, clockDomain: ClockDomain, config: AxiMemorySimConfig) {
   val memory        = SparseMemory()
   val pendingReads  = new mutable.Queue[(AxiJob, MappedIODevice)]
@@ -261,8 +322,8 @@ case class AxiMemorySim(axi: Axi4, clockDomain: ClockDomain, config: AxiMemorySi
           val beat = job.beat(i)
 
           /** Data written contains invalid bytes around valid ones */
-          val padded     = w.payload.data.toBigInt.toBinary(busWordWidth)
-          val validRange = beat.bytesRange
+          val padded      = w.payload.data.toBigInt.toBinary(busWordWidth)
+          val validRange  = beat.bytesRange
           val writtenData = padded.slice(validRange.min, validRange.max + 1)
 
           device.write(beat.startAddr, writtenData)

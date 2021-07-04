@@ -2,7 +2,7 @@ package cpu
 
 import spinal.core._
 import spinal.core.sim._
-import spinal.lib.bus.amba4.axi.sim.{AxiMemorySimConfig, SparseMemory}
+import spinal.lib.bus.amba4.axi.sim.{AxiMemorySimConfig}
 import util.VivadoConf
 
 import scala.collection.mutable
@@ -21,11 +21,13 @@ object Simulator {
   )
 
   case class Context(
-      soc: SimulationSoc,
-      mem: SparseMemory,
-      sysClockDomain: ClockDomain,
-      cpuClockDomain: ClockDomain
-  )
+                      soc: SimulationSoc,
+                      memorySim: AxiMemorySim,
+                      sysClockDomain: ClockDomain,
+                      cpuClockDomain: ClockDomain
+  ) {
+    def mem = memorySim.memory
+  }
 
   type Thread = Context => Unit
 }
@@ -83,7 +85,7 @@ case class Simulator(config: Simulator.Config) {
 
     val threadInput = Context(
       soc = soc,
-      mem = memorySim.memory,
+      memorySim = memorySim,
       sysClockDomain = sysClockDomain,
       cpuClockDomain = cpuClockDomain
     )

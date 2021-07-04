@@ -1,52 +1,45 @@
 package cpu
 
-import _root_.cpu.defs.ConstantVal
-import spinal.core._
-import spinal.lib._
-import spinal.lib.bus.amba4.axi.Axi4
+import spinal.lib.{cpu => _}
 
-class ConfReg(simulation: Boolean) extends BlackBox {
-  setDefinitionName("confreg")
+package object confreg {
+  import Simulator._
 
-  val io = new Bundle {
-    val aclk      = in Bool
-    val timer_clk = in Bool
-    val aresetn   = in Bool
+  object FuncTestConfReg {
+    val SwitchAddr           = 0xf020
+    val SwitchInterleaveAddr = 0xf02c
+  }
 
-    val axi = slave(Axi4(ConstantVal.AXI_BUS_CONFIG)).setName("")
-    val wid = in Bits (4 bits)
+  case class FuncTestConfReg() extends MappedIODevice with PerWord {
+    import FuncTestConfReg._
 
-    //    val ram_random_mask = out Bits(4 bits)
+    val switch = Array.fill(8)(true)
 
-    val led     = out Bits (15 bits)
-    val led_rg0 = out Bits (2 bits)
-    val led_rg1 = out Bits (2 bits)
-    val num_csn = out Bits (8 bits)
-    val num_a_g = out Bits (7 bits)
-    val switch  = in Bits (8 bits)
-    val btn = new Bundle {
-      val key_col = out UInt (4 bits)
-      val key_row = in UInt (4 bits)
-      val step    = in Bits (2 bits)
+    override def readWord(addr: Long) = {
+      (addr & 0xffff) match {
+        case SwitchAddr =>
+          switch.zipWithIndex
+            .map { case (s, i) => if (s) 1 << i else 0 }
+            .reduce(_ | _)
+        case SwitchInterleaveAddr =>
+          switch.zipWithIndex
+            .map { case (s, i) => if (s) 1 << (i * 2 + 1) else 0 }
+            .reduce(_ | _)
+        case _ => 0xcececece
+      }
+    }
+
+    override def writeWord(addr: Long, data: Int) = {
+      (addr & 0xffff) match {
+        case _ =>
+      }
     }
   }
 
-  noIoPrefix()
-  addPrePopTask { () =>
-    for (bt <- io.axi.flatten) {
-      bt.setName(
-        bt.getName()
-          .replace("payload", "")
-          .replace("_", "")
-      )
-    }
+  def funcTestThread: Thread = { context =>
+    context.memorySim.addMappedIO(
+      0x1faf0000L to 0x1fafffffL,
+      FuncTestConfReg()
+    )
   }
-
-  mapCurrentClockDomain(
-    clock = io.aclk,
-    reset = io.aresetn,
-    resetActiveLevel = LOW
-  )
-
-  addRTLPath("official/soc_axi_func/rtl/CONFREG/confreg.v")
 }
