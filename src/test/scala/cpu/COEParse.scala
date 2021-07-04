@@ -28,9 +28,14 @@ object COEParse {
           throw new Exception(s"Invalid format")
       }
 
+      val widthInBytes = 4
+
       for (line <- lines if line.trim.nonEmpty) {
         val numeral = if (line.last == ',') line.init else line
-        for (byte <- BigInt(numeral, radix = radix).toByteArray.reverseIterator) {
+
+        val bytes  = BigInt(numeral, radix = radix).toByteArray
+        val filledToWidth = Array.fill[Byte](widthInBytes - bytes.length)(0) ++ bytes
+        for (byte <- filledToWidth.reverseIterator.take(widthInBytes)) {
           buffer += byte
         }
       }

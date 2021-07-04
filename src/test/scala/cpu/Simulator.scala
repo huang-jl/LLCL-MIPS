@@ -2,7 +2,7 @@ package cpu
 
 import spinal.core._
 import spinal.core.sim._
-import spinal.lib.bus.amba4.axi.sim.{AxiMemorySim, AxiMemorySimConfig, SparseMemory}
+import spinal.lib.bus.amba4.axi.sim.{AxiMemorySimConfig, SparseMemory}
 import util.VivadoConf
 
 import scala.collection.mutable
