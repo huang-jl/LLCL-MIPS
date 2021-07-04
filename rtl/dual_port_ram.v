@@ -18,8 +18,8 @@ module dual_port_bram #
    input wire [$clog2(DEPTH) -1:0] addrb /* verilator public */,
    input wire [DATA_WIDTH - 1:0]    dina /* verilator public */,    //write data
    input wire [DATA_WIDTH - 1:0]    dinb /* verilator public */,    //write data
-   input wire [DATA_WIDTH - 1:0]    douta /* verilator public */,
-   input wire [DATA_WIDTH - 1:0]    doutb /* verilator public */
+   output wire [DATA_WIDTH - 1:0]    douta /* verilator public */,
+   output wire [DATA_WIDTH - 1:0]    doutb /* verilator public */
 );
 
 `ifndef VERILATOR
@@ -150,7 +150,7 @@ module dual_port_lutram #
 (
     parameter DATA_WIDTH = 32,  //default data width of xpm ram(bits)
     parameter DEPTH = 128,   //default depth of memory
-    parameter LATENCY = 0      //default latency is 1 cycle
+    parameter LATENCY = 1      //default latency is 1 cycle
 )
 (
    input wire                      clk /* verilator public */,
@@ -161,8 +161,8 @@ module dual_port_lutram #
    input wire [$clog2(DEPTH) -1:0] addra /* verilator public */,
    input wire [$clog2(DEPTH) -1:0] addrb /* verilator public */,
    input wire [DATA_WIDTH - 1:0]    dina /* verilator public */,    //write data
-   input wire [DATA_WIDTH - 1:0]    douta /* verilator public */,
-   input wire [DATA_WIDTH - 1:0]    doutb /* verilator public */
+   output wire [DATA_WIDTH - 1:0]    douta /* verilator public */,
+   output wire [DATA_WIDTH - 1:0]    doutb /* verilator public */
 );
 
 `ifndef VERILATOR

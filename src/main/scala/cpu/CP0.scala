@@ -383,7 +383,6 @@ class CP0 extends Component {
     val exceptionInput    = in(ExceptionInput())
     val jumpPc            = out(Optional(UInt(32 bits)))
 
-    val instStarting        = in Bool
     val interruptOnNextInst = out Bool
 
     val instOnInt = new Bundle {

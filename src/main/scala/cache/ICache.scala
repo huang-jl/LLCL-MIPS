@@ -10,16 +10,16 @@ import spinal.lib.bus.amba4.axi._
 
 class CPUICacheInterface(config: CacheRamConfig) extends Bundle with IMasterSlave {
   val stage1 = new Bundle {
-    val read = Bool //是否读
-    val index = UInt(config.indexWidth bits) //从地址中截取出虚索引
-    val keepRData = Bool //当前周期拉高这个信号，那么后面会保持**当前输入**index所读出的值
+    val read      = Bool                         //是否读
+    val index     = UInt(config.indexWidth bits) //从地址中截取出虚索引
+    val keepRData = Bool                         //当前周期拉高这个信号，那么后面会保持**当前输入**index所读出的值
     //    val cacheTags = Vec(Meta(config.tagWidth), config.wayNum) //读出来的各路tag
     //    val cacheDatas = Vec(Block(config.blockSize), config.wayNum)  //读出来的各路数据
     //    val replaceIndex = UInt(log2Up(config.wayNum) bits) //LRU读出来要替换的路编号
   }
 
   val stage2 = new Bundle {
-    val en = Bool //如果stage1检测到异常，那么拉低该信号就不会再进行访存
+    val en    = Bool          //如果stage1检测到异常，那么拉低该信号就不会再进行访存
     val paddr = UInt(32 bits) //用来进行tag比较
     val rdata = Bits(32 bits) //返回读出来的数据
     val stall = Bool
@@ -45,40 +45,47 @@ class CPUICacheInterface(config: CacheRamConfig) extends Bundle with IMasterSlav
   }
 }
 
-/**
- * @note ICache采用两级流水：
- *       第一级读Ram（包括data和tag等信息）
- *       第二级若命中则更新cache并且返回数据；否则暂停流水线进行访存
- * */
+/** @note ICache采用两级流水：
+  *       第一级读Ram（包括data和tag等信息）
+  *       第二级若命中则更新cache并且返回数据；否则暂停流水线进行访存
+  */
 class ICache(config: CacheRamConfig) extends Component {
   val io = new Bundle {
     val cpu = slave(new CPUICacheInterface(config))
-    val axi = master(new Axi4(Axi4Config(
-      addressWidth = 32, dataWidth = 32, idWidth = 4,
-      useRegion = false, useQos = false
-    )))
+    val axi = master(
+      new Axi4(ConstantVal.AXI_BUS_CONFIG)
+    )
   }
 
   val cacheRam = new Area {
     val ramIPConfig = BRamIPConfig(Block.getBitWidth(config.blockSize))
-    val depth: Int = 4 * 1024 * 8 / Block.getBitWidth(config.blockSize)
-    val tags = Array.fill(config.wayNum)(new DualPortLutRam(
-      Meta.getBitWidth(config.tagWidth), depth * Meta.getBitWidth(config.tagWidth)))
-    val datas = Array.fill(config.wayNum)(new DualPortBRam(ramIPConfig))
+    val depth: Int  = 4 * 1024 * 8 / Block.getBitWidth(config.blockSize)
+    val tags = Array.fill(config.wayNum)(
+      new DualPortLutram(
+        Meta.getBitWidth(config.tagWidth),
+        depth * Meta.getBitWidth(config.tagWidth)
+      )
+    )
+    val datas = Array.fill(config.wayNum)(new DualPortBram(ramIPConfig))
   }
 
+  //读LRU，延迟来源于一个多选一
   val LRU = new Area {
-    val plru = Array.fill(config.setSize)(new LRUManegr(config.wayNum)) //setSize是组的个数，不是“设置大小”的意思
-    val replaceAddr = Vec(Reg(UInt(log2Up(config.wayNum) bits)), config.setSize)
+    val plru       = Array.fill(config.setSize)(new LRUManegr(config.wayNum)) //setSize是组的个数，不是“设置大小”的意思
+    val plruOutput = Vec(UInt(log2Up(config.wayNum) bits), config.setSize)
     for (i <- 0 until config.setSize) {
-      replaceAddr(i) := plru(i).io.next
+      plruOutput(i) := plru(i).io.next
     }
+    val replaceAddr = Reg(UInt(log2Up(config.wayNum) bits)) init (0)
   }
 
   val axiDefault = new Area {
     //  Default value of AXI singal
     io.axi.ar.id := U"4'b0000"
-    io.axi.ar.addr := io.cpu.stage2.paddr(config.offsetWidth until 32) @@ U(0, config.offsetWidth bits)
+    io.axi.ar.addr := io.cpu.stage2.paddr(config.offsetWidth until 32) @@ U(
+      0,
+      config.offsetWidth bits
+    )
     io.axi.ar.lock := 0
     io.axi.ar.cache := 0
     io.axi.ar.prot := 0
@@ -109,21 +116,24 @@ class ICache(config: CacheRamConfig) extends Component {
   }
 
   /** *********************************
-   * ************ STAGE   1 **********
-   * ********************************* */
+    * ************ STAGE   1 **********
+    * *********************************
+    */
   //only drive portB for read
   for (i <- 0 until config.wayNum) {
     cacheRam.tags(i).io.portB.en := True
     //    cacheRam.tags(i).io.portB.we := False
     cacheRam.tags(i).io.portB.addr := io.cpu.stage1.index
+    //    cacheRam.tags(i).io.portB.din.assignDontCare()
 
     cacheRam.datas(i).io.portB.en := True
     cacheRam.datas(i).io.portB.we := False
     cacheRam.datas(i).io.portB.addr := io.cpu.stage1.index
+    cacheRam.datas(i).io.portB.din.assignDontCare()
   }
-  // 读ram
-  val keepRData = RegNext(io.cpu.stage1.keepRData) init (False)
-  val cacheTags = Vec(Updating(Meta(config.tagWidth)), config.wayNum)
+  // 读ram 和 LRU
+  val keepRData  = RegNext(io.cpu.stage1.keepRData) init (False)
+  val cacheTags  = Vec(Updating(Meta(config.tagWidth)), config.wayNum)
   val cacheDatas = Vec(Updating(Block(config.blockSize)), config.wayNum)
   for (i <- 0 until config.wayNum) {
     cacheTags(i).next.assignFromBits(cacheRam.tags(i).io.portB.dout)
@@ -132,44 +142,40 @@ class ICache(config: CacheRamConfig) extends Component {
       cacheTags(i).next := cacheTags(i).prev
       cacheDatas(i).next := cacheDatas(i).prev
     }
-
-    //    cacheRam.tags(i).io.portB.din.assignDontCare()
-    cacheRam.datas(i).io.portB.din.assignDontCare()
+  }
+  //如果需要保持住当前阶段读出的值（比如EX.stall住了），那么直接保持replaceAddr
+  when(!keepRData) {
+    LRU.replaceAddr := LRU.plruOutput(io.cpu.stage1.index) //stage 2 会使用这个值，用来进行替换
   }
 
-  // 读LRU
-  val plruAddr = Reg(UInt(log2Up(config.wayNum) bits)) init (0)
-  plruAddr := LRU.replaceAddr(io.cpu.stage1.index)
-
-
   /** *********************************
-   * ************ STAGE   2 **********
-   * ********************************* */
+    * ************ STAGE   2 **********
+    * *********************************
+    */
 
   //解析Stage 2的物理地址
   val addr = new Area {
     val wordOffset: UInt = io.cpu.stage2.paddr(2, config.wordOffsetWidth bits)
-    val index: UInt = io.cpu.stage2.paddr(config.offsetWidth, config.indexWidth bits)
-    val tag: Bits = io.cpu.stage2.paddr(config.offsetWidth + config.indexWidth, config.tagWidth bits).asBits
+    val index: UInt      = io.cpu.stage2.paddr(config.offsetWidth, config.indexWidth bits)
+    val tag: Bits =
+      io.cpu.stage2.paddr(config.offsetWidth + config.indexWidth, config.tagWidth bits).asBits
   }
 
   //判断是否前传
   //前传发生在：两个阶段索引相同，第二个阶段没有stall，并且在readMem阶段（也就是readMem即将进入stateBoot的时候）
   val forward = Reg(Bool) init (False)
 
-
-  //选出可能替换的那一路的地址
-  //前传时需要使用wayIndex.prev
+  //选出可能替换的那一路的地址，同时保存替换的index，前传需要用到
   val replace = new Area {
     val wayIndex = Updating(UInt(log2Up(config.wayNum) bits)) init (0)
-    wayIndex.next := plruAddr
+    wayIndex.next := LRU.replaceAddr
     for (i <- 0 until config.wayNum) {
       when(!cacheTags(i).next.valid)(wayIndex.next := i) //如果有未使用的cache line，优先替换它
     }
   }
 
   //only drive portA for write
-  val tagWe = B(0, config.wayNum bits)
+  val tagWe  = B(0, config.wayNum bits)
   val dataWe = B(0, config.wayNum bits)
   for (i <- 0 until config.wayNum) {
     cacheRam.tags(i).io.portA.en := True
@@ -189,7 +195,7 @@ class ICache(config: CacheRamConfig) extends Component {
 
   //把命中的数据拿出来并返回
   val hitLine: Block = MuxOH(hitPerWay, for (i <- 0 until config.wayNum) yield cacheDatas(i).next)
-  val hitTag: Meta = MuxOH(hitPerWay, for (i <- 0 until config.wayNum) yield cacheTags(i).next)
+  val hitTag: Meta   = MuxOH(hitPerWay, for (i <- 0 until config.wayNum) yield cacheTags(i).next)
   io.cpu.stage2.rdata := hitLine(addr.wordOffset)
   //更新LRU
   for (i <- 0 until config.setSize) {
@@ -207,12 +213,13 @@ class ICache(config: CacheRamConfig) extends Component {
   }
 
   val counter = Counter(0 until config.wordSize) //从内存读入数据的计数器
-  val recvBlock = Reg(Block(config.blockSize)) init (Block.fromBits(B(0), config.blockSize)) //从内存中读出的一行的寄存器
+  val recvBlock =
+    Reg(Block(config.blockSize)) init (Block.fromBits(B(0), config.blockSize)) //从内存中读出的一行的寄存器
 
   io.cpu.stage2.stall := True
   val icacheFSM = new StateMachine {
     val waitAXIReady = new State
-    val readMem = new State
+    val readMem      = new State
     setEntry(stateBoot)
     disableAutoStart()
 
@@ -249,9 +256,11 @@ class ICache(config: CacheRamConfig) extends Component {
     }
   }
 
-  //前传的时机：需要在写回的时候前传
-  forward := io.cpu.stage1.index === addr.index & !io.cpu.stage2.stall & icacheFSM.isActive(icacheFSM.readMem)
-  //前传
+  //前传的时机：stage2下个上升沿写回的时候前传
+  forward := io.cpu.stage1.index === addr.index & !io.cpu.stage2.stall & icacheFSM.isActive(
+    icacheFSM.readMem
+  )
+  //前传，前传会用到上一阶段替换的index
   when(forward) {
     cacheTags(replace.wayIndex.prev).next := writeMeta.prev
     cacheDatas(replace.wayIndex.prev).next.assignFromBits(writeData.prev.asBits)
@@ -264,7 +273,7 @@ class ICache(config: CacheRamConfig) extends Component {
     writeData.next.banks(config.wordSize - 1) := io.axi.r.data
   }
   //如果没有enable，那么直接返回NOP
-  when(!io.cpu.stage2.en) (io.cpu.stage2.rdata := ConstantVal.INST_NOP.asBits)
+  when(!io.cpu.stage2.en)(io.cpu.stage2.rdata := ConstantVal.INST_NOP.asBits)
 }
 
 object ICache {

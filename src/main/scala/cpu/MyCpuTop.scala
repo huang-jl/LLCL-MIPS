@@ -1,11 +1,11 @@
 package cpu
 
+import defs.ConstantVal
+import ip.CrossBarIP
+
 import spinal.core._
 import spinal.lib.{cpu => _, _}
 import spinal.lib.bus.amba4.axi._
-
-import defs.ConstantVal
-import ip.CrossBarIP
 
 case class DebugInterface() extends Bundle {
   val wb = new Bundle {
