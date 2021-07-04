@@ -9,6 +9,7 @@ import spinal.core._
 import spinal.lib.{cpu => _, _}
 import spinal.lib.bus.amba4.axi._
 
+//TODO 可以考虑把AGU放到ME1再做一次，这样访存指令可以少暂停一次
 class CPU extends Component {
   val io = new Bundle {
     val externalInterrupt = in Bits (6 bits)
@@ -106,6 +107,7 @@ class CPU extends Component {
     }
 
     input(pc)
+//    input(rfuRdSrc)
   }
 
   val ME2 = new Stage {
@@ -173,6 +175,14 @@ class CPU extends Component {
       cp0.io.externalInterrupt := io.externalInterrupt
     }
 
+    //数据前传：解决先load 后store的数据冲突
+    when(ME2.stored(rfuWe) && ME2.stored(rfuAddr) === input(inst).rs) {
+      produced(rsValue) := ME2.produced(rfuData)
+    }
+    when(ME2.stored(rfuWe) && ME2.stored(rfuAddr) === input(inst).rt) {
+      produced(rtValue) := ME2.produced(rfuData)
+    }
+
     //TLB相关：写MMU和写CP0的逻辑信号
     val cp0TLB = new StageComponent {
       if (ConstantVal.USE_TLB) {
@@ -211,24 +221,6 @@ class CPU extends Component {
   }
 
   val EX = new Stage {
-//    when(
-//      ME.valid && ME.currentInput(rfuWe) &&
-//        ME.currentInput(rfuAddr) === input(inst).rs
-//    ) {
-//      input(rsValue) := ME.currentOutput(rfuData)
-//      when(ME.stalls) {
-//        stalls := True
-//      }
-//    }
-//    when(
-//      ME.valid && ME.currentInput(rfuWe) &&
-//        ME.currentInput(rfuAddr) === input(inst).rt
-//    ) {
-//      input(rtValue) := ME.currentOutput(rfuData)
-//      when(ME.stalls) {
-//        stalls := True
-//      }
-//    }
     val aluC = new StageComponent {
       alu.io.input.op := input(aluOp)
       alu.io.input.a := input(aluASrc).mux(
@@ -264,6 +256,19 @@ class CPU extends Component {
       RFU_RD_SRC.cp0 -> cp0Read.output(rfuData),
       default        -> stored(rfuData)
     )
+
+    //数据前传：解决load + 中间一条无关指令 + store的数据冲突
+    when(ME1.stored(rfuWe) && ME1.stored(rfuAddr) === input(inst).rs) {
+      produced(rsValue) := ME1.produced(rfuData)
+    }.elsewhen(ME2.stored(rfuWe) && ME2.stored(rfuAddr) === input(inst).rs) {
+      produced(rsValue) := ME2.produced(rfuData)
+    }
+
+    when(ME1.stored(rfuWe) && ME1.stored(rfuAddr) === input(inst).rt) {
+      produced(rtValue) := ME1.produced(rfuData)
+    }.elsewhen(ME2.stored(rfuWe) && ME2.stored(rfuAddr) === input(inst).rt) {
+      produced(rtValue) := ME2.produced(rfuData)
+    }
 
     // CP0 harzard : 根据ME1的情况暂停EX阶段
     val cp0_RAW_hazard = new Area {
@@ -391,6 +396,21 @@ class CPU extends Component {
     val wantForwardFromME2 =
       ME2.stored(rfuWe) && (ME2.stored(rfuAddr) === stored(inst).rs && produced(useRs) ||
         ME2.stored(rfuAddr) === stored(inst).rt && produced(useRt))
+//    val wantForwardFromWB =
+//      WB.stored(rfuWe) && (WB.stored(rfuAddr) === stored(inst).rs && produced(useRs) ||
+//        WB.stored(rfuAddr) === stored(inst).rt && produced(useRt))
+
+
+//    is.done := True
+//    when(wantForwardFromEX && (EX.stored(rfuRdSrc) === RFU_RD_SRC.mu | du.io.ju_op =/= JU_OP.f)) {
+//      is.done := False
+//    }.elsewhen(wantForwardFromME1 && ME1.stored(rfuRdSrc) === RFU_RD_SRC.mu) {
+//      is.done := False
+//    }.elsewhen(wantForwardFromME2 && ME2.stored(rfuRdSrc) === RFU_RD_SRC.mu && !ME2.is.done) {
+//      is.done := False
+//    }.elsewhen(wantForwardFromWB && WB.stored(rfuRdSrc) === RFU_RD_SRC.mu) {
+//      is.done := False
+//    }
 
     exceptionToRaise := du.io.exception
   }
@@ -468,6 +488,7 @@ class CPU extends Component {
     !(ID.wantForwardFromEX && EX.stored(rfuRdSrc) === RFU_RD_SRC.mu ||
       ID.wantForwardFromME1 && ME1.stored(rfuRdSrc) === RFU_RD_SRC.mu ||
       ID.wantForwardFromME2 && ME2.stored(rfuRdSrc) === RFU_RD_SRC.mu && !ME2.is.done)
+//      ID.wantForwardFromWB && WB.stored(rfuRdSrc) === RFU_RD_SRC.mu)
 
   EX.is.done := !alu.io.stall
   EX.can.flush := !alu.io.stall
