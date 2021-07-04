@@ -88,7 +88,7 @@ class ALU extends Component {
   val multiply = new Area {
     val stall: Bool    = True
     val multiply: Bool = Utils.equalAny(io.input.op, mult, multu)
-    val temp: UInt     = abs.a * abs.b  //stateBoot中开始计算
+    val temp: UInt     = RegNext(abs.a * abs.b)  //stateBoot中开始计算
     // 如果有符号乘法并且a和b异号，那么得到的结果取相反数。这个过程在working中计算
     val result: UInt   = temp.twoComplement(abs.signed & (a(31) ^ b(31)))(0, 64 bits).asUInt
 

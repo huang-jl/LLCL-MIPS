@@ -32,4 +32,7 @@ object ConstantVal {
 
   /** 时钟中断配置 */
   val TimeInterruptEnable = false
+
+  /** 静态预测配置：是否预测跳转 */
+  val AlwaysBranch = true
 }

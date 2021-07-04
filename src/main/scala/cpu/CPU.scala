@@ -3,7 +3,7 @@ package cpu
 import defs.Mips32InstImplicits._
 import defs.{ConstantVal, Mips32Inst}
 import cache.CacheRamConfig
-import lib.{Key, Optional, Task}
+import lib.{Key, Optional, Task, Updating}
 import tlb.{MMU, TLBEntry, TLBConfig}
 import spinal.core._
 import spinal.lib.{cpu => _, _}
@@ -36,8 +36,9 @@ class CPU extends Component {
   val pc         = Key(UInt(32 bits))
   val bd         = Key(Bool)
   val inst       = Key(Mips32Inst()) setEmptyValue ConstantVal.INST_NOP
-  val exception  = Key(Optional(EXCEPTION()))
+//  val exception  = Key(Optional(EXCEPTION()))
   val eret       = Key(Bool) setEmptyValue False
+  val jumpOp       = Key(JU_OP()) setEmptyValue JU_OP.f
   val aluOp      = Key(ALU_OP()) setEmptyValue ALU_OP.sll()
   val aluASrc    = Key(ALU_A_SRC())
   val aluBSrc    = Key(ALU_B_SRC())
@@ -249,6 +250,14 @@ class CPU extends Component {
       output(rfuData) := cp0.io.read.data
     }
 
+    val juC = new StageComponent {
+      ju.op := input(jumpOp)
+      ju.a := input(rsValue).asSInt
+      ju.b := input(rtValue).asSInt
+    }
+
+    val jumpTaken: Bool = ju.jump
+
     produced(rfuData) := stored(rfuRdSrc).mux(
       RFU_RD_SRC.alu -> produced(aluResultC).asBits,
       RFU_RD_SRC.hi  -> (ME1.stored(hluHiWe) ? ME1.produced(hluHiData) | hlu.hi_v),
@@ -296,6 +305,7 @@ class CPU extends Component {
     val duC = new StageComponent {
       du.io.inst := input(inst)
 
+      output(jumpOp) := du.io.ju_op
       output(aluOp) := du.io.alu_op
       output(aluASrc) := du.io.alu_a_src
       output(aluBSrc) := du.io.alu_b_src
@@ -336,30 +346,60 @@ class CPU extends Component {
 //    output(rfuData) := cp0.io.read.data
     //    }
 
-    val juC = new StageComponent {
-      ju.op := du.io.ju_op
-      ju.a := produced(rsValue).asSInt
-      ju.b := produced(rtValue).asSInt
-      ju.pc_src := du.io.ju_pc_src
-      ju.pc := input(pc) + 4
-      ju.offset := input(inst).offset
-      ju.index := input(inst).index
-
-      when(ju.jump) {
-        output(jumpPc) := ju.jump_pc
-      } otherwise {
+//    val juC = new StageComponent {
+//      ju.op := du.io.ju_op
+//      ju.a := produced(rsValue).asSInt
+//      ju.b := produced(rtValue).asSInt
+//      ju.pc_src := du.io.ju_pc_src
+//      ju.pc := input(pc) + 4
+//      ju.offset := input(inst).offset
+//      ju.index := input(inst).index
+//
+//      when(ju.jump) {
+//        output(jumpPc) := ju.jump_pc
+//      } otherwise {
+//        output(jumpPc) := None
+//      }
+//    }
+    // 静态预测，预测一定发生跳转
+    // 仍然需要等待前传才能得到rsValue，判断预测是否正确在EX阶段
+    val staticBPU = new StageComponent {
+      val nextPc = input(pc) + 4
+      when(du.io.ju_op =/= JU_OP.f) {
+        output(jumpPc) := du.io.ju_pc_src mux (
+          JU_PC_SRC.rs     -> U(produced(rsValue)),
+          JU_PC_SRC.offset -> U(S(nextPc) + S(input(inst).offset ## B"00")),
+          default          -> nextPc(31 downto 28) @@ input(inst).index @@ U"00"
+        )
+      }.otherwise {
         output(jumpPc) := None
       }
     }
 
-    val bdValue = RegInit(False)
+    //一旦一条指令output，那么可以更新prevBranch，表示这条output的指令是否是branch
+    //will.input表明下一周期会有一条新的指令过来，那么delayWillInput表明当前指令是新进来的指令
+    val prevBranch = RegInit(False)
+    val delayWillInput = RegNext(will.input) init(False)
+    val bdValue = Updating(Bool) init(False)
     when(will.output) {
-      bdValue := du.io.ju_op =/= JU_OP.f
+      prevBranch := du.io.ju_op =/= JU_OP.f
+    }
+    when(delayWillInput) {
+      bdValue.next := prevBranch
+    }.otherwise {
+      bdValue.next := bdValue.prev
     }
     when(will.flush) {
-      bdValue := False
+      prevBranch := False
     }
-    output(bd) := bdValue
+//    val bdValue = RegInit(False)
+//    when(will.output) {
+//      bdValue := du.io.ju_op =/= JU_OP.f
+//    }
+//    when(will.flush) {
+//      bdValue := False
+//    }
+    output(bd) := bdValue.next
 
     when(EX.stored(rfuWe) && EX.stored(rfuAddr) === stored(inst).rs) {
       produced(rsValue) := EX.produced(rfuData)
@@ -400,7 +440,6 @@ class CPU extends Component {
 //      WB.stored(rfuWe) && (WB.stored(rfuAddr) === stored(inst).rs && produced(useRs) ||
 //        WB.stored(rfuAddr) === stored(inst).rt && produced(useRt))
 
-
 //    is.done := True
 //    when(wantForwardFromEX && (EX.stored(rfuRdSrc) === RFU_RD_SRC.mu | du.io.ju_op =/= JU_OP.f)) {
 //      is.done := False
@@ -429,7 +468,7 @@ class CPU extends Component {
 
   val IF1 = new Stage {
     val jumpTask =
-      Task(ID.is.done & ID.output(jumpPc).isDefined, ID.output(jumpPc).value, will.output)
+      Task(ID.is.done & ID.produced(jumpPc).isDefined, ID.produced(jumpPc).value, will.output)
     val setTask = Task(ME1.is.done & cp0.io.jumpPc.isDefined, cp0.io.jumpPc.value, will.output)
     stored(pc) init ConstantVal.INIT_PC
     when(will.output) {
@@ -484,6 +523,7 @@ class CPU extends Component {
   IF2.is.done := !icu.io.ibus.stage2.stall
   IF2.can.flush := !icu.io.ibus.stage2.stall
 
+  // 即使是静态分支预测，仍然需要等待前传
   ID.is.done :=
     !(ID.wantForwardFromEX && EX.stored(rfuRdSrc) === RFU_RD_SRC.mu ||
       ID.wantForwardFromME1 && ME1.stored(rfuRdSrc) === RFU_RD_SRC.mu ||
@@ -514,9 +554,20 @@ class CPU extends Component {
     EX.want.flush := True
   }
 
-  // 一旦检测到跳转就让给IF2的指令无效
-  when(ID.is.done & ID.output(jumpPc).isDefined) {
+  // 因为静态预测是一定要跳转，可能跳转的指令都需要刷掉IF1
+  when(ID.produced(jumpPc).isDefined) {
     IF1.want.flush := True
+  }
+  // 一旦EX检测到不跳转，那么刷掉IF1 IF2
+  when(EX.stored(jumpOp) =/= JU_OP.f & !EX.jumpTaken) {
+    IF1.want.flush := True
+    // EX是分支指令，ID可能由于IF2卡住而没有指令进去，此时延迟槽可能位于IF2（还在从内存中取指）
+    // 因此仅当ID是有效的延迟槽时才刷新IF2
+    // IF1不可能卡住，所以延迟槽至少是在IF2的
+    when(ID.produced(bd)) {
+      IF2.want.flush := True
+    }
+    IF1.stored(pc) := EX.stored(pc) + 8
   }
 }
 
