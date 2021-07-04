@@ -13,6 +13,7 @@ object Sim {
       sysClockPeriod: Int,
       instRamCOE: File,
       writeBackFile: Option[File],
+      goldenTrace: Option[File],
       timeout: Option[Long]
   )
 
@@ -50,6 +51,11 @@ object Sim {
         .valueName("<file-name>")
         .text("file to print write back data")
 
+      opt[File]('g', "golden")
+        .action((x, c) => c.copy(goldenTrace = Some(x)))
+        .valueName("<file-name>")
+        .text("golden trace to compare write back data")
+
       opt[Long]('t', "timeout")
         .action((x, c) => c.copy(timeout = Some(x)))
         .valueName("<units>")
@@ -67,6 +73,7 @@ object Sim {
         sysClockPeriod = 10,
         instRamCOE = null,
         writeBackFile = None,
+        goldenTrace = None,
         timeout = None
       )
     )
@@ -95,7 +102,7 @@ object Sim {
         cpuClockPeriod = config.cpuClockPeriod,
         sysClockPeriod = config.sysClockPeriod
       )
-    )
+    ).addThread(PCBroadcastThread(10000))
 
     for (finalPc <- config.finalPc) {
       simulator.addThread(TerminatorThread(finalPc))
@@ -103,6 +110,10 @@ object Sim {
 
     for (file <- config.writeBackFile) {
       simulator.addThread(WriteBackFileLoggerThread(file))
+    }
+
+    for (file <- config.goldenTrace) {
+      simulator.addThread(WriteBackComparerThread(file))
     }
 
     for (timeout <- config.timeout) {
