@@ -4,7 +4,7 @@ import defs.Mips32InstImplicits._
 import defs.{ConstantVal, Mips32Inst}
 import cache.CacheRamConfig
 import lib.{Key, Optional, Task, Updating}
-import tlb.{MMU, TLBEntry, TLBConfig}
+import tlb.{MMU, MMUTranslationRes}
 import spinal.core._
 import spinal.lib.{cpu => _, _}
 import spinal.lib.bus.amba4.axi._
@@ -67,8 +67,8 @@ class CPU extends Component {
 
   val ifPaddr    = Key(UInt(32 bits))
   val if2En      = Key(Bool) setEmptyValue False
-  val me2Uncache = Key(Bool) //ME2是否经过cache
 
+  val dataMMURes  = Key(new MMUTranslationRes(ConstantVal.USE_TLB))  //EX阶段查询数据TLB
   val tlbr        = Key(Bool)          //ID解码
   val tlbw        = Key(Bool)          //ID解码
   val tlbp        = Key(Bool)          //ID解码
@@ -117,9 +117,9 @@ class CPU extends Component {
       dcu.io.stage2.read := input(memRe)
       dcu.io.stage2.write := input(memWe)
       dcu.io.stage2.byteEnable := input(memBe)
-      dcu.io.stage2.paddr := input(memAddr)
+      dcu.io.stage2.paddr := input(dataMMURes).paddr
       dcu.io.stage2.extend := input(memEx)
-      dcu.io.stage2.uncache := input(me2Uncache)
+      dcu.io.stage2.uncache := !input(dataMMURes).cached
       dcu.io.stage2.wdata := input(rtValue)
 
       output(rfuData) := dcu.io.stage2.rdata
@@ -139,9 +139,9 @@ class CPU extends Component {
       dcu.io.stage1.byteEnable := input(memBe)
     }
     // MMU translate
-    mmu.io.dataVaddr := input(memAddr)
-    output(memAddr) := mmu.io.dataRes.paddr
-    output(me2Uncache) := !mmu.io.dataCached
+//    mmu.io.dataVaddr := input(memAddr)
+//    output(memAddr) := mmu.io.dataRes.paddr
+//    output(me2Uncache) := !mmu.io.dataCached
 
     //因为写hi lo的指令以及写cp0本身不会触发异常
     //因此全部放到ME第一阶段完成
@@ -203,10 +203,10 @@ class CPU extends Component {
     exceptionToRaise := None
     // TLB异常
     if (ConstantVal.USE_TLB) {
-      val refillException  = mmu.io.dataMapped & mmu.io.dataRes.miss
-      val invalidException = mmu.io.dataMapped & !mmu.io.dataRes.miss & !mmu.io.dataRes.valid
-      val modifiedException = mmu.io.dataMapped & input(memWe) &
-        !mmu.io.dataRes.miss & mmu.io.dataRes.valid & !mmu.io.dataRes.dirty
+      val refillException  = input(dataMMURes).mapped & input(dataMMURes).miss
+      val invalidException = input(dataMMURes).mapped & !input(dataMMURes).miss & !mmu.io.dataRes.valid
+      val modifiedException = input(dataMMURes).mapped & input(memWe) &
+        !input(dataMMURes).miss & input(dataMMURes).valid & !input(dataMMURes).dirty
       when(refillException | invalidException) {
         when(input(memRe))(exceptionToRaise := EXCEPTION.TLBL)
           .elsewhen(input(memWe))(exceptionToRaise := EXCEPTION.TLBS)
@@ -263,6 +263,14 @@ class CPU extends Component {
       RFU_RD_SRC.cp0 -> cp0Read.output(rfuData),
       default        -> stored(rfuData)
     )
+
+    //EX阶段计算出地址后再去查TLB
+    val ME_Translate = new StageComponent {
+      // MMU translate
+      mmu.io.dataVaddr := aguC.output(memAddr)
+      output(dataMMURes) := mmu.io.dataRes
+    }
+
 
     //数据前传：解决load + 中间一条无关指令 + store的数据冲突
     when(ME1.stored(rfuWe) && ME1.stored(rfuAddr) === input(inst).rs) {
@@ -443,8 +451,8 @@ class CPU extends Component {
       exceptionToRaise := None
       // TLB异常
       if (ConstantVal.USE_TLB) {
-        val refillException  = mmu.io.instMapped & mmu.io.instRes.miss
-        val invalidException = mmu.io.instMapped & !mmu.io.instRes.miss & !mmu.io.instRes.valid
+        val refillException  = mmu.io.instRes.mapped & mmu.io.instRes.miss
+        val invalidException = mmu.io.instRes.mapped & !mmu.io.instRes.miss & !mmu.io.instRes.valid
         when(refillException | invalidException) {
           exceptionToRaise := EXCEPTION.TLBL
           output(instFetch) := True

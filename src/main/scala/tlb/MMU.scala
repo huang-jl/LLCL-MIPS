@@ -6,18 +6,24 @@ import spinal.lib._
 //TODO: 如果取指不经过cache怎么办
 //TODO: CP0的某些寄存器如果是特殊值，可以让kesg0变成Uncached
 
-/** @param useTLB: 是否使用TLB进行地址转换
+/** @param useTLB 是否开启TLB转换
+  * @note MMU进行地址翻译后得到的结果
+  */
+class MMUTranslationRes(useTLB: Boolean) extends Bundle {
+  val paddr              = UInt(32 bits)
+  val miss, dirty, valid = Bool
+  val cached             = Bool
+  val mapped             = if (useTLB) Bool else null
+}
+
+/** @param useTLB 是否使用TLB进行地址转换
   */
 class CPUMMUInterface(useTLB: Boolean) extends Bundle with IMasterSlave {
-  val asid       = Bits(TLBConfig.asidWidth bits) //当前EntryHi对应的ASID
-  val instVaddr  = UInt(32 bits)                  //指令对应虚拟地址
-  val dataVaddr  = UInt(32 bits)                  //数据对应虚拟地址
-  val instRes    = new TLBTranslationRes
-  val dataRes    = new TLBTranslationRes
-  val instCached = Bool                           //inst取指是否需要经过cache
-  val dataCached = Bool                           //data访存是否需要经过cache
-  val instMapped = if (useTLB) Bool else null     //inst取指是否需要经过MMU
-  val dataMapped = if (useTLB) Bool else null     //data取指是否需要经过MMU
+  val asid      = Bits(TLBConfig.asidWidth bits) //当前EntryHi对应的ASID
+  val instVaddr = UInt(32 bits)                  //指令对应虚拟地址
+  val dataVaddr = UInt(32 bits)                  //数据对应虚拟地址
+  val instRes   = new MMUTranslationRes(useTLB)
+  val dataRes   = new MMUTranslationRes(useTLB)
 
   //TLB指令相关的内容，包括tlbp, tlbr, tlbwi, tlbwr
   /** 不是Index寄存器，而是Index寄存器（或者Random寄存器）中的值 */
@@ -33,10 +39,10 @@ class CPUMMUInterface(useTLB: Boolean) extends Bundle with IMasterSlave {
   val probeIndex = if (useTLB) Bits(32 bits) else null //这个值可以直接写回Index CP0寄存器
 
   override def asMaster(): Unit = {
-    in(instRes, dataRes, instCached, dataCached)
+    in(instRes, dataRes)
     out(asid, instVaddr, dataVaddr)
     if (useTLB) {
-      in(rdata, probeIndex, instMapped, dataMapped)
+      in(rdata, probeIndex)
       out(index, wdata, write, probeVPN2, probeASID)
     }
   }
@@ -54,8 +60,8 @@ class MMU(useTLB: Boolean) extends Component {
       tlb.io.asid := io.asid
       tlb.io.instVaddr := io.instVaddr
       tlb.io.dataVaddr := io.dataVaddr
-      io.instRes := tlb.io.instRes
-      io.dataRes := tlb.io.dataRes
+      io.instRes.assignSomeByName(tlb.io.instRes)
+      io.dataRes.assignSomeByName(tlb.io.dataRes)
 
       tlb.io.index := io.index
       tlb.io.wdata := io.wdata
@@ -67,18 +73,18 @@ class MMU(useTLB: Boolean) extends Component {
       io.probeIndex := tlb.io.probeIndex
     }
     //在Uncache区域或者TLB的C字段为2，那么就Uncache
-    io.instCached := !(MMU.isUncachedSection(
+    io.instRes.cached := !(MMU.isUncachedSection(
       io.instVaddr
-    ) | (io.instMapped & tlb.io.instRes.cacheAttr === 2))
-    io.instMapped := !MMU.isUnmappedSection(io.instVaddr)
-    io.dataCached := !(MMU.isUncachedSection(
+    ) | (io.instRes.mapped & tlb.io.instRes.cacheAttr === 2))
+    io.instRes.mapped := !MMU.isUnmappedSection(io.instVaddr)
+    io.dataRes.cached := !(MMU.isUncachedSection(
       io.dataVaddr
-    ) | (io.dataMapped & tlb.io.dataRes.cacheAttr === 2))
-    io.dataMapped := !MMU.isUnmappedSection(io.dataVaddr)
-    when(!io.instMapped) {
+    ) | (io.dataRes.mapped & tlb.io.dataRes.cacheAttr === 2))
+    io.dataRes.mapped := !MMU.isUnmappedSection(io.dataVaddr)
+    when(!io.instRes.mapped) {
       io.instRes.paddr := (B(0, 3 bits) ## io.instVaddr(0, 29 bits)).asUInt
     }
-    when(!io.dataMapped) {
+    when(!io.dataRes.mapped) {
       io.dataRes.paddr := (B(0, 3 bits) ## io.dataVaddr(0, 29 bits)).asUInt
     }
   } else {
@@ -90,8 +96,8 @@ class MMU(useTLB: Boolean) extends Component {
     io.instRes.paddr := (B(0, 3 bits) ## io.instVaddr(0, 29 bits)).asUInt
     io.dataRes.paddr := (B(0, 3 bits) ## io.dataVaddr(0, 29 bits)).asUInt
 
-    io.instCached := !MMU.isUncachedSection(io.instVaddr)
-    io.dataCached := !MMU.isUncachedSection(io.dataVaddr)
+    io.instRes.cached := !MMU.isUncachedSection(io.instVaddr)
+    io.dataRes.cached := !MMU.isUncachedSection(io.dataVaddr)
   }
 }
 
