@@ -36,7 +36,6 @@ class CPU extends Component {
   val pc         = Key(UInt(32 bits))
   val bd         = Key(Bool)
   val inst       = Key(Mips32Inst()) setEmptyValue ConstantVal.INST_NOP
-//  val exception  = Key(Optional(EXCEPTION()))
   val eret       = Key(Bool) setEmptyValue False
   val jumpOp       = Key(JU_OP()) setEmptyValue JU_OP.f
   val aluOp      = Key(ALU_OP()) setEmptyValue ALU_OP.sll()
@@ -108,7 +107,6 @@ class CPU extends Component {
     }
 
     input(pc)
-//    input(rfuRdSrc)
   }
 
   val ME2 = new Stage {
@@ -340,27 +338,6 @@ class CPU extends Component {
       output(rtValue) := rfu.io.rb.data
     }
 
-//    val cp0Read = new StageComponent {
-//      cp0.io.read.addr.rd := input(inst).rd
-//      cp0.io.read.addr.sel := input(inst).sel
-//    output(rfuData) := cp0.io.read.data
-    //    }
-
-//    val juC = new StageComponent {
-//      ju.op := du.io.ju_op
-//      ju.a := produced(rsValue).asSInt
-//      ju.b := produced(rtValue).asSInt
-//      ju.pc_src := du.io.ju_pc_src
-//      ju.pc := input(pc) + 4
-//      ju.offset := input(inst).offset
-//      ju.index := input(inst).index
-//
-//      when(ju.jump) {
-//        output(jumpPc) := ju.jump_pc
-//      } otherwise {
-//        output(jumpPc) := None
-//      }
-//    }
     // 静态预测，预测一定发生跳转
     // 仍然需要等待前传才能得到rsValue，判断预测是否正确在EX阶段
     val staticBPU = new StageComponent {
@@ -392,13 +369,6 @@ class CPU extends Component {
     when(will.flush) {
       prevBranch := False
     }
-//    val bdValue = RegInit(False)
-//    when(will.output) {
-//      bdValue := du.io.ju_op =/= JU_OP.f
-//    }
-//    when(will.flush) {
-//      bdValue := False
-//    }
     output(bd) := bdValue.next
 
     when(EX.stored(rfuWe) && EX.stored(rfuAddr) === stored(inst).rs) {
@@ -421,10 +391,6 @@ class CPU extends Component {
       produced(rtValue) := WB.stored(rfuData)
     }
 
-//    produced(rfuData) := output(rfuRdSrc) mux (
-//      RFU_RD_SRC.cp0 -> cp0Read.output(rfuData),
-//      default        -> B(input(pc) + 8)
-//    )
     output(rfuData) := B(input(pc) + 8)
 
     val wantForwardFromEX =
@@ -436,20 +402,6 @@ class CPU extends Component {
     val wantForwardFromME2 =
       ME2.stored(rfuWe) && (ME2.stored(rfuAddr) === stored(inst).rs && produced(useRs) ||
         ME2.stored(rfuAddr) === stored(inst).rt && produced(useRt))
-//    val wantForwardFromWB =
-//      WB.stored(rfuWe) && (WB.stored(rfuAddr) === stored(inst).rs && produced(useRs) ||
-//        WB.stored(rfuAddr) === stored(inst).rt && produced(useRt))
-
-//    is.done := True
-//    when(wantForwardFromEX && (EX.stored(rfuRdSrc) === RFU_RD_SRC.mu | du.io.ju_op =/= JU_OP.f)) {
-//      is.done := False
-//    }.elsewhen(wantForwardFromME1 && ME1.stored(rfuRdSrc) === RFU_RD_SRC.mu) {
-//      is.done := False
-//    }.elsewhen(wantForwardFromME2 && ME2.stored(rfuRdSrc) === RFU_RD_SRC.mu && !ME2.is.done) {
-//      is.done := False
-//    }.elsewhen(wantForwardFromWB && WB.stored(rfuRdSrc) === RFU_RD_SRC.mu) {
-//      is.done := False
-//    }
 
     exceptionToRaise := du.io.exception
   }
@@ -459,9 +411,7 @@ class CPU extends Component {
       io.icacheAXI <> icu.io.axi
       //ibus
       icu.io.ibus.stage2.paddr := input(ifPaddr)
-//      icu.io.ibus.stage2.en := prevException.isEmpty & firing
       icu.io.ibus.stage2.en := input(if2En)
-//      produced(inst) := input(if2En) ? icu.io.ibus.stage2.rdata | ConstantVal.INST_NOP
       output(inst) := icu.io.ibus.stage2.rdata
     }
   }
@@ -486,7 +436,6 @@ class CPU extends Component {
       output(ifPaddr) := mmu.io.instRes.paddr
       output(if2En) := True
 
-//      icu.io.ibus.stage1.keepRData := IF2.valid & !IF2.sending & !IF2.wantsFlush
       icu.io.ibus.stage1.keepRData := !IF2.is.empty & !IF2.will.input
 
       // 异常
@@ -528,7 +477,6 @@ class CPU extends Component {
     !(ID.wantForwardFromEX && EX.stored(rfuRdSrc) === RFU_RD_SRC.mu ||
       ID.wantForwardFromME1 && ME1.stored(rfuRdSrc) === RFU_RD_SRC.mu ||
       ID.wantForwardFromME2 && ME2.stored(rfuRdSrc) === RFU_RD_SRC.mu && !ME2.is.done)
-//      ID.wantForwardFromWB && WB.stored(rfuRdSrc) === RFU_RD_SRC.mu)
 
   EX.is.done := !alu.io.stall
   EX.can.flush := !alu.io.stall
