@@ -26,8 +26,8 @@ class WriteBufferInterface(config: WriteBufferConfig) extends Bundle with IMaste
   val queryBE: Bits = Bits(config.beWidth bits) //要写入FIFO数据的byteEnable信号，长度为一个cache line的byte数量
   val queryWData: Bits = Bits(config.dataWidth bits) //要写入FIFO对应的数据
   val queryRData: Bits = Bits(config.dataWidth bits) //读出的FIFO数据
-  val readHit: Bool = Bool //查询读是否命中
-  val writeHit: Bool = Bool //查询写是否命中
+  val readHit: Bool = Bool //查询读是否命中，组合逻辑查询
+  val writeHit: Bool = Bool //查询写是否命中，组合逻辑查询
   //要压入的数据
   val pushTag: Bits = Bits(config.tagWidth bits)
   val pushData: Bits = Bits(config.dataWidth bits)

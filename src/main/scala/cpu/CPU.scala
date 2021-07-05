@@ -133,8 +133,9 @@ class CPU extends Component {
 
   val ME1 = new Stage {
     val dcuC = new StageComponent {
-      dcu.io.stage1.offset := input(memAddr)(0, dcacheConfig.offsetWidth bits)
-      dcu.io.stage1.index := input(memAddr)(dcacheConfig.offsetWidth, dcacheConfig.indexWidth bits)
+      dcu.io.stage1.paddr := input(dataMMURes).paddr
+//      dcu.io.stage1.offset := input(memAddr)(0, dcacheConfig.offsetWidth bits)
+//      dcu.io.stage1.index := input(memAddr)(dcacheConfig.offsetWidth, dcacheConfig.indexWidth bits)
       dcu.io.stage1.keepRData := !ME2.is.empty & !ME2.will.input
       dcu.io.stage1.byteEnable := input(memBe)
     }

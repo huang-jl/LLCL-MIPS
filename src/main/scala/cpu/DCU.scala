@@ -12,10 +12,9 @@ import lib.Optional
 class DCU(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   val io = new Bundle {
     val stage1 = new Bundle {
-      val index = in UInt(config.indexWidth bits)
+      val paddr = in UInt(32 bits)
       val keepRData = in Bool
       val byteEnable = in UInt(2 bits)  //stage1用来检测地址异常
-      val offset = in UInt(config.offsetWidth bits) //用来stage 1检测地址异常的
 
       val addrValid = out Bool  //stage1输出，表明地址是否合法
     }
@@ -51,10 +50,10 @@ class DCU(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
       io.stage1.addrValid := True
     }
     is(1) {
-      io.stage1.addrValid := io.stage1.offset(0, 1 bits) === 0
+      io.stage1.addrValid := io.stage1.paddr(0, 1 bits) === 0
     }
     is(3) {
-      io.stage1.addrValid := io.stage1.offset(0, 2 bits) === 0
+      io.stage1.addrValid := io.stage1.paddr(0, 2 bits) === 0
     }
     default {
       io.stage1.addrValid := False
@@ -88,8 +87,8 @@ class DCU(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     }
   }
 
-  dcache.io.cpu.stage1.index <> io.stage1.index
-  dcache.io.cpu.stage1.keepRData <> io.stage1.keepRData
+  dcache.io.cpu.stage1.paddr := io.stage1.paddr
+  dcache.io.cpu.stage1.keepRData := io.stage1.keepRData
 
   dcache.io.cpu.stage2.read := io.stage2.read
   dcache.io.cpu.stage2.write := io.stage2.write
