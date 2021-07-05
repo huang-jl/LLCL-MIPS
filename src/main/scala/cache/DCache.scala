@@ -99,12 +99,13 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     * **********************
     */
   val LRU = new Area {
-    val plru    = Array.fill(config.setSize)(new LRUManegr(config.wayNum)) //setSize是组的个数，不是“设置大小”的意思
-    val plruOut = Vec(UInt(log2Up(config.wayNum) bits), config.setSize)
+    val manager = LRUCalculator(config.wayNum)
+    val plru = Vec.fill(config.setSize) {
+      Updating(Bits(manager.statusLength bits)) init(0)
+    }
+    val wayIndex = Vec(UInt(log2Up(config.wayNum) bits), config.setSize)
     for (i <- 0 until config.setSize) {
-      plruOut(i) := plru(i).io.next
-      //      plru(i).io.update := (!io.cpu.stall) & (inputAddr.index === i) & (io.cpu.read | io.cpu.write)
-      //      plru(i).io.access := dcache.hitPerWay
+      wayIndex(i) := manager.leastRecentUsedIndex(plru(i).prev)
     }
   }
 
@@ -155,8 +156,8 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   //选出可能替换的那一路的地址
   val replace = new Area {
     val wayIndex = Reg(UInt(log2Up(config.wayNum) bits)) init (0)
-    when(!keepRData) {
-      wayIndex := LRU.plruOut(stage1.index)
+    when(!io.cpu.stage1.keepRData) {
+      wayIndex := LRU.wayIndex(stage1.index)
       for (i <- 0 until config.wayNum) {
         when(!cacheTags(i).valid)(wayIndex := i) //如果有未使用的cache line，优先替换它
       }
@@ -175,10 +176,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   }
 
   //发生修改的路地址，用于前传
-  val modifiedWayIndex = Updating(UInt(log2Up(config.wayNum) bits)) init(0)
-//  val currentModifiedWayIndex = UInt(log2Up(config.wayNum) bits)
-//  val prevModifiedWayIndex    = RegNext(currentModifiedWayIndex) init (0)
-//  currentModifiedWayIndex := prevModifiedWayIndex
+  val modifiedWayIndex = Updating(UInt(log2Up(config.wayNum) bits)) init (0)
 
   //only drive portA for write
   val dataWE   = Bits(config.wayNum bits)                   //写哪一路cache.data的使能
@@ -213,9 +211,8 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     //把hitPerWay中为1的那一路cache对应数据拿出来
     val hitLine: Block = MuxOH(hitPerWay, for (i <- 0 until config.wayNum) yield cacheDatas(i).next)
     //读或写命中时更新LRU
-    for (i <- 0 until config.setSize) {
-      LRU.plru(i).io.update := (read | write) & stage2.index === i & hit
-      LRU.plru(i).io.access := hitPerWay
+    when((read | write) & hit) {
+      LRU.manager.updateStatus(OHToUInt(hitPerWay), LRU.plru(stage2.index).next)
     }
   }
 
@@ -468,9 +465,8 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
         dataWE(replace.wayIndex) := True
         modifiedWayIndex.next := replace.wayIndex
         //发生行替换的时候需要更新LRU
-        for (i <- 0 until config.setSize) {
-          LRU.plru(i).io.update := (cache.read | cache.write) & stage2.index === i
-          LRU.plru(i).io.access := B"1'b1" << replace.wayIndex
+        when(cache.read | cache.write) {
+          LRU.manager.updateStatus(replace.wayIndex, LRU.plru(stage2.index).next)
         }
       }
     }
@@ -504,6 +500,16 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     cacheDatas(modifiedWayIndex.prev).next.assignFromBits(writeData.prev.asBits)
   }
 
+  // plru也需要前传，具体而言就是2阶段index相同并且在所有修改LRU的时刻
+  // 1.读或写直接命中cache
+  // 2.在readMem中并且即将写回ram
+  // 3.在waitWb中命中writeback数据
+  val plruForward: Bool = stage1.index === stage2.index & !io.cpu.stage2.stall &
+    (dcacheFSM.isActive(dcacheFSM.readMem) | dcacheFSM.isActive(dcacheFSM.waitWb) | cache.write | cache.read)
+  when(plruForward) {
+    LRU.wayIndex(stage2.index) := LRU.manager.leastRecentUsedIndex(LRU.plru(stage2.index).next)
+  }
+
   //cache读出的数据可能是
   //1.如果读miss，那么只能是来自内存的数据送回cpu（此时数据在writeData中要写回ram）
   //2.中cache: hitLine
@@ -522,7 +528,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
 
   wb.writing := !wbFSM.isActive(wbFSM.stateBoot) //write buffer正在写回
 
-  //和fifo相关的信号，fifo用来存放从cache中替换出去的行
+  //Stage 2中和fifo相关的信号，fifo用来存放从cache中替换出去的行
   fifo.push := dcacheFSM.isActive(dcacheFSM.waitWb) &
     pushTags(replace.wayIndex).valid & pushTags(replace.wayIndex).dirty
   fifo.pushTag := pushTags(replace.wayIndex).tag ## stage2.index
@@ -545,9 +551,8 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
       dataWE(replace.wayIndex) := True
       modifiedWayIndex.next := replace.wayIndex
       //发生行替换的时候需要更新LRU
-      for (i <- 0 until config.setSize) {
-        LRU.plru(i).io.update := (cache.read | cache.write) & stage2.index === i
-        LRU.plru(i).io.access := B"1'b1" << replace.wayIndex
+      when(cache.read | cache.write) {
+        LRU.manager.updateStatus(replace.wayIndex, LRU.plru(stage2.index).next)
       }
     }
   }
