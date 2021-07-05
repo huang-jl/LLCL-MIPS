@@ -196,7 +196,9 @@ case class AxiMemorySim(axi: Axi4, clockDomain: ClockDomain, config: AxiMemorySi
         )
       }
 
-      pendingReads += ((job, device))
+      delayed(config.readResponseDelay) {
+        pendingReads += ((job, device))
+      }
 
       //println("AXI4 read cmd: addr=0x" + ar.payload.addr.toLong.toHexString + " count=" + (ar.payload.len.toBigInt+1))
 

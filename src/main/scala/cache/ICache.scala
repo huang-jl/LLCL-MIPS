@@ -61,12 +61,12 @@ class ICache(config: CacheRamConfig) extends Component {
     val ramIPConfig = BRamIPConfig(Block.getBitWidth(config.blockSize))
     val depth: Int  = 4 * 1024 * 8 / Block.getBitWidth(config.blockSize)
     val tags = Array.fill(config.wayNum)(
-      new DualPortLutram(
+      new DualPortLutRam(
         Meta.getBitWidth(config.tagWidth),
         depth * Meta.getBitWidth(config.tagWidth)
       )
     )
-    val datas = Array.fill(config.wayNum)(new DualPortBram(ramIPConfig))
+    val datas = Array.fill(config.wayNum)(new DualPortBRam(ramIPConfig))
   }
 
   //读LRU，延迟来源于一个多选一

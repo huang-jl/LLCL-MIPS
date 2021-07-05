@@ -93,8 +93,8 @@ object Sim {
         mem = AxiMemorySimConfig(
           maxOutstandingReads = 4,
           maxOutstandingWrites = 4,
-          readResponseDelay = 25,
-          writeResponseDelay = 3,
+          readResponseDelay = 250,
+          writeResponseDelay = 30,
           interruptProbability = 0,
           interruptMaxDelay = 10
         ),
