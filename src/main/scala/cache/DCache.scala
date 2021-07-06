@@ -83,7 +83,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     */
   val cacheRam = new Area {
     val ramIPConfig = BRamIPConfig(Block.getBitWidth(config.blockSize))
-    val depth: Int  = 4 * 1024 * 8 / Block.getBitWidth(config.blockSize)
+    val depth: Int  = ramIPConfig.depth
     val tags = Array.fill(config.wayNum)(
       new DualPortLutram(
         DMeta.getBitWidth(config.tagWidth),

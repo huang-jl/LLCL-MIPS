@@ -125,7 +125,6 @@ class CPU extends Component {
       output(rfuData) := dcu.io.stage2.rdata
     }
 
-    //TODO 是不是有点啰嗦
     produced(rfuData) := ((stored(rfuRdSrc) === RFU_RD_SRC.mu) ?
       output(rfuData) | stored(rfuData))
 
@@ -134,15 +133,9 @@ class CPU extends Component {
   val ME1 = new Stage {
     val dcuC = new StageComponent {
       dcu.io.stage1.paddr := input(dataMMURes).paddr
-//      dcu.io.stage1.offset := input(memAddr)(0, dcacheConfig.offsetWidth bits)
-//      dcu.io.stage1.index := input(memAddr)(dcacheConfig.offsetWidth, dcacheConfig.indexWidth bits)
       dcu.io.stage1.keepRData := !ME2.is.empty & !ME2.will.input
       dcu.io.stage1.byteEnable := input(memBe)
     }
-    // MMU translate
-//    mmu.io.dataVaddr := input(memAddr)
-//    output(memAddr) := mmu.io.dataRes.paddr
-//    output(me2Uncache) := !mmu.io.dataCached
 
     //因为写hi lo的指令以及写cp0本身不会触发异常
     //因此全部放到ME第一阶段完成

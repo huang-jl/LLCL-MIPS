@@ -4,15 +4,17 @@ import spinal.core._
 
 /** @param blockSize 数据块的大小, bytes
   * @param wayNum    路个数
-  * @note Cache采用实Tag和虚Index，
+  * @note ICache采用实Tag和虚Index，
   *       因此Cache一路大小必须小于等于一个页的大小。
   *       由于只支持4KiB的页，这里默认一路的大小为4KiB
+  * @note DCache由于把TLB查询放到了EX阶段，因此理论上支持更大的单路大小
   */
 case class CacheRamConfig(
     blockSize: Int = 32,
+    depth: Int = 4 * 1024 / 32,
     wayNum: Int = 2
 ) {
-  def indexWidth: Int = log2Up(4 * 1024) - offsetWidth
+  def indexWidth: Int = log2Up(depth)
 
   def tagWidth: Int = 32 - indexWidth - offsetWidth
 
@@ -30,16 +32,6 @@ case class CacheRamConfig(
 
   /** Cache Line的组数 */
   def setSize: Int = 1 << indexWidth
-
-  def lruLength: Int = {
-    var sum  = 0
-    var temp = wayNum / 2
-    while (temp > 0) {
-      sum += temp
-      temp = temp / 2
-    }
-    sum
-  }
 }
 
 /** @param blockSize 一个数据块的大小:bytes

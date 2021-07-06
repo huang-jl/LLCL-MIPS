@@ -60,6 +60,7 @@ class DCU(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     }
   }
 
+  //used by stage2
   val byteOffset = io.stage2.paddr(0, 2 bits)
   switch(io.stage2.byteEnable) {
     is(0){
