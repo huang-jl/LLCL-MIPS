@@ -1,27 +1,25 @@
 package ip
 
 import ip.RamPortDelayedPipelineImplicits._
+import ip.sim._
 import spinal.core._
-import spinal.core.sim._
 import spinal.lib._
 
 class SinglePortRamBase(dataWidth: Int, size: Int, latency: Int, writeMode: WriteMode.Value)
-    extends BlackBox {
+    extends SimulatedBlackBox {
   val io = new Bundle {
     val clk  = in Bool
     val rst  = in Bool
     val port = slave(RamPort(dataWidth, log2Up(size / dataWidth), writeMode)).setName("")
-  }.simPublic()
+  }
 
   noIoPrefix()
   mapClockDomain(clock = io.clk, reset = io.rst, resetActiveLevel = HIGH)
   addRTLPath("./rtl/single_port_ram.v")
 
-  if (simUtils.isInSim) {
+  override def createSimJob() = {
     val storage = Array.fill[BigInt](size / dataWidth)(0)
-    simUtils.addJob(
-      simUtils.DelayedPipeline(latency).handlePort(io.port, storage).toJob
-    )
+    DelayedPipeline(latency).handlePort(io.port, storage).toJob
   }
 }
 

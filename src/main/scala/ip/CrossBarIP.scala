@@ -2,6 +2,7 @@ package ip
 
 import spinal.core._
 import spinal.lib.bus.amba4.axi._
+import ip.sim._
 
 /** m slave x n master CrossBar IP BlackBox */
 case class CrossBarIP(m: Int, n: Int) extends BlackBox {
@@ -125,9 +126,8 @@ case class CrossBarIP(m: Int, n: Int) extends BlackBox {
     })
   })
 
-  if (simUtils.isInSim) {
-    addRTLPath("./rtl/axi_crossbar_3x1_sim_netlist.v"
-    )
+  if (isInSim) {
+    addRTLPath("./rtl/axi_crossbar_3x1_sim_netlist.v")
   }
 }
 

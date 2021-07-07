@@ -16,7 +16,6 @@ module single_port_ram #
     output wire [DATA_WIDTH - 1:0]    dout /* verilator public */
 );
 
-`ifndef VERILATOR
    // xpm_memory_spram: Single Port RAM
    // Xilinx Parameterized Macro, version 2019.2
 
@@ -62,6 +61,5 @@ module single_port_ram #
    );
 
    // End of xpm_memory_spram_inst instantiation
-`endif
     
 endmodule

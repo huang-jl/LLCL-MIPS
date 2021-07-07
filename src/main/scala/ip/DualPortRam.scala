@@ -1,8 +1,8 @@
 package ip
 
 import ip.RamPortDelayedPipelineImplicits._
+import ip.sim._
 import spinal.core._
-import spinal.core.sim._
 import spinal.lib._
 
 /** @param dataWidth 数据宽度，单位是bit
@@ -19,7 +19,7 @@ case class BRamIPConfig(
   def depth = size / dataWidth
 }
 
-class DualPortBRam(config: BRamIPConfig) extends BlackBox {
+class DualPortBRam(config: BRamIPConfig) extends SimulatedBlackBox {
   setDefinitionName("dual_port_bram")
   val generic = new Generic {
     val DATA_WIDTH       = config.dataWidth
@@ -35,7 +35,7 @@ class DualPortBRam(config: BRamIPConfig) extends BlackBox {
     val rst   = in Bool
     val portA = slave(RamPort(config.dataWidth, log2Up(config.depth), config.writeModeA))
     val portB = slave(RamPort(config.dataWidth, log2Up(config.depth), config.writeModeB))
-  }.simPublic()
+  }
 
   mapClockDomain(clock = io.clk, reset = io.rst, resetActiveLevel = HIGH)
   noIoPrefix()
@@ -51,15 +51,13 @@ class DualPortBRam(config: BRamIPConfig) extends BlackBox {
 
   addRTLPath("./rtl/dual_port_ram.v")
 
-  if (simUtils.isInSim) {
+  override def createSimJob() = {
     val storage = Array.fill[BigInt](config.size / config.dataWidth)(0)
-    simUtils.addJob(
-      simUtils
-        .DelayedPipeline(config.latency)
-        .handlePort(io.portA, storage)
-        .handlePort(io.portB, storage)
-        .toJob
-    )
+
+    DelayedPipeline(config.latency)
+      .handlePort(io.portA, storage)
+      .handlePort(io.portB, storage)
+      .toJob
   }
 }
 
@@ -68,7 +66,7 @@ class DualPortBRam(config: BRamIPConfig) extends BlackBox {
   * @param latency   读端口的延迟
   */
 class DualPortLutRam(dataWidth: Int = 32, size: Int = 4 * 1024 * 8, latency: Int = 1)
-    extends BlackBox {
+    extends SimulatedBlackBox {
   setDefinitionName("dual_port_lutram")
   val generic = new Generic {
     val DATA_WIDTH = dataWidth
@@ -79,10 +77,10 @@ class DualPortLutRam(dataWidth: Int = 32, size: Int = 4 * 1024 * 8, latency: Int
   val io = new Bundle {
     val clk = in Bool
     val rst = in Bool
-    // TODO: Is it write first?
-    val portA = slave(RamPort(dataWidth, log2Up(size / dataWidth), WriteMode.WriteFirst))
+    // TODO: Is it no change?
+    val portA = slave(RamPort(dataWidth, log2Up(size / dataWidth), WriteMode.NoChange))
     val portB = slave(ReadOnlyRamPort(dataWidth, log2Up(size / dataWidth)))
-  }.simPublic()
+  }
 
   mapClockDomain(clock = io.clk, reset = io.rst, resetActiveLevel = HIGH)
   noIoPrefix()
@@ -98,15 +96,12 @@ class DualPortLutRam(dataWidth: Int = 32, size: Int = 4 * 1024 * 8, latency: Int
 
   addRTLPath("./rtl/dual_port_ram.v")
 
-  if (simUtils.isInSim) {
+  override def createSimJob() = {
     val storage = Array.fill[BigInt](size / dataWidth)(0)
-    simUtils.addJob(
-      simUtils
-        .DelayedPipeline(latency)
-        .handlePort(io.portA, storage)
-        .handlePort(io.portB, storage)
-        .toJob
-    )
+    DelayedPipeline(latency)
+      .handlePort(io.portA, storage)
+      .handlePort(io.portB, storage)
+      .toJob
   }
 }
 

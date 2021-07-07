@@ -1,30 +1,32 @@
 package ip
 
+import ip.sim._
 import spinal.core._
 import spinal.core.sim._
 import spinal.lib._
 
 class ReadOnlyRamPort(dataWidth: Int, addrWidth: Int) extends Bundle with IMasterSlave {
-  val en   = Bool
-  val addr = UInt(addrWidth bits)
-  val dout = out Bits (dataWidth bits)
+  val en   = Bool.simPublic()
+  val addr = UInt(addrWidth bits).simPublic()
+  val dout = Bits(dataWidth bits)
 
   override def asMaster(): Unit = {
     in(dout)
     out(en, addr)
   }
 
-  /** 仿真行为，参见 [[simUtils.DelayedPipeline]] */
-  def handledBy(delayedPipeline: simUtils.DelayedPipeline, storage: Array[BigInt]) = {
+  /** 仿真行为，参见 [[DelayedPipeline]] */
+  def handledBy(delayedPipeline: DelayedPipeline, storage: Array[BigInt]) = {
+    val doutPulled = pullFromOutside(dout)
     delayedPipeline
       .whenReset {
-        dout #= 0
+        doutPulled #= 0
       }
       .everyTick { schedule =>
         if (en.toBoolean) {
           val addrValue = addr.toInt
           schedule {
-            dout #= storage(addrValue)
+            doutPulled #= storage(addrValue)
           }
         }
       }
@@ -53,19 +55,21 @@ object WriteMode extends Enumeration {
   */
 class RamPort(dataWidth: Int, addrWidth: Int, writeMode: WriteMode.Value)
     extends ReadOnlyRamPort(dataWidth, addrWidth) {
-  val we  = Bool //write enable
-  val din = in Bits (dataWidth bits)
+  val we  = Bool.simPublic() //write enable
+  val din = Bits(dataWidth bits).simPublic()
 
   override def asMaster(): Unit = {
     super.asMaster()
     out(we, din)
   }
 
-  /** 仿真行为，参见 [[simUtils.DelayedPipeline]] */
-  override def handledBy(delayedPipeline: simUtils.DelayedPipeline, storage: Array[BigInt]) = {
+  /** 仿真行为，参见 [[DelayedPipeline]] */
+  override def handledBy(delayedPipeline: DelayedPipeline, storage: Array[BigInt]) = {
+    val doutPulled = pullFromOutside(dout)
+
     delayedPipeline
       .whenReset {
-        dout #= 0
+        doutPulled #= 0
       }
       .everyTick { schedule =>
         if (en.toBoolean) {
@@ -78,16 +82,16 @@ class RamPort(dataWidth: Int, addrWidth: Int, writeMode: WriteMode.Value)
 
               writeMode match {
                 case WriteMode.WriteFirst =>
-                  dout #= dinValue
+                  doutPulled #= dinValue
                 case WriteMode.ReadFirst =>
-                  dout #= oldValue
+                  doutPulled #= oldValue
                 case WriteMode.NoChange =>
                 // Nothing.
               }
             }
           } else {
             schedule {
-              dout #= storage(addrValue)
+              doutPulled #= storage(addrValue)
             }
           }
         }
@@ -101,9 +105,9 @@ object RamPort {
 }
 
 object RamPortDelayedPipelineImplicits {
-  implicit class DelayedPipelineHandlesPort(delayedPipeline: simUtils.DelayedPipeline) {
+  implicit class DelayedPipelineHandlesPort(delayedPipeline: DelayedPipeline) {
     // 对 port 多态
-    def handlePort(port: ReadOnlyRamPort, storage: Array[BigInt]): simUtils.DelayedPipeline =
+    def handlePort(port: ReadOnlyRamPort, storage: Array[BigInt]): DelayedPipeline =
       port.handledBy(delayedPipeline, storage)
   }
 }

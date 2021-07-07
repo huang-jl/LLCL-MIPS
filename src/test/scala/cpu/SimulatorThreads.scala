@@ -45,7 +45,7 @@ object WriteBackProducerThread {
 
     while (true) {
       context.sysClockDomain.waitSampling()
-      if (debugWb.rf.wen.toInt != 0) {
+      if (debugWb.rf.wen.toInt != 0 && context.openTrace) {
         onWriteBack(
           WriteBack(
             pc = debugWb.pc.toLong,
@@ -83,7 +83,7 @@ object WriteBackComparerThread {
     println(s"Write back data will be compared against ${file.getAbsolutePath}...")
 
     Using(Source.fromFile(file)) { source =>
-      val lines      = source.getLines
+      val lines      = source.getLines.filter(_(0) != '0')
       var errorCount = 0
 
       def compareWriteBack(wb: WriteBack): Unit = {
