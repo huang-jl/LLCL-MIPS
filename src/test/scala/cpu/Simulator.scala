@@ -40,7 +40,7 @@ case class Simulator(config: Simulator.Config) {
   /** 获取某种特定类型的插件，仅在恰有一个插件满足条件时成功 */
   def getPlugin[T <: Plugin: ClassTag]: T = {
     val clazz = classTag[T].runtimeClass.asInstanceOf[Class[T]]
-    
+
     plugins.filter(p => clazz.isAssignableFrom(p.getClass)) match {
       case Seq() =>
         throw new AssertionError(s"Plugin of type ${clazz.getName} not loaded.")
@@ -50,6 +50,10 @@ case class Simulator(config: Simulator.Config) {
         throw new AssertionError(s"Reference to plugin of type ${clazz.getName} is ambiguous")
     }
   }
+
+  def onSetupSim(cb: Simulator#Context => Unit) = addPlugin(new Plugin {
+    override def setupSim(context: Simulator#Context) = cb(context)
+  })
 
   /** 插件所需要的环境 */
   class Context(
@@ -72,7 +76,7 @@ case class Simulator(config: Simulator.Config) {
       .addSimulatorFlag("-Wno-TIMESCALEMOD")
       .addSimulatorFlag("-Wno-INITIALDLY")
       // .addIncludeDir(includeDir)
-      .addSimulatorFlag(s"-I${includeDir}")
+      .addSimulatorFlag(s"-I$includeDir")
       .addSimulatorFlag("--timescale-override 1ns/1ns")
       .compile(dut)
       .doSimUntilVoid(this.doSim _)

@@ -22,7 +22,7 @@ case class TerminatorPlugin(finalPc: Long) extends Simulator.Plugin {
 /** 输出 PC 的插件。 */
 case class PCBroadcastPlugin(period: Int) extends Simulator.Plugin {
   override def setupSim(context: Simulator#Context) = fork {
-    println(s"Broadcasting PC every $period CPU clock periods")
+    println(s"Broadcasting PC every $period CPU clock periods...")
 
     def pc = context.soc.io.debugInterface.wb.pc.toLong
 
@@ -36,7 +36,7 @@ case class PCBroadcastPlugin(period: Int) extends Simulator.Plugin {
 }
 
 case class WriteBack(pc: Long, addr: Int, data: Long) {
-  def toTrace = f"1 ${pc}%08x ${addr}%02x ${data}%08x\n"
+  def toTrace = f"1 $pc%08x $addr%02x $data%08x\n"
 }
 
 case class WriteBackProducerPlugin() extends Simulator.Plugin {
