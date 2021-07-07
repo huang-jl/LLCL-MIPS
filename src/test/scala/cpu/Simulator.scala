@@ -6,6 +6,7 @@ import spinal.lib.bus.amba4.axi.sim.AxiMemorySimConfig
 import util.VivadoConf
 
 import scala.collection.mutable
+import scala.reflect.{ClassTag, classTag}
 
 object Simulator {
   case class MemSection(
@@ -20,6 +21,37 @@ object Simulator {
       sysClockPeriod: Long = 10
   )
 
+  trait Plugin {
+    def setupSim(context: Simulator#Context)
+  }
+}
+
+/** 封装的 CPU 仿真器，可配置时钟、内存等，支持添加插件。 */
+case class Simulator(config: Simulator.Config) {
+  import Simulator._
+
+  val plugins = mutable.ArrayBuffer[Plugin]()
+
+  def addPlugin(plugin: Plugin): this.type = {
+    plugins += plugin
+    this
+  }
+
+  /** 获取某种特定类型的插件，仅在恰有一个插件满足条件时成功 */
+  def getPlugin[T <: Plugin: ClassTag]: T = {
+    val clazz = classTag[T].runtimeClass.asInstanceOf[Class[T]]
+    
+    plugins.filter(p => clazz.isAssignableFrom(p.getClass)) match {
+      case Seq() =>
+        throw new AssertionError(s"Plugin of type ${clazz.getName} not loaded.")
+      case Seq(only) =>
+        only.asInstanceOf[T]
+      case _ =>
+        throw new AssertionError(s"Reference to plugin of type ${clazz.getName} is ambiguous")
+    }
+  }
+
+  /** 插件所需要的环境 */
   class Context(
       val soc: SimulationSoc,
       val memorySim: AxiMemorySim,
@@ -28,23 +60,11 @@ object Simulator {
   ) {
     def mem       = memorySim.memory
     var openTrace = true
+
+    def getPlugin[T <: Plugin: ClassTag]: T = Simulator.this.getPlugin
   }
 
-  type Thread = Context => Unit
-}
-
-/** 封装的 CPU 仿真器，可配置时钟、内存等，支持添加仿真线程。 */
-case class Simulator(config: Simulator.Config) {
-  import Simulator._
-
-  val threads = mutable.ArrayBuffer[Thread]()
-
-  def addThread(thread: Thread): this.type = {
-    threads += thread
-    this
-  }
-
-  def run(): Unit = {
+  def run(dut: => SimulationSoc): Unit = {
     val includeDir = VivadoConf.vivadoPath + "/data/verilog/src/xeclib"
     SimConfig.withWave
       .withConfig(SpinalConfig().includeSimulation)
@@ -53,11 +73,12 @@ case class Simulator(config: Simulator.Config) {
       .addSimulatorFlag("-Wno-INITIALDLY")
       // .addIncludeDir(includeDir)
       .addSimulatorFlag(s"-I${includeDir}")
-      .compile(new SimulationSoc)
+      .addSimulatorFlag("--timescale-override 1ns/1ns")
+      .compile(dut)
       .doSimUntilVoid(this.doSim _)
   }
 
-  def doSim(soc: SimulationSoc): Unit = {
+  private def doSim(soc: SimulationSoc): Unit = {
     val sysClockDomain = ClockDomain(
       clock = soc.io.sysClock,
       reset = soc.io.reset,
@@ -84,15 +105,15 @@ case class Simulator(config: Simulator.Config) {
       }
     }
 
-    val threadInput = new Context(
+    val pluginThreadContext = new Context(
       soc = soc,
       memorySim = memorySim,
       sysClockDomain = sysClockDomain,
       cpuClockDomain = cpuClockDomain
     )
-    for (thread <- threads) {
+    for (plugin <- plugins) {
       fork {
-        thread(threadInput)
+        plugin.setupSim(pluginThreadContext)
       }
     }
   }

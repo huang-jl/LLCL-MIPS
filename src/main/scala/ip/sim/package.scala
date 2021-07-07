@@ -3,7 +3,6 @@ package ip
 import spinal.core._
 import spinal.core.sim._
 import spinal.idslplugin.PostInitCallback
-
 import scala.collection.mutable
 
 package object sim {

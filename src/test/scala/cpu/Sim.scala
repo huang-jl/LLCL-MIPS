@@ -2,7 +2,7 @@ package cpu
 
 import scopt.OptionParser
 import spinal.lib.bus.amba4.axi.sim.AxiMemorySimConfig
-import spinal.core.sim._
+
 import java.io.File
 import scala.util.{Failure, Success}
 
@@ -102,26 +102,32 @@ object Sim {
         cpuClockPeriod = config.cpuClockPeriod,
         sysClockPeriod = config.sysClockPeriod
       )
-    ).addThread(PCBroadcastThread(10000))
+    )
 
-    simulator.addThread(confreg.funcTestThread)
+    simulator
+      .addPlugin(PCBroadcastPlugin(10000))
+      .addPlugin(confreg.FuncTestConfRegPlugin())
 
     for (finalPc <- config.finalPc) {
-      simulator.addThread(TerminatorThread(finalPc))
+      simulator.addPlugin(TerminatorPlugin(finalPc))
+    }
+
+    if (config.writeBackFile.nonEmpty || config.goldenTrace.nonEmpty) {
+      simulator.addPlugin(WriteBackProducerPlugin())
     }
 
     for (file <- config.writeBackFile) {
-      simulator.addThread(WriteBackFileLoggerThread(file))
+      simulator.addPlugin(WriteBackFileLoggerPlugin(file))
     }
 
     for (file <- config.goldenTrace) {
-      simulator.addThread(WriteBackComparerThread(file))
+      simulator.addPlugin(WriteBackComparerPlugin(file))
     }
 
     for (timeout <- config.timeout) {
-      simulator.addThread(_ => SimTimeout(timeout))
+      simulator.addPlugin(TimeoutPlugin(timeout))
     }
 
-    simulator.run()
+    simulator.run(new SimulationSoc)
   }
 }
