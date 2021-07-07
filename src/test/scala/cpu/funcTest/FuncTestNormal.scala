@@ -8,7 +8,7 @@ import scala.util.{Failure, Success}
 
 object FuncTestNormal {
   def main(args: Array[String]): Unit = {
-    val instRamData = COEParse(new File("official/soft/func/obj/inst_ram.coe")) match {
+    val instRamData = COEParse(new File("official/func_test/soft/func/obj/inst_ram.coe")) match {
       case Success(d) => d
       case Failure(exception) =>
         println(exception.getMessage)
@@ -36,7 +36,7 @@ object FuncTestNormal {
       .addPlugin(TerminatorPlugin(0xbfc00100L))
       .addPlugin(confreg.FuncTestConfRegPlugin())
       .addPlugin(WriteBackProducerPlugin())
-      .addPlugin(WriteBackComparerPlugin(new File("official/cpu132_gettrace/golden_trace.txt")))
+      .addPlugin(WriteBackComparerPlugin(new File("official/func_test/cpu132_gettrace/golden_trace.txt")))
       .onSetupSim { context =>
         context.mem.getElseAllocPage(0)
       }
