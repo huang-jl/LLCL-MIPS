@@ -519,6 +519,31 @@ class CPU extends Component {
     }
     IF1.stored(pc) := EX.stored(pc) + 8
   }
+
+//  IF1.stored(pc).addAttribute("mark_debug", "true")
+//  ME1.stored(pc).addAttribute("mark_debug", "true")
+//  ME2.stored(pc).addAttribute("mark_debug", "true")
+//  cp0.interruptOnNextInst.addAttribute("mark_debug", "true")
+//  cp0.regs("Cause")("IP_HW").addAttribute("mark_debug", "true")
+//  cp0.regs("Cause")("ExcCode").addAttribute("mark_debug", "true")
+//  cp0.regs("Status")("IM").addAttribute("mark_debug", "true")
+//
+//  dcu.io.stage2.read.addAttribute("mark_debug", "true")
+//  dcu.io.stage2.write.addAttribute("mark_debug", "true")
+//  dcu.io.stage2.byteEnable.addAttribute("mark_debug", "true")
+//  dcu.io.stage2.stall.addAttribute("mark_debug", "true")
+//  dcu.dcache.dcacheFSM.stateReg.addAttribute("mark_debug", "true")
+//  dcu.io.stage2.uncache.addAttribute("mark_debug", "true")
+//
+//  io.uncacheAXI.aw.valid.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.aw.ready.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.aw.addr.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.w.ready.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.w.valid.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.w.data.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.w.strb.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.b.valid.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.b.ready.addAttribute("mark_debug", "true")
 }
 
 object CPU {

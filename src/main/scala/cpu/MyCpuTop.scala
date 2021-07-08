@@ -29,7 +29,7 @@ class MyCPUTop extends Component {
 
     val axi = master(Axi4(ConstantVal.AXI_BUS_CONFIG))
 
-    val wid = out Bits (ConstantVal.AXI_BUS_CONFIG.idWidth bits)
+    val wid = out(UInt(ConstantVal.AXI_BUS_CONFIG.idWidth bits))
 
     val debug = out(DebugInterface())
   }
@@ -51,7 +51,9 @@ class MyCPUTop extends Component {
       Array(io.axi)
     )
     cpu.io.externalInterrupt := io.ext_int
-    io.wid := 0
+    // 每次发出写请求时就寄存一次wid
+    val wid = RegNextWhen(io.axi.aw.id, io.axi.aw.valid, U(0))
+    io.wid := wid
 
     val wb = io.debug.wb
     wb.rf.wen := B(4 bits, default -> cpu.WB.input(cpu.rfuWe).pull)
