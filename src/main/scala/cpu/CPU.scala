@@ -1,13 +1,15 @@
 package cpu
 
-import defs.Mips32InstImplicits._
-import defs.{ConstantVal, Mips32Inst}
 import cache.CacheRamConfig
+import cpu.defs.Mips32InstImplicits._
+import cpu.defs.{ConstantVal, Mips32Inst}
 import lib.{Key, Optional, Task}
-import tlb.{MMU, TLBEntry, TLBConfig}
 import spinal.core._
-import spinal.lib.{cpu => _, _}
 import spinal.lib.bus.amba4.axi._
+import spinal.lib.{cpu => _, _}
+import tlb.MMU
+import ip._
+import defs.config._
 
 class CPU extends Component {
   val io = new Bundle {
@@ -29,10 +31,41 @@ class CPU extends Component {
   val rfu = new RFU
   val cp0 = new CP0
   val mmu = new MMU(useTLB = ConstantVal.USE_TLB)
+  val btb = new Cache(
+    BTB.NUM_ENTRIES,
+    BTB.NUM_WAYS,
+    ADDR_WIDTH,
+    BTB.INDEX_OFFSET,
+    BTB.INDEX_WIDTH,
+    BTB.TAG_OFFSET,
+    BTB.TAG_WIDTH,
+    ADDR_WIDTH
+  )
+  btb.io.w.en.clear
+  btb.io.w.addr.clearAll
+  btb.io.w.dataLine.clearAll
+  btb.io.w.tagLine.clearAll
+  btb.io.w.wea.clearAll
+  btb.io.w.p.clearAll
+  btb.io.w.pEn.clear
+//  btb.io.r.en := False
+//  btb.io.r.addr := 0
 
-  val jumpPc = Key(Optional(UInt(32 bits)))
+  val btbDataLine = Key(Bits(BTB.NUM_WAYS * ADDR_WIDTH bits))
+  val btbTagLine  = Key(Bits(BTB.NUM_WAYS * (1 + BTB.TAG_WIDTH) bits))
+  val btbP        = Key(Bits(BTB.NUM_WAYS - 1 bits))
+  val btbHitLine  = Key(Bits(BTB.NUM_WAYS bits))
+  val btbWea      = Key(Bits(BTB.NUM_WAYS bits))
+  val btbData     = Key(Bits(ADDR_WIDTH bits))
+  val btbSetP     = Key(Bits(BTB.NUM_WAYS - 1 bits))
+  val btbClearP   = Key(Bits(BTB.NUM_WAYS - 1 bits))
+
+  val juOP    = Key(JU_OP()) setEmptyValue (JU_OP.f)
+  val juPCSrc = Key(JU_PC_SRC())
+  val jumpPc  = Key(Optional(UInt(32 bits))) setEmptyValue Optional.noneOf(UInt(32 bits))
 
   val pc         = Key(UInt(32 bits))
+  val pcPlus4    = Key(UInt(32 bits))
   val bd         = Key(Bool)
   val inst       = Key(Mips32Inst()) setEmptyValue ConstantVal.INST_NOP
   val exception  = Key(Optional(EXCEPTION()))
@@ -124,10 +157,7 @@ class CPU extends Component {
       output(rfuData) := dcu.io.stage2.rdata
     }
 
-    //TODO 是不是有点啰嗦
-    produced(rfuData) := ((stored(rfuRdSrc) === RFU_RD_SRC.mu) ?
-      output(rfuData) | stored(rfuData))
-
+    produced(rfuData) := stored(memRe) ? output(rfuData) | stored(rfuData)
   }
 
   val ME1 = new Stage {
@@ -146,13 +176,13 @@ class CPU extends Component {
     //因此全部放到ME第一阶段完成
     val hluC = new StageComponent {
       hlu.hi_we := input(hluHiWe)
-      output(hluHiData) := ((input(hluHiSrc) === HLU_SRC.rs) ?
-        input(rsValue) | input(aluResultC).asBits)
+      output(hluHiData) := (input(hluHiSrc) === HLU_SRC.rs) ?
+        input(rsValue) | input(aluResultC).asBits
       hlu.new_hi := output(hluHiData)
 
       hlu.lo_we := input(hluLoWe)
-      output(hluLoData) := ((input(hluLoSrc) === HLU_SRC.rs) ?
-        input(rsValue) | input(aluResultD).asBits)
+      output(hluLoData) := (input(hluLoSrc) === HLU_SRC.rs) ?
+        input(rsValue) | input(aluResultD).asBits
       hlu.new_lo := output(hluLoData)
     }
 
@@ -211,24 +241,67 @@ class CPU extends Component {
   }
 
   val EX = new Stage {
-//    when(
-//      ME.valid && ME.currentInput(rfuWe) &&
-//        ME.currentInput(rfuAddr) === input(inst).rs
-//    ) {
-//      input(rsValue) := ME.currentOutput(rfuData)
-//      when(ME.stalls) {
-//        stalls := True
+    val writeBTB = new StageComponent {
+      output(jumpPc) := None
+
+      when(stored(juPCSrc) =/= JU_PC_SRC.rs) {
+        when(stored(jumpPc).isDefined) {
+          when(ju.jump) {
+            btb.io.w.p := stored(btbSetP)
+          } otherwise {
+            btb.io.w.en := True
+            btb.io.w.addr := stored(pc)
+            btb.io.w.dataLine := stored(btbDataLine)
+            btb.io.w.tagLine := stored(btbTagLine)
+            btb.io.w.wea := stored(btbWea)
+            btb.io.w.p := stored(btbClearP)
+
+            output(jumpPc) := stored(pcPlus4) + 4
+          }
+
+          btb.io.w.pEn := True
+        } elsewhen ju.jump {
+          btb.io.w.en := True
+          btb.io.w.addr := stored(pc)
+          btb.io.w.dataLine := stored(btbDataLine)
+          btb.io.w.tagLine := stored(btbTagLine)
+          btb.io.w.wea := stored(btbWea)
+          btb.io.w.p := stored(btbSetP)
+
+          btb.io.w.pEn := True
+
+          output(jumpPc) := ju.jump_pc
+        }
+      } elsewhen ju.jump {
+        output(jumpPc) := ju.jump_pc
+      }
+    }
+
+    val juC = new StageComponent {
+      ju.op := input(juOP)
+      ju.a := input(rsValue).asSInt
+      ju.b := input(rtValue).asSInt
+      ju.pc_src := input(juPCSrc)
+      ju.pc := input(pcPlus4)
+      ju.offset := input(inst).offset
+      ju.index := input(inst).index
+
+//      when(ju.jump) {
+//        output(jumpPc) := ju.jump_pc
+//      } otherwise {
+//        output(jumpPc) := None
 //      }
-//    }
-//    when(
-//      ME.valid && ME.currentInput(rfuWe) &&
-//        ME.currentInput(rfuAddr) === input(inst).rt
-//    ) {
-//      input(rtValue) := ME.currentOutput(rfuData)
-//      when(ME.stalls) {
-//        stalls := True
-//      }
-//    }
+    }
+
+    val bdValue = RegInit(False)
+    when(will.output) {
+      bdValue := stored(juOP) =/= JU_OP.f
+    }
+    when(will.flush) {
+      bdValue := False
+    }
+    output(bd) := bdValue
+
     val aluC = new StageComponent {
       alu.io.input.op := input(aluOp)
       alu.io.input.a := input(aluASrc).mux(
@@ -288,12 +361,42 @@ class CPU extends Component {
   }
 
   val ID = new Stage {
+    val preCalcBTB = new StageComponent {
+      when(stored(jumpPc).isDefined) {
+        output(btbDataLine) := stored(btbDataLine)
+        output(btbTagLine) := btb.tagMem.write(
+          stored(btbTagLine),
+          stored(btbHitLine),
+          B(0, 1 + BTB.TAG_WIDTH bits)
+        )
+        output(btbWea) := stored(btbHitLine)
+        btb.getP(1, stored(btbHitLine), True, output(btbSetP))
+        btb.getP(1, stored(btbHitLine), False, output(btbClearP))
+      } otherwise {
+        val jumpPC = du.io.ju_pc_src.mux(
+          JU_PC_SRC.offset -> U(S(stored(pcPlus4)) + S(du.io.inst.offset ## B"00")),
+          default          -> U(stored(pcPlus4)(31 downto 28) ## du.io.inst.index ## B"00")
+        )
+        output(btbDataLine) := btb.dataMem.write(stored(btbDataLine), output(btbWea), B(jumpPC))
+        output(btbTagLine) := btb.tagMem.write(
+          stored(btbTagLine),
+          output(btbWea),
+          True ## B(stored(pc)(BTB.TAG_OFFSET, BTB.TAG_WIDTH bits))
+        )
+        output(btbWea) := btb.plru(1, stored(btbP), True)
+        btb.getP(1, output(btbWea), True, output(btbSetP))
+        output(btbClearP).clearAll
+      }
+    }
+
     val duC = new StageComponent {
       du.io.inst := input(inst)
 
       output(aluOp) := du.io.alu_op
       output(aluASrc) := du.io.alu_a_src
       output(aluBSrc) := du.io.alu_b_src
+      output(juOP) := du.io.ju_op
+      output(juPCSrc) := du.io.ju_pc_src
       output(memRe) := du.io.dcu_re
       output(memWe) := du.io.dcu_we
       output(memBe) := du.io.dcu_be
@@ -310,6 +413,7 @@ class CPU extends Component {
       output(useRs) := du.io.use_rs
       output(useRt) := du.io.use_rt
       output(eret) := du.io.eret
+
       if (ConstantVal.USE_TLB) {
         output(tlbr) := du.io.tlbr
         output(tlbw) := du.io.tlbw
@@ -324,37 +428,6 @@ class CPU extends Component {
       output(rsValue) := rfu.io.ra.data
       output(rtValue) := rfu.io.rb.data
     }
-
-//    val cp0Read = new StageComponent {
-//      cp0.io.read.addr.rd := input(inst).rd
-//      cp0.io.read.addr.sel := input(inst).sel
-//    output(rfuData) := cp0.io.read.data
-    //    }
-
-    val juC = new StageComponent {
-      ju.op := du.io.ju_op
-      ju.a := produced(rsValue).asSInt
-      ju.b := produced(rtValue).asSInt
-      ju.pc_src := du.io.ju_pc_src
-      ju.pc := input(pc) + 4
-      ju.offset := input(inst).offset
-      ju.index := input(inst).index
-
-      when(ju.jump) {
-        output(jumpPc) := ju.jump_pc
-      } otherwise {
-        output(jumpPc) := None
-      }
-    }
-
-    val bdValue = RegInit(False)
-    when(will.output) {
-      bdValue := du.io.ju_op =/= JU_OP.f
-    }
-    when(will.flush) {
-      bdValue := False
-    }
-    output(bd) := bdValue
 
     when(EX.stored(rfuWe) && EX.stored(rfuAddr) === stored(inst).rs) {
       produced(rsValue) := EX.produced(rfuData)
@@ -376,10 +449,6 @@ class CPU extends Component {
       produced(rtValue) := WB.stored(rfuData)
     }
 
-//    produced(rfuData) := output(rfuRdSrc) mux (
-//      RFU_RD_SRC.cp0 -> cp0Read.output(rfuData),
-//      default        -> B(input(pc) + 8)
-//    )
     output(rfuData) := B(input(pc) + 8)
 
     val wantForwardFromEX =
@@ -396,6 +465,27 @@ class CPU extends Component {
   }
 
   val IF2 = new Stage {
+    output(pcPlus4) := stored(pc) + 4
+
+    val decideJump = new StageComponent {
+      output(btbDataLine) := btb.io.r.dataLine
+      output(btbTagLine) := btb.io.r.tagLine
+      output(btbP) := btb.io.r.p
+
+      btb.getHitLineAndData(
+        btb.io.r.tagLine,
+        btb.io.r.dataLine,
+        stored(pc),
+        output(btbHitLine),
+        output(btbData)
+      )
+
+      output(jumpPc) := None
+      when(!is.empty & output(btbHitLine).orR) {
+        output(jumpPc) := U(output(btbData))
+      }
+    }
+
     val icuC = new StageComponent {
       io.icacheAXI <> icu.io.axi
       //ibus
@@ -408,12 +498,28 @@ class CPU extends Component {
   }
 
   val IF1 = new Stage {
+    val readBTB = new StageComponent {
+      btb.io.r.en := will.output
+      btb.io.r.addr := stored(pc)
+    }
+
     val jumpTask =
-      Task(ID.is.done & ID.output(jumpPc).isDefined, ID.output(jumpPc).value, will.output)
+      Task(
+        RegNext(IF2.will.input) & IF2.produced(jumpPc).isDefined,
+        IF2.produced(jumpPc).value,
+        will.output
+      )
+    val jumpTask2 = Task(
+      RegNext(EX.will.input) & EX.produced(jumpPc).isDefined,
+      EX.produced(jumpPc).value,
+      will.output
+    )
     val setTask = Task(ME1.is.done & cp0.io.jumpPc.isDefined, cp0.io.jumpPc.value, will.output)
     stored(pc) init ConstantVal.INIT_PC
     when(will.output) {
-      stored(pc) := setTask.has ? setTask.value | (jumpTask.has ? jumpTask.value | stored(pc) + 4)
+      stored(pc) := setTask.has ?
+        setTask.value |
+        (jumpTask2.has ? jumpTask2.value | (jumpTask.has ? jumpTask.value | stored(pc) + 4))
     }
 
     val icuC = new StageComponent {
@@ -453,7 +559,7 @@ class CPU extends Component {
   }
 
   cp0.io.instOnInt.valid := !EX.is.empty
-  cp0.io.instOnInt.bd := EX.stored(bd)
+  cp0.io.instOnInt.bd := EX.bdValue
   cp0.io.instOnInt.pc := EX.stored(pc)
   val stages = Seq(IF1, IF2, ID, EX, ME1, ME2, WB)
   for ((prev, next) <- (stages zip stages.tail).reverse) {
@@ -465,9 +571,9 @@ class CPU extends Component {
   IF2.can.flush := !icu.io.ibus.stage2.stall
 
   ID.is.done :=
-    !(ID.wantForwardFromEX && EX.stored(rfuRdSrc) === RFU_RD_SRC.mu ||
-      ID.wantForwardFromME1 && ME1.stored(rfuRdSrc) === RFU_RD_SRC.mu ||
-      ID.wantForwardFromME2 && ME2.stored(rfuRdSrc) === RFU_RD_SRC.mu && !ME2.is.done)
+    !(ID.wantForwardFromEX & EX.stored(memRe) |
+      ID.wantForwardFromME1 & ME1.stored(memRe) |
+      ID.wantForwardFromME2 & ME2.stored(memRe) & !ME2.is.done)
 
   EX.is.done := !alu.io.stall
   EX.can.flush := !alu.io.stall
@@ -493,9 +599,13 @@ class CPU extends Component {
     EX.want.flush := True
   }
 
-  // 一旦检测到跳转就让给IF2的指令无效
-  when(ID.is.done & ID.output(jumpPc).isDefined) {
-    IF1.want.flush := True
+  when(RegNext(EX.will.input) & EX.produced(jumpPc).isDefined) {
+    when(!ID.is.empty) {
+      IF2.want.flush := True
+    }
+    when(!(ID.is.empty & IF2.is.empty)) {
+      IF1.want.flush := True
+    }
   }
 }
 

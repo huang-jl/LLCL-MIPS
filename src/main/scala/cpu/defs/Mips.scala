@@ -1,8 +1,7 @@
 package cpu.defs
 
-import spinal.core._
-
 import cpu.Utils._
+import spinal.core._
 
 object Fields {
   val rs     = 25 downto 21
@@ -21,18 +20,24 @@ object Fields {
 case class Mips32Inst() extends Bundle {
   val bits = Bits(32 bits)
 
-  def rs          = bits(Fields.rs).asUInt
-  def rt          = bits(Fields.rt).asUInt
-  def rd          = bits(Fields.rd).asUInt
-  def sa          = bits(Fields.sa).asUInt
-  def imm         = bits(Fields.imm)
+  def rs = bits(Fields.rs).asUInt
+  def rt = bits(Fields.rt).asUInt
+  def rd = bits(Fields.rd).asUInt
+  def sa = bits(Fields.sa).asUInt
+
   def immExtended = op(2) ? zeroExtend(imm) | signExtend(imm)
-  def offset      = bits(Fields.offset).asSInt
-  def index       = bits(Fields.index).asUInt
-  def op          = bits(Fields.op)
-  def fn          = bits(Fields.fn)
-  def co          = bits(Fields.co)
-  def sel         = bits(Fields.sel).asUInt
+
+  def imm = bits(Fields.imm)
+
+  def op = bits(Fields.op)
+
+  def offset = bits(Fields.offset).asSInt
+
+  def index = bits(Fields.index).asUInt
+
+  def fn  = bits(Fields.fn)
+  def co  = bits(Fields.co)
+  def sel = bits(Fields.sel).asUInt
 }
 
 object Mips32InstImplicits {
@@ -56,6 +61,21 @@ object Mips32InstImplicits {
 class InstructionSpec(val mask: MaskedLiteral = MaskedLiteral("-" * 32)) {
   assert(mask.width == 32)
 
+  def force(index: Int, value: MaskedLiteral): InstructionSpec =
+    force(index to index, value)
+
+  def force(index: Int, value: String): InstructionSpec =
+    force(index to index, value)
+
+  def force(range: Range, value: String): InstructionSpec =
+    force(range, MaskedLiteral(value))
+
+  def forceZero(index: Int): InstructionSpec =
+    forceZero(index to index)
+
+  def forceZero(range: Range) =
+    force(range, MaskedLiteral("0" * range.length))
+
   def force(range: Range, value: MaskedLiteral) = {
     val min    = range.min
     val max    = range.max
@@ -72,56 +92,9 @@ class InstructionSpec(val mask: MaskedLiteral = MaskedLiteral("-" * 32)) {
       )
     )
   }
-
-  def force(range: Range, value: String): InstructionSpec =
-    force(range, MaskedLiteral(value))
-
-  def forceZero(range: Range) =
-    force(range, MaskedLiteral("0" * range.length))
-
-  def force(index: Int, value: MaskedLiteral): InstructionSpec =
-    force(index to index, value)
-  def force(index: Int, value: String): InstructionSpec =
-    force(index to index, value)
-  def forceZero(index: Int): InstructionSpec =
-    forceZero(index to index)
 }
 
 object InstructionSpec {
-  def apply(mask: MaskedLiteral = MaskedLiteral("-" * 32)) =
-    new InstructionSpec(mask)
-
-  private def IType(op: String, rt: String = "-----") =
-    InstructionSpec().force(Fields.op, op).force(Fields.rt, rt)
-
-  private def JType(op: String) =
-    InstructionSpec().force(Fields.op, op)
-
-  private def RType(op: String, fn: String, sa: String = "00000") =
-    InstructionSpec()
-      .force(Fields.op, op)
-      .force(Fields.fn, fn)
-      .force(Fields.sa, sa)
-
-  private def special(fn: String, sa: String = "00000") =
-    RType(op = "000000", fn = fn, sa = sa)
-
-  private def regimm(rt: String) = IType(op = "000001", rt = rt)
-
-  private def cop0(rs: String) =
-    InstructionSpec()
-      .force(Fields.op, "010000")
-      .force(Fields.rs, rs)
-      .force(10 downto 3, "00000000")
-
-  private def cop0co(fn: String, fillZeros: Boolean = true) = {
-    val spec = InstructionSpec()
-      .force(Fields.op, "010000")
-      .force(Fields.co, "1")
-      .force(Fields.fn, fn)
-    if (fillZeros) spec.force(24 downto 6, "0" * 19) else spec
-  }
-
   val ADD   = special(fn = "100000")
   val ADDI  = IType(op = "001000")
   val ADDU  = special(fn = "100001")
@@ -195,9 +168,42 @@ object InstructionSpec {
   val MFC0 = cop0(rs = "00000")
   val MTC0 = cop0(rs = "00100")
 
-  val TLBP = cop0co(fn = "001000")    //probe tlb for matching entry
-  val TLBR = cop0co(fn = "000001")    //read indexed tlb entry
-  val TLBWI = cop0co(fn = "000010")   //write tlb entry indexed by Index CP0 Reg
-  val TLBWR = cop0co(fn = "000110")   //writte tlb entry indexed by Random CP0 Reg
+  val TLBP  = cop0co(fn = "001000") //probe tlb for matching entry
+  val TLBR  = cop0co(fn = "000001") //read indexed tlb entry
+  val TLBWI = cop0co(fn = "000010") //write tlb entry indexed by Index CP0 Reg
+  val TLBWR = cop0co(fn = "000110") //writte tlb entry indexed by Random CP0 Reg
 
+  private def JType(op: String) =
+    InstructionSpec().force(Fields.op, op)
+
+  private def special(fn: String, sa: String = "00000") =
+    RType(op = "000000", fn = fn, sa = sa)
+
+  private def RType(op: String, fn: String, sa: String = "00000") =
+    InstructionSpec()
+      .force(Fields.op, op)
+      .force(Fields.fn, fn)
+      .force(Fields.sa, sa)
+
+  private def regimm(rt: String) = IType(op = "000001", rt = rt)
+
+  private def IType(op: String, rt: String = "-----") =
+    InstructionSpec().force(Fields.op, op).force(Fields.rt, rt)
+
+  private def cop0(rs: String) =
+    InstructionSpec()
+      .force(Fields.op, "010000")
+      .force(Fields.rs, rs)
+      .force(10 downto 3, "00000000")
+
+  def apply(mask: MaskedLiteral = MaskedLiteral("-" * 32)) =
+    new InstructionSpec(mask)
+
+  private def cop0co(fn: String, fillZeros: Boolean = true) = {
+    val spec = InstructionSpec()
+      .force(Fields.op, "010000")
+      .force(Fields.co, "1")
+      .force(Fields.fn, fn)
+    if (fillZeros) spec.force(24 downto 6, "0" * 19) else spec
+  }
 }
