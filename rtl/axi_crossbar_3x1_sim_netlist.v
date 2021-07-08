@@ -4,15 +4,13 @@
 // --------------------------------------------------------------------------------
 // Tool Version: Vivado v.2019.2 (win64) Build 2708876 Wed Nov  6 21:40:23 MST 2019
 // Date        : Tue Jun 29 21:40:00 2021
-// Host        : BLADE running 64-bit major release  (build 9200)
-// Command     : write_verilog -force -mode funcsim
-//               c:/Users/trcyx/Documents/loongsun/nscscc2021_group_v0.01/func_test_v0.01/soc_axi_func/run_vivado/mycpu_prj1/mycpu.srcs/sources_1/ip/axi_crossbar_3x1/axi_crossbar_3x1_sim_netlist.v
+// Host        : 
+// Command     : 
 // Design      : axi_crossbar_3x1
 // Purpose     : This verilog netlist is a functional simulation representation of the design and should not be modified
 //               or synthesized. This netlist cannot be used for SDF annotated simulation.
 // Device      : xc7a200tfbg676-2
 // --------------------------------------------------------------------------------
-
 `timescale 1 ps / 1 ps
 
 (* CHECK_LICENSE_TYPE = "axi_crossbar_3x1,axi_crossbar_v2_1_21_axi_crossbar,{}" *) (* DowngradeIPIdentifiedWarnings = "yes" *) (* X_CORE_INFO = "axi_crossbar_v2_1_21_axi_crossbar,Vivado 2019.2" *) 
