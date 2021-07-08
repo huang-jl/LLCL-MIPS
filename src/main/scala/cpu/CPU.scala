@@ -530,7 +530,6 @@ class CPU extends Component {
 //
 //  dcu.io.stage2.read.addAttribute("mark_debug", "true")
 //  dcu.io.stage2.write.addAttribute("mark_debug", "true")
-//  dcu.io.stage2.byteEnable.addAttribute("mark_debug", "true")
 //  dcu.io.stage2.stall.addAttribute("mark_debug", "true")
 //  dcu.dcache.dcacheFSM.stateReg.addAttribute("mark_debug", "true")
 //  dcu.io.stage2.uncache.addAttribute("mark_debug", "true")
@@ -538,6 +537,10 @@ class CPU extends Component {
 //  io.uncacheAXI.aw.valid.addAttribute("mark_debug", "true")
 //  io.uncacheAXI.aw.ready.addAttribute("mark_debug", "true")
 //  io.uncacheAXI.aw.addr.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.aw.len.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.aw.size.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.aw.burst.addAttribute("mark_debug", "true")
+//
 //  io.uncacheAXI.w.ready.addAttribute("mark_debug", "true")
 //  io.uncacheAXI.w.valid.addAttribute("mark_debug", "true")
 //  io.uncacheAXI.w.data.addAttribute("mark_debug", "true")
