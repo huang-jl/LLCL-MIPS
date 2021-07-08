@@ -543,7 +543,7 @@ class CP0 extends Component {
   }
 
   // Interrupt
-  val interrupts          = regs("Cause")("IP_HW") ## regs("Cause").next("IP_SW")
+  val interrupts          = (regs("Cause")("IP_HW") ## regs("Cause").next("IP_SW")) & regs("Status")("IM")
   val interruptOnNextInst = Updating(Bool) init False
   io.interruptOnNextInst := interruptOnNextInst.next
 
