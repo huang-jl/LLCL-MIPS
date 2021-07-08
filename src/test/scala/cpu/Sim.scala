@@ -104,7 +104,7 @@ object Sim {
       )
     )
 
-    simulator      .addPlugin(PCBroadcastPlugin(10000))
+    simulator.addPlugin(PCBroadcastPlugin(10000))
 
     for (plugin <- funcTest.FuncTestConfRegs) {
       simulator.addPlugin(plugin)
