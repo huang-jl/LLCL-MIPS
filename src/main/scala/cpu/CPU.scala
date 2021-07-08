@@ -280,6 +280,7 @@ class CPU extends Component {
     }
 
     // CP0 harzard : 根据ME1的情况暂停EX阶段
+    // TODO 不必精确到CP0寄存器，只要RAW就可以暂停
     val cp0_RAW_hazard = new Area {
       //当前指令mfc0，上一条指令mtc0 | tlbp | tlbr ，则需要暂停一个周期
       val mfc0_mtc0_hazard: Bool = !ME1.is.empty & input(cp0Re) & ME1.stored(cp0We) &
@@ -520,12 +521,15 @@ class CPU extends Component {
     IF1.stored(pc) := EX.stored(pc) + 8
   }
 
-//  IF1.stored(pc).addAttribute("mark_debug", "true")
-//  ME1.stored(pc).addAttribute("mark_debug", "true")
-//  ME2.stored(pc).addAttribute("mark_debug", "true")
+  IF1.stored(pc).addAttribute("mark_debug", "true")
+  IF2.stored(ifPaddr).addAttribute("mark_debug", "true")
+  IF2.stored(pc).addAttribute("mark_debug", "true")
+  ME1.stored(pc).addAttribute("mark_debug", "true")
+  ME1.stored(dataMMURes).paddr.addAttribute("mark_debug", "true")
+  ME2.stored(pc).addAttribute("mark_debug", "true")
 //  cp0.interruptOnNextInst.addAttribute("mark_debug", "true")
 //  cp0.regs("Cause")("IP_HW").addAttribute("mark_debug", "true")
-//  cp0.regs("Cause")("ExcCode").addAttribute("mark_debug", "true")
+  cp0.regs("Cause")("ExcCode").addAttribute("mark_debug", "true")
 //  cp0.regs("Status")("IM").addAttribute("mark_debug", "true")
 //
 //  dcu.io.stage2.read.addAttribute("mark_debug", "true")
