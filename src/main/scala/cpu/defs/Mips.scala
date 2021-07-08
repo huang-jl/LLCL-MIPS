@@ -106,6 +106,9 @@ object InstructionSpec {
   private def special(fn: String, sa: String = "00000") =
     RType(op = "000000", fn = fn, sa = sa)
 
+  private def special2(fn: String, sa: String = "00000") =
+    RType(op = "011100", fn = fn, sa = sa)
+
   private def regimm(rt: String) = IType(op = "000001", rt = rt)
 
   private def cop0(rs: String) =
@@ -134,6 +137,7 @@ object InstructionSpec {
   val SLTIU = IType(op = "001011")
   val DIV   = special(fn = "011010").forceZero(Fields.rd)
   val DIVU  = special(fn = "011011").forceZero(Fields.rd)
+  val MUL   = special2(fn = "000010")
   val MULT  = special(fn = "011000").forceZero(Fields.rd)
   val MULTU = special(fn = "011001").forceZero(Fields.rd)
 
@@ -195,9 +199,9 @@ object InstructionSpec {
   val MFC0 = cop0(rs = "00000")
   val MTC0 = cop0(rs = "00100")
 
-  val TLBP = cop0co(fn = "001000")    //probe tlb for matching entry
-  val TLBR = cop0co(fn = "000001")    //read indexed tlb entry
-  val TLBWI = cop0co(fn = "000010")   //write tlb entry indexed by Index CP0 Reg
-  val TLBWR = cop0co(fn = "000110")   //writte tlb entry indexed by Random CP0 Reg
+  val TLBP  = cop0co(fn = "001000") //probe tlb for matching entry
+  val TLBR  = cop0co(fn = "000001") //read indexed tlb entry
+  val TLBWI = cop0co(fn = "000010") //write tlb entry indexed by Index CP0 Reg
+  val TLBWR = cop0co(fn = "000110") //writte tlb entry indexed by Random CP0 Reg
 
 }

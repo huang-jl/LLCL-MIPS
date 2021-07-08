@@ -7,7 +7,7 @@ import spinal.lib.fsm._
 
 object ALU_OP extends SpinalEnum {
   val add, addu, sub, subu, and, or, xor, nor, sll, lu, srl, sra, mult, multu, div, divu, slt,
-      sltu = newElement()
+      sltu, mul = newElement()
 }
 
 object ALU_A_SRC extends SpinalEnum {
@@ -53,7 +53,7 @@ class ALU extends Component {
 
   //无符号有符号转换
   val abs = new Area {
-    val signed: Bool = Utils.equalAny(io.input.op, div, mult)
+    val signed: Bool = Utils.equalAny(io.input.op, div, mult, mul)
     val a: UInt      = signed ? io.input.a.asSInt.abs | io.input.a //如果a[31]为1则转为补码，否则不变
     val b: UInt      = signed ? io.input.b.asSInt.abs | io.input.b //如果b[31]为1则转为补码，否则不变
   }
@@ -155,6 +155,9 @@ class ALU extends Component {
     }
     is(sra) {
       c := U(S(b) >> a(4 downto 0))
+    }
+    is(mul) {
+      c := multiply.result(0, 32 bits)
     }
     is(mult) {
 //      val temp = U(S(a) * S(b))

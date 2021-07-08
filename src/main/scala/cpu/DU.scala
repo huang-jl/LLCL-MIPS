@@ -141,7 +141,8 @@ class DU extends Component {
       SUB  -> ALU_OP.sub,
       SUBU -> ALU_OP.subu,
       SLT  -> ALU_OP.slt,
-      SLTU -> ALU_OP.sltu
+      SLTU -> ALU_OP.sltu,
+      MUL  -> ALU_OP.mul
     ) ++ Map(
       AND -> ALU_OP.and,
       NOR -> ALU_OP.nor,
