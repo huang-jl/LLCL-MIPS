@@ -50,8 +50,8 @@ case class WriteBackProducerPlugin() extends Simulator.Plugin {
     val debugWb = context.soc.io.debugInterface.wb
 
     while (true) {
-      context.sysClockDomain.waitSampling()
-      context.sysClockDomain.waitEdge(1) // 等待下沿
+      context.cpuClockDomain.waitSampling()
+      context.cpuClockDomain.waitEdge(1) // 等待下沿
       if (debugWb.rf.wen.toInt != 0 && context.openTrace) {
         val wb = WriteBack(
           pc = debugWb.pc.toLong,
