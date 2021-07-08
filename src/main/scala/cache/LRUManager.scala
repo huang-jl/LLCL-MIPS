@@ -5,8 +5,21 @@ import spinal.lib.{OHToUInt, Reverse}
 
 object LRUManegr {
   def main(args: Array[String]): Unit = {
-    SpinalVerilog(new LRUManegr(8))
+//    SpinalVerilog(new LRUManegr(8))
+    SpinalVerilog(new Component {
+      val io = new Bundle {
+        val x = in Bool
+        val y = out Bits (10 bits)
+      }
+      val temp = Vec(Reg(Bits(1 bits)) init(0), 10)
+      io.y := temp.asBits
+    })
   }
+}
+
+class PLRU(bitLength: Int) extends Bundle {
+  val prev = Vec(Reg(Bool) init(False), bitLength)
+  val next = Vec(Bool, bitLength)
 }
 
 /** @param wayNum 表示路数，仅支持2 4 8路组
@@ -25,39 +38,39 @@ case class LRUCalculator(wayNum: Int) {
     }
   }
 
-  private def way2(status: Bits): UInt = {
+  private def way2(status:Bits): UInt = {
     assert(status.getBitsWidth == 1)
     (!status(0)).asUInt
   }
 
-  private def way4(status: Bits): UInt = {
+  private def way4(status:Bits): UInt = {
     assert(status.getBitsWidth == 3)
     status(0) ? way2(status(1).asBits).resize(2) |
       U"1'b1" @@ way2(status(2).asBits)
   }
 
-  private def way8(status: Bits): UInt = {
+  private def way8(status:Bits): UInt = {
     assert(status.getBitsWidth == 7)
     status(0) ? way4(status(4) ## status(3) ## status(1)).resize(3) |
       U"1'b1" @@ way4(status(6) ## status(5) ## status(2))
   }
 
-  def leastRecentUsedIndex(status: Bits): UInt = {
+  def leastRecentUsedIndex(status:Vec[Bool]): UInt = {
     assert(status.getBitsWidth == statusLength)
 
     wayNum match {
-      case 2 => way2(status)
-      case 4 => way4(status)
-      case 8 => way8(status)
+      case 2 => way2(status.asBits)
+      case 4 => way4(status.asBits)
+      case 8 => way8(status.asBits)
     }
   }
 
-  private def updateWay2(access: Bits, status: Bits): Unit = {
+  private def updateWay2(access: Bits, status:Vec[Bool]): Unit = {
     assert(access.getBitsWidth == 1 && status.getBitsWidth == 1)
-    status(0, 1 bits) := access
+    status(0) := access(0)
   }
 
-  private def updateWay4(access: Bits, status: Bits): Unit = {
+  private def updateWay4(access: Bits, status: Vec[Bool]): Unit = {
     assert(access.getBitsWidth == 2 && status.getBitsWidth == 3)
     status(0) := access(1)
     when(access(1)) {
@@ -67,7 +80,7 @@ case class LRUCalculator(wayNum: Int) {
     }
   }
 
-  private def updateWay8(access: Bits, status: Bits): Unit = {
+  private def updateWay8(access: Bits, status:Vec[Bool]): Unit = {
     assert(access.getBitsWidth == 3 && status.getBitsWidth == 7)
     status(0) := access(2)
     when(access(2)) {
@@ -87,7 +100,7 @@ case class LRUCalculator(wayNum: Int) {
     }
   }
 
-  def updateStatus(access: UInt, status: Bits): Unit = {
+  def updateStatus(access: UInt, status:Vec[Bool]): Unit = {
     assert(status.getBitsWidth == statusLength)
     wayNum match {
       case 2 => updateWay2(access.asBits, status)

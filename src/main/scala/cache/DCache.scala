@@ -100,8 +100,13 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     */
   val LRU = new Area {
     val manager = LRUCalculator(config.wayNum)
-    val plru = Vec.fill(config.setSize) {
-      Updating(Bits(manager.statusLength bits)) init(0)
+//    val plru = Vec.fill(config.setSize) {
+//      Updating(Bits(manager.statusLength bits)) init(0)
+//    }
+    val plru = Vec.fill(config.setSize)(new PLRU(manager.statusLength))
+    for (i <- 0 until config.setSize) {
+      plru(i).prev := plru(i).next
+      plru(i).next := plru(i).prev
     }
     val wayIndex = Vec(UInt(log2Up(config.wayNum) bits), config.setSize)
     for (i <- 0 until config.setSize) {
@@ -291,6 +296,8 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
       io.uncacheAXI.ar.size := U"3'b010" //2^2 = 4Bytes
       io.uncacheAXI.aw.size := U"3'b010" //2^2 = 4Bytes
     }
+//    io.uncacheAXI.ar.size := U"3'b010" //2^2 = 4Bytes
+//    io.uncacheAXI.aw.size := U"3'b010" //2^2 = 4Bytes
 
     io.uncacheAXI.ar.id := U"4'b0010"
     io.uncacheAXI.ar.lock := 0
@@ -533,6 +540,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     pushTags(replace.wayIndex).valid & pushTags(replace.wayIndex).dirty
   fifo.pushTag := pushTags(replace.wayIndex).tag ## stage2.index
   fifo.pushData := cacheDatas(replace.wayIndex).next.asBits
+
   fifo.queryTag := stage2.tag ## stage2.index
   fifo.queryWData := 0
   fifo.queryWData(stage2.wordOffset << 5, 32 bits) := cache.wdata //byteOffset << 3对应cpu.addr的bit偏移
@@ -587,6 +595,22 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
       }
     }
   }
+
+
+//  io.uncacheAXI.w.ready.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.w.valid.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.w.data.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.w.strb.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.w.last.addAttribute("mark_debug", "true")
+//
+//  io.uncacheAXI.aw.addr.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.aw.len.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.aw.size.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.aw.valid.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.aw.ready.addAttribute("mark_debug", "true")
+//
+//  io.uncacheAXI.b.ready.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.b.valid.addAttribute("mark_debug", "true")
 }
 
 object DCache {

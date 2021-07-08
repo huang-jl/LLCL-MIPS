@@ -71,8 +71,13 @@ class ICache(config: CacheRamConfig) extends Component {
 
   val LRU = new Area {
     val manager = LRUCalculator(config.wayNum)
-    val plru = Vec.fill(config.setSize) {
-      Updating(Bits(manager.statusLength bits)) init(0)
+//    val plru = Vec.fill(config.setSize) {
+//      Updating(Bits(manager.statusLength bits)) init(0)
+//    }
+    val plru = Vec.fill(config.setSize)(new PLRU(manager.statusLength))
+    for (i <- 0 until config.setSize) {
+      plru(i).prev := plru(i).next
+      plru(i).next := plru(i).prev
     }
     val wayIndex = Vec(UInt(log2Up(config.wayNum) bits), config.setSize)
     for (i <- 0 until config.setSize) {
@@ -283,6 +288,6 @@ class ICache(config: CacheRamConfig) extends Component {
 
 object ICache {
   def main(args: Array[String]): Unit = {
-    SpinalVerilog(new ICache(CacheRamConfig())).printPruned()
+    SpinalVerilog(new ICache(CacheRamConfig(wayNum = 4))).printPruned()
   }
 }

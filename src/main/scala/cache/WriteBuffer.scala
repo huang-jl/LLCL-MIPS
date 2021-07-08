@@ -21,6 +21,7 @@ object WriteBuffer {
 }
 
 class WriteBufferInterface(config: WriteBufferConfig) extends Bundle with IMasterSlave {
+  //要查询和写合并的信号
   val write: Bool = Bool //是否把queryWData写入对应命中的cache中
   val queryTag: Bits = Bits(config.tagWidth bits) //要查询的tag
   val queryBE: Bits = Bits(config.beWidth bits) //要写入FIFO数据的byteEnable信号，长度为一个cache line的byte数量
