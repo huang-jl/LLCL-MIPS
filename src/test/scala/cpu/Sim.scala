@@ -104,9 +104,11 @@ object Sim {
       )
     )
 
-    simulator
-      .addPlugin(PCBroadcastPlugin(10000))
-      .addPlugin(confreg.FuncTestConfRegPlugin())
+    simulator      .addPlugin(PCBroadcastPlugin(10000))
+
+    for (plugin <- funcTest.FuncTestConfRegs) {
+      simulator.addPlugin(plugin)
+    }
 
     for (finalPc <- config.finalPc) {
       simulator.addPlugin(TerminatorPlugin(finalPc))

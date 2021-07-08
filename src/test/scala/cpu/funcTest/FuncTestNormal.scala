@@ -30,11 +30,14 @@ object FuncTestNormal {
       )
     )
 
+    for (plugin <- FuncTestConfRegs) {
+      simulator.addPlugin(plugin)
+    }
+
     simulator
       .addPlugin(PCBroadcastPlugin(period = 10000))
       .addPlugin(TimeoutPlugin(timeout = 20000000))
       .addPlugin(TerminatorPlugin(0xbfc00100L))
-      .addPlugin(confreg.FuncTestConfRegPlugin())
       .addPlugin(WriteBackProducerPlugin())
       .addPlugin(WriteBackComparerPlugin(new File("official/func_test/cpu132_gettrace/golden_trace.txt")))
       .onSetupSim { context =>

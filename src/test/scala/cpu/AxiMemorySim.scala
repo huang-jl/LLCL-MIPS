@@ -14,15 +14,20 @@ import scala.collection.mutable
 import scala.util.Random
 
 trait MappedIODevice {
-  def read(addr: Long, length: Int): Array[Byte]
-  def write(addr: Long, data: Array[Byte]): Unit
+  def read(addr: Long, length: Int): Array[Byte] = MappedIODevice.disallowedRead(addr)
+  def write(addr: Long, data: Array[Byte]): Unit = MappedIODevice.disallowedWrite(addr)
+}
+
+object MappedIODevice {
+  def disallowedRead(addr: Long)  = simFailure(f"Disallowed read to $addr%08x")
+  def disallowedWrite(addr: Long) = simFailure(f"Disallowed write to $addr%08x")
 }
 
 trait PerByte {
   this: MappedIODevice =>
 
-  def readByte(addr: Long): Byte
-  def writeByte(addr: Long, data: Byte): Unit
+  def readByte(addr: Long): Byte              = MappedIODevice.disallowedRead(addr)
+  def writeByte(addr: Long, data: Byte): Unit = MappedIODevice.disallowedWrite(addr)
 
   override def read(addr: Long, length: Int) =
     ((addr until (addr + length)) map readByte).toArray
@@ -35,46 +40,25 @@ trait PerWord {
   this: MappedIODevice =>
 
   // addr will be aligned by 4
-  def readWord(addr: Long): Int
-  def writeWord(addr: Long, data: Int): Unit
+  def readWord(addr: Long): Int              = MappedIODevice.disallowedRead(addr)
+  def writeWord(addr: Long, data: Int): Unit = MappedIODevice.disallowedWrite(addr)
 
   override def read(addr: Long, length: Int) = {
-    val startPaddingLength = (addr % 4).toInt
-    val endPaddingLength   = 3 - ((addr + length + 3) % 4).toInt
+    if (addr % 4 != 0 || length % 4 != 0)
+      simFailure(f"Unaligned read to PerWord MappedIODevice at $addr%08x")
 
-    if (startPaddingLength != 0 || endPaddingLength != 0)
-      println("Unaligned read to PerWord MappedIODevice")
-
-    val start = addr - startPaddingLength
-    val end   = addr + length + endPaddingLength
-
-    val words = (start until end by 4) map readWord
-    val bytes = for (w <- words; i <- 0 until 4) yield (w >> (i * 8)).toByte
-    bytes.drop(startPaddingLength).take(length).toArray
+    val words = (addr until (addr + length) by 4) map readWord
+    (for (w <- words; i <- 0 until 4) yield (w >> (i * 8)).toByte).toArray
   }
 
   override def write(addr: Long, data: Array[Byte]) = {
-    val length             = data.length
-    val startPaddingLength = (addr % 4).toInt
-    val endPaddingLength   = 3 - ((addr + length + 3) % 4).toInt
+    val length = data.length
 
-    val bytes = if (startPaddingLength != 0 || endPaddingLength != 0) {
-      println("Unaligned read to PerWord MappedIODevice")
+    if (addr % 4 != 0 || length % 4 != 0)
+      simFailure("Unaligned read to PerWord MappedIODevice")
 
-      val startPadding = Array.fill(startPaddingLength)(0.toByte)
-      Random.nextBytes(startPadding)
-      val endPadding = Array.fill(endPaddingLength)(0.toByte)
-      Random.nextBytes(endPadding)
-
-      startPadding ++ data ++ endPadding
-    } else {
-      data
-    }
-    assert(bytes.length % 4 == 0)
-
-    val start = addr - startPaddingLength
-    for (i <- data.indices by 4) {
-      writeWord(start + i, (0 until 4) map { j => bytes(i + j).toInt << (j * 8) } reduce { _ | _ })
+    for (i <- 0 until length by 4) {
+      writeWord(addr + i, (0 until 4) map { j => data(i + j).toInt << (j * 8) } reduce { _ | _ })
     }
   }
 }
@@ -127,7 +111,9 @@ case class AxiMemorySim(axi: Axi4, clockDomain: ClockDomain, config: AxiMemorySi
       (startAddr % busWordWidth).toInt until ((endAddr - 1) % busWordWidth + 1).toInt
   }
 
-  def addMappedIO(addrRange: NumericRange[Long], device: MappedIODevice) = {
+  def addSingleWordMappedIO(addr: Long, device: MappedIODevice): this.type =
+    addMappedIO(addr until (addr + 4), device)
+  def addMappedIO(addrRange: NumericRange[Long], device: MappedIODevice): this.type = {
     assert(
       assertion = mappedIODevices.forall { case (range, _) =>
         range.max < addrRange.min || addrRange.max < range.min
@@ -136,6 +122,7 @@ case class AxiMemorySim(axi: Axi4, clockDomain: ClockDomain, config: AxiMemorySi
     )
 
     mappedIODevices += ((addrRange, device))
+    this
   }
 
   def start(): Unit = {
@@ -158,7 +145,7 @@ case class AxiMemorySim(axi: Axi4, clockDomain: ClockDomain, config: AxiMemorySi
 
   private def findIODevice(job: AxiJob): Option[MappedIODevice] = {
     for ((range, device) <- mappedIODevices) {
-      if ((range contains job.address) && (range contains job.endAddress)) {
+      if ((range contains job.address) && (range contains (job.endAddress - 1))) {
         return Some(device)
       } else if ((job.addrRange contains range.min) || (job.addrRange contains range.max)) {
         return None
@@ -210,8 +197,6 @@ case class AxiMemorySim(axi: Axi4, clockDomain: ClockDomain, config: AxiMemorySi
   def handleR(r: Stream[Axi4R]): Unit = {
     println("Handling AXI4 Master read resp...")
 
-    val random = Random
-
     r.valid #= false
     r.payload.last #= false
 
@@ -229,9 +214,9 @@ case class AxiMemorySim(axi: Axi4, clockDomain: ClockDomain, config: AxiMemorySi
 
         var i = 0
         while (i <= job.burstLength) {
-          if (config.interruptProbability > random.nextInt(100)) {
+          if (config.interruptProbability > Random.nextInt(100)) {
             r.valid #= false
-            clockDomain.waitSampling(random.nextInt(config.interruptMaxDelay + 1))
+            clockDomain.waitSampling(Random.nextInt(config.interruptMaxDelay + 1))
             r.valid #= true
           } else {
             if (i == job.burstLength)
@@ -244,7 +229,7 @@ case class AxiMemorySim(axi: Axi4, clockDomain: ClockDomain, config: AxiMemorySi
             // Pad random bytes around readData
             val validRange = beat.bytesRange
             val padded     = Array.fill(busWordWidth)(0.toByte)
-            random.nextBytes(padded)
+            Random.nextBytes(padded)
             for (i <- validRange) {
               padded(i) = readData(i - validRange.min)
             }

@@ -22,7 +22,8 @@ object Simulator {
   )
 
   trait Plugin {
-    def setupSim(context: Simulator#Context)
+    def setupSim(context: Simulator#Context): Unit
+    def close(): Unit = {}
   }
 }
 
@@ -37,17 +38,31 @@ case class Simulator(config: Simulator.Config) {
     this
   }
 
-  /** 获取某种特定类型的插件，仅在恰有一个插件满足条件时成功 */
-  def getPlugin[T <: Plugin: ClassTag]: T = {
+  private def getPluginSeq[T <: Plugin: ClassTag]: Seq[T] = {
     val clazz = classTag[T].runtimeClass.asInstanceOf[Class[T]]
 
-    plugins.filter(p => clazz.isAssignableFrom(p.getClass)) match {
+    plugins.filter(p => clazz.isAssignableFrom(p.getClass)).map(_.asInstanceOf[T])
+  }
+
+  /** 获取某种特定类型的插件，仅在恰有一个插件满足条件时成功 */
+  def getPluginOption[T <: Plugin: ClassTag]: Option[T] = {
+    getPluginSeq[T] match {
+      case Seq(only) => Some(only)
+      case _         => None
+    }
+  }
+
+  /** 获取某种特定类型的插件，仅在恰有一个插件满足条件时成功 */
+  def getPlugin[T <: Plugin: ClassTag]: T = {
+    getPluginSeq[T] match {
       case Seq() =>
-        throw new AssertionError(s"Plugin of type ${clazz.getName} not loaded.")
+        throw new AssertionError(s"Plugin of type ${classTag[T].runtimeClass.getName} not loaded.")
       case Seq(only) =>
-        only.asInstanceOf[T]
+        only
       case _ =>
-        throw new AssertionError(s"Reference to plugin of type ${clazz.getName} is ambiguous")
+        throw new AssertionError(
+          s"Reference to plugin of type ${classTag[T].runtimeClass.getName} is ambiguous"
+        )
     }
   }
 
@@ -65,21 +80,29 @@ case class Simulator(config: Simulator.Config) {
     def mem       = memorySim.memory
     var openTrace = true
 
-    def getPlugin[T <: Plugin: ClassTag]: T = Simulator.this.getPlugin
+    def getPluginOption[T <: Plugin: ClassTag]: Option[T] = Simulator.this.getPluginOption
+    def getPlugin[T <: Plugin: ClassTag]: T               = Simulator.this.getPlugin
   }
 
   def run(dut: => SimulationSoc): Unit = {
     val includeDir = VivadoConf.vivadoPath + "/data/verilog/src/xeclib"
-    SimConfig.withWave
-      .withConfig(SpinalConfig().includeSimulation)
-      .allOptimisation
-      .addSimulatorFlag("-Wno-TIMESCALEMOD")
-      .addSimulatorFlag("-Wno-INITIALDLY")
-      // .addIncludeDir(includeDir)
-      .addSimulatorFlag(s"-I$includeDir")
-      .addSimulatorFlag("--timescale-override 1ns/1ns")
-      .compile(dut)
-      .doSimUntilVoid(this.doSim _)
+
+    try {
+      SimConfig.withWave
+        .withConfig(SpinalConfig().includeSimulation)
+        .allOptimisation
+        .addSimulatorFlag("-Wno-TIMESCALEMOD")
+        .addSimulatorFlag("-Wno-INITIALDLY")
+        // .addIncludeDir(includeDir)
+        .addSimulatorFlag(s"-I$includeDir")
+        .addSimulatorFlag("--timescale-override 1ns/1ns")
+        .compile(dut)
+        .doSimUntilVoid(doSim _)
+    } finally {
+      for (plugin <- plugins) {
+        plugin.close()
+      }
+    }
   }
 
   private def doSim(soc: SimulationSoc): Unit = {

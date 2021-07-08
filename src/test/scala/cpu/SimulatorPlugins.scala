@@ -75,7 +75,7 @@ case class WriteBackFileLoggerPlugin(file: File) extends Simulator.Plugin {
     }
   }
 
-  def close() = writer.close()
+  override def close() = writer.close()
 }
 
 /** 将写回数据和给定数据比较的插件。 */
@@ -130,7 +130,7 @@ case class WriteBackComparerPlugin(file: File, failOnError: Boolean = true)
     }
   }
 
-  def close() = source.close()
+  override def close() = source.close()
 }
 
 case class TimeoutPlugin(timeout: Long) extends Simulator.Plugin {
