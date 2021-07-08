@@ -45,7 +45,7 @@ class CPU extends Component {
   btb.io.w.addr.clearAll
   btb.io.w.dataLine.clearAll
   btb.io.w.tagLine.clearAll
-  btb.io.w.wea.clearAll
+  btb.io.w.wea.clear
   btb.io.w.p.clearAll
   btb.io.w.pEn.clear
 //  btb.io.r.en := False
@@ -55,7 +55,6 @@ class CPU extends Component {
   val btbTagLine  = Key(Bits(BTB.NUM_WAYS * (1 + BTB.TAG_WIDTH) bits))
   val btbP        = Key(Bits(BTB.NUM_WAYS - 1 bits))
   val btbHitLine  = Key(Bits(BTB.NUM_WAYS bits))
-  val btbWea      = Key(Bits(BTB.NUM_WAYS bits))
   val btbData     = Key(Bits(ADDR_WIDTH bits))
   val btbSetP     = Key(Bits(BTB.NUM_WAYS - 1 bits))
   val btbClearP   = Key(Bits(BTB.NUM_WAYS - 1 bits))
@@ -253,7 +252,7 @@ class CPU extends Component {
             btb.io.w.addr := stored(pc)
             btb.io.w.dataLine := stored(btbDataLine)
             btb.io.w.tagLine := stored(btbTagLine)
-            btb.io.w.wea := stored(btbWea)
+            btb.io.w.wea := True
             btb.io.w.p := stored(btbClearP)
 
             output(jumpPc) := stored(pcPlus4) + 4
@@ -265,7 +264,7 @@ class CPU extends Component {
           btb.io.w.addr := stored(pc)
           btb.io.w.dataLine := stored(btbDataLine)
           btb.io.w.tagLine := stored(btbTagLine)
-          btb.io.w.wea := stored(btbWea)
+          btb.io.w.wea := True
           btb.io.w.p := stored(btbSetP)
 
           btb.io.w.pEn := True
@@ -369,7 +368,6 @@ class CPU extends Component {
           stored(btbHitLine),
           B(0, 1 + BTB.TAG_WIDTH bits)
         )
-        output(btbWea) := stored(btbHitLine)
         btb.getP(1, stored(btbHitLine), True, output(btbSetP))
         btb.getP(1, stored(btbHitLine), False, output(btbClearP))
       } otherwise {
@@ -377,14 +375,15 @@ class CPU extends Component {
           JU_PC_SRC.offset -> U(S(stored(pcPlus4)) + S(du.io.inst.offset ## B"00")),
           default          -> U(stored(pcPlus4)(31 downto 28) ## du.io.inst.index ## B"00")
         )
-        output(btbDataLine) := btb.dataMem.write(stored(btbDataLine), output(btbWea), B(jumpPC))
+        val wea = Bits(BTB.NUM_WAYS bits)
+        output(btbDataLine) := btb.dataMem.write(stored(btbDataLine), wea, B(jumpPC))
         output(btbTagLine) := btb.tagMem.write(
           stored(btbTagLine),
-          output(btbWea),
+          wea,
           True ## B(stored(pc)(BTB.TAG_OFFSET, BTB.TAG_WIDTH bits))
         )
-        output(btbWea) := btb.plru(1, stored(btbP), True)
-        btb.getP(1, output(btbWea), True, output(btbSetP))
+        wea := btb.plru(1, stored(btbP), True)
+        btb.getP(1, wea, True, output(btbSetP))
         output(btbClearP).clearAll
       }
     }

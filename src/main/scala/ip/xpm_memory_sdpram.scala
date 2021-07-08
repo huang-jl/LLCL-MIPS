@@ -48,7 +48,7 @@ class xpm_memory_sdpram(param: xpm_memory_sdpram_generic) extends BlackBox {
     val regceb         = in Bool () default False
     val rstb           = in Bool () default False
     val sleep          = in Bool () default False
-    val wea            = in Bits (generic.WRITE_DATA_WIDTH_A / generic.BYTE_WRITE_WIDTH_A bits) default 0
+    val wea            = in Bool ()
   }
 
   noIoPrefix

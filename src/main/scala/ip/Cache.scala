@@ -7,13 +7,13 @@ class SDPRAM(numEntries: Int, numWays: Int, indexWidth: Int, entryWidth: Int) ex
   val memGeneric = new xpm_memory_sdpram_generic
   memGeneric.ADDR_WIDTH_A = indexWidth
   memGeneric.ADDR_WIDTH_B = indexWidth
-  memGeneric.BYTE_WRITE_WIDTH_A = entryWidth
+  memGeneric.BYTE_WRITE_WIDTH_A = numWays * entryWidth
   memGeneric.MEMORY_PRIMITIVE = "block"
   memGeneric.MEMORY_SIZE = numEntries * entryWidth
   memGeneric.READ_DATA_WIDTH_B = numWays * entryWidth
-  memGeneric.READ_LATENCY_B = 1;
+  memGeneric.READ_LATENCY_B = 1
   memGeneric.WRITE_DATA_WIDTH_A = numWays * entryWidth
-  memGeneric.WRITE_MODE_B = "write_first";
+  memGeneric.WRITE_MODE_B = "read_first"
   val mem = new xpm_memory_sdpram(memGeneric)
   mem.mapClockDomain(clock = mem.io.clka)
   mem.mapClockDomain(clock = mem.io.clkb)
@@ -22,7 +22,7 @@ class SDPRAM(numEntries: Int, numWays: Int, indexWidth: Int, entryWidth: Int) ex
     val ena   = in Bool ()
     val addra = in UInt (indexWidth bits)
     val dina  = in Bits (numWays * entryWidth bits)
-    val wea   = in Bits (numWays bits)
+    val wea   = in Bool ()
 
     val enb   = in Bool ()
     val addrb = in UInt (indexWidth bits)
@@ -80,7 +80,7 @@ class Cache(
       val addr     = in UInt (addrWidth bits)
       val dataLine = in Bits (numWays * dataWidth bits)
       val tagLine  = in Bits (numWays * (1 + tagWidth) bits)
-      val wea      = in Bits (numWays bits)
+      val wea      = in Bool ()
       val p        = in Bits (numWays - 1 bits)
 
       val pEn = in Bool () default False
