@@ -109,6 +109,7 @@ package object confreg {
 
   // 可能和官方的实现有细微的不一致，如果不要求精度应该可以忽略；未严格考虑线程同步？
   case class Timer(addr: Int) extends Simulator.Plugin {
+    // 因为需要 += 1，所以需要原子性
     val value = new AtomicInteger(0)
 
     override def setupSim(context: Simulator#Context) = {
@@ -127,6 +128,38 @@ package object confreg {
         while (true) {
           context.sysClockDomain.waitSampling()
           value.incrementAndGet()
+        }
+      }
+    }
+  }
+
+  /** UART，将输出视作文字，每到换行打印。 */
+  case class TextUART(addr: Int) extends Simulator.Plugin {
+    val buffer = new StringBuilder(capacity = 80)
+
+    private def printBuffer(): Unit = {
+      println(s"[UART] $buffer")
+      buffer.clear()
+    }
+
+    override def setupSim(context: Simulator#Context) = {
+      context.memorySim.addSingleWordMappedIO(
+        addr,
+        new MappedIODevice with PerByte {
+          override def writeByte(addr: Long, data: Byte) = {
+            val newChar = data.toChar
+            if (newChar == '\n') {
+              printBuffer()
+            } else {
+              buffer += newChar
+            }
+          }
+        }
+      )
+
+      onSimEnd {
+        if (buffer.nonEmpty) {
+          printBuffer()
         }
       }
     }

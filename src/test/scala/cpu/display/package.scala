@@ -7,10 +7,8 @@ package object display {
       throttlePeriod: Option[Int]
   )
 
-  trait DisplayerPlugin extends Simulator.Plugin {
+  abstract class DisplayerPlugin(config: DisplayerConfig) extends Simulator.Plugin {
     private var needRepaint = true
-
-    val config: DisplayerConfig
 
     def triggerRepaint() = { needRepaint = true }
 

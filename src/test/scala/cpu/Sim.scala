@@ -107,7 +107,7 @@ object Sim {
 
     simulator.addPlugin(PCBroadcastPlugin(10000))
 
-    funcTest.addConfRegsTo(simulator, Some(DisplayerConfig(throttlePeriod = Some(10000))))
+    funcTest.ConfRegs().addTo(simulator, displayerConfig = Some(DisplayerConfig(throttlePeriod = Some(10000))))
     simulator.onSetupSim { context =>
       context.mem.getElseAllocPage(0)
     }

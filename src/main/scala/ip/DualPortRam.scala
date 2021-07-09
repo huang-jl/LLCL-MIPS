@@ -52,9 +52,14 @@ class DualPortBRam(config: BRamIPConfig) extends SimulatedBlackBox {
   addRTLPath("./rtl/dual_port_ram.v")
 
   override def createSimJob() = {
-    val storage = Array.fill[BigInt](config.size / config.dataWidth)(0)
+    val storage = new Array[BigInt](config.size / config.dataWidth)
 
     DelayedPipeline(config.latency)
+      .whenReset {
+        for (i <- storage.indices) {
+          storage(i) = 0
+        }
+      }
       .handlePort(io.portA, storage)
       .handlePort(io.portB, storage)
       .toJob
@@ -97,8 +102,14 @@ class DualPortLutRam(dataWidth: Int = 32, size: Int = 4 * 1024 * 8, latency: Int
   addRTLPath("./rtl/dual_port_ram.v")
 
   override def createSimJob() = {
-    val storage = Array.fill[BigInt](size / dataWidth)(0)
+    val storage = new Array[BigInt](size / dataWidth)
+
     DelayedPipeline(latency)
+      .whenReset {
+        for (i <- storage.indices) {
+          storage(i) = 0
+        }
+      }
       .handlePort(io.portA, storage)
       .handlePort(io.portB, storage)
       .toJob

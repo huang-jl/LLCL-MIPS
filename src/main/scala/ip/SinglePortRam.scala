@@ -18,8 +18,15 @@ class SinglePortRamBase(dataWidth: Int, size: Int, latency: Int, writeMode: Writ
   addRTLPath("./rtl/single_port_ram.v")
 
   override def createSimJob() = {
-    val storage = Array.fill[BigInt](size / dataWidth)(0)
-    DelayedPipeline(latency).handlePort(io.port, storage).toJob
+    val storage = new Array[BigInt](size / dataWidth)
+    DelayedPipeline(latency)
+      .whenReset {
+        for (i <- storage.indices) {
+          storage(i) = 0
+        }
+      }
+      .handlePort(io.port, storage)
+      .toJob
   }
 }
 
