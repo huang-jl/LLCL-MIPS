@@ -50,7 +50,7 @@ spinal_test:
   script:
     - echo -e "vivado {\n    path = ${VIVADO_DIR}\n}" > vivado.conf
     - cd official/func_test/soft/func; make clean; make CROSS_COMPILE=$CROSS_COMPILE all; cd -
-    - sbt 'Test / runMain cpu.Sim -i official/func_test/soft/func/obj/inst_ram.coe -g official/func_test/golden_trace.txt -w our_trace.txt'
+    - sbt ${SBT_OPTS} 'Test / runMain cpu.Sim -i official/func_test/soft/func/obj/inst_ram.coe -g official/func_test/golden_trace.txt -w our_trace.txt'
   artifacts:
     paths:
       - ./our_trace.txt
