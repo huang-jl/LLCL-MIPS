@@ -156,6 +156,8 @@ class CPU extends Component {
   }
 
   val ME1 = new Stage {
+    val assignSetTask = !RegNext(cp0.io.jumpPc.isDefined) & cp0.io.jumpPc.isDefined
+
     val dcuC = new StageComponent {
       dcu.io.stage1.offset := input(memAddr)(0, dcacheConfig.offsetWidth bits)
       dcu.io.stage1.index := input(memAddr)(dcacheConfig.offsetWidth, dcacheConfig.indexWidth bits)
@@ -268,6 +270,8 @@ class CPU extends Component {
         output(jumpPc) := ju.jump_pc
       }
     }
+
+    val assignJumpTask = RegNext(will.input) & produced(jumpPc).isDefined
 
     val juC = new StageComponent {
       ju.op := input(juOP)
@@ -470,6 +474,8 @@ class CPU extends Component {
       }
     }
 
+    val assignJumpTask = RegNext(will.input) & produced(jumpPc).isDefined
+
     val icuC = new StageComponent {
       io.icacheAXI <> icu.io.axi
       //ibus
@@ -488,17 +494,10 @@ class CPU extends Component {
     }
 
     val jumpTask =
-      Task(
-        RegNext(IF2.will.input) & IF2.produced(jumpPc).isDefined,
-        IF2.produced(jumpPc).value,
-        will.output
-      )
-    val jumpTask2 = Task(
-      RegNext(EX.will.input) & EX.produced(jumpPc).isDefined,
-      EX.produced(jumpPc).value,
-      will.output
-    )
-    val setTask = Task(ME1.is.done & cp0.io.jumpPc.isDefined, cp0.io.jumpPc.value, will.output)
+      Task(IF2.assignJumpTask, IF2.produced(jumpPc).value, will.output)
+    val jumpTask2 =
+      Task(EX.assignJumpTask, EX.produced(jumpPc).value, will.output)
+    val setTask = Task(ME1.assignSetTask, cp0.io.jumpPc.value, will.output)
     stored(pc) init ConstantVal.INIT_PC
     when(will.output) {
       stored(pc) := setTask.has ?
@@ -575,15 +574,15 @@ class CPU extends Component {
   ME2.can.flush := !dcu.io.stage2.stall
 
   // 异常清空流水线
-  when(cp0.io.jumpPc.isDefined && !ME1.to.flush) {
-    ME1.want.flush := True
+  when(ME1.assignSetTask) {
     IF1.want.flush := True
     IF2.want.flush := True
     ID.want.flush := True
     EX.want.flush := True
+    ME1.want.flush := True
   }
 
-  when(RegNext(EX.will.input) & EX.produced(jumpPc).isDefined) {
+  when(EX.assignJumpTask) {
     when(!ID.is.empty) {
       IF2.want.flush := True
     }
