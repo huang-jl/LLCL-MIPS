@@ -1,8 +1,7 @@
 package cpu.defs
 
-import spinal.core._
-
 import cpu.Utils._
+import spinal.core._
 
 object Fields {
   val rs     = 25 downto 21
