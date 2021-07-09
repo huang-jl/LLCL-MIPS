@@ -1,7 +1,13 @@
 [repositories]
 local
-osc: http://maven.oschina.net/content/groups/public/
-typesafe: http://repo.typesafe.com/typesafe/ivy-releases/, [organization]/[module]/(scala_[scalaVersion]/)(sbt_[sbtVersion]/)[revision]/[type]s/[artifact](-[classifier]).[ext], bootOnly
+huaweicloud-maven: https://repo.huaweicloud.com/repository/maven/
+aliyun-maven-repo: https://maven.aliyun.com/repository/public/
+aliyun-nexus: https://maven.aliyun.com/nexus/content/groups/public/
+
+typesafe: https://repo.typesafe.com/typesafe/ivy-releases/, [organization]/[module]/(scala_[scalaVersion]/)(sbt_[sbtVersion]/)[revision]/[type]s/[artifact](-[classifier]).[ext], bootOnly
+
+sbt-plugin-repo: https://repo.scala-sbt.org/scalasbt/sbt-plugin-releases, [organization]/[module]/(scala_[scalaVersion]/)(sbt_[sbtVersion]/)[revision]/[type]s/[artifact](-[classifier]).[ext]
+sbt-plugin-repo1: https://dl.bintray.com/sbt/sbt-plugin-releases, [organization]/[module]/(scala_[scalaVersion]/)(sbt_[sbtVersion]/)[revision]/[type]s/[artifact](-[classifier]).[ext]
 sonatype-oss-releases
 maven-central
 sonatype-oss-snapshots

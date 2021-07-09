@@ -5,7 +5,7 @@ variables:
   VIVADO: "${VIVADO_DIR}/bin/vivado"
   FUNC_TEST_WORK_DIR: "./official/soc_axi_func"
   PERF_TEST_WORK_DIR: "./official/soc_axi_perf"
-  SBT_OPTS: "-Dsbt.global.base=sbt-cache/.sbtboot -Dsbt.boot.directory=sbt-cache/.boot -Dsbt.ivy.home=sbt-cache/.ivy -Dsbt.repository.config=repositories"
+  SBT_OPTS: "-Dsbt.global.base=sbt-cache/.sbtboot -Dsbt.boot.directory=sbt-cache/.boot -Dsbt.ivy.home=sbt-cache/.ivy -Dsbt.override.build.repos=true -Dsbt.repository.config=repositories"
 
 cache:
   key: "$CI_COMMIT_REF_SLUG"
