@@ -3,7 +3,6 @@
 *.bak
 *.o
 *.a
-**/obj/
 vivado.conf
 *.txt
 !golden_trace.txt
