@@ -39,7 +39,7 @@ object FuncTestNormal {
       .addPlugin(TimeoutPlugin(timeout = 20000000))
       .addPlugin(TerminatorPlugin(0xbfc00100L))
       .addPlugin(WriteBackProducerPlugin())
-      .addPlugin(WriteBackComparerPlugin(new File("official/func_test/cpu132_gettrace/golden_trace.txt")))
+      .addPlugin(WriteBackComparerPlugin(new File("official/func_test/golden_trace.txt")))
       .onSetupSim { context =>
         context.mem.getElseAllocPage(0)
       }

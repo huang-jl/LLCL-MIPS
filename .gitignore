@@ -1,9 +1,6 @@
 *.class
 *.log
 *.bak
-*.bin
-*.elf
-*.coe
 *.o
 *.a
 **/obj/
