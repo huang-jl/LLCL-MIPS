@@ -131,4 +131,22 @@ package object confreg {
       }
     }
   }
+
+  def printLed(value: Int) = (0 until 16)
+    .map { i =>
+      if ((value & (1 << i)) != 0)
+        Console.RED + '*' + Console.RESET
+      else
+        Console.WHITE + 'o' + Console.RESET
+    }
+    .mkString(" ")
+
+  def printLedRg(value: Int) = value & 3 match {
+    case 0 => Console.WHITE + '_' + Console.RESET
+    case 1 => Console.GREEN + 'G' + Console.RESET
+    case 2 => Console.RED + 'R' + Console.RESET
+    case 3 => Console.YELLOW + 'X' + Console.RESET
+  }
+
+  def printNum(value: Int) = f"$value%08x"
 }

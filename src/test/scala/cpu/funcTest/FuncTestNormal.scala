@@ -30,9 +30,7 @@ object FuncTestNormal {
       )
     )
 
-    for (plugin <- FuncTestConfRegs) {
-      simulator.addPlugin(plugin)
-    }
+    funcTest.addConfRegsTo(simulator)
 
     simulator
       .addPlugin(PCBroadcastPlugin(period = 10000))

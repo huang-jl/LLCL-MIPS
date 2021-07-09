@@ -87,22 +87,16 @@ case class Simulator(config: Simulator.Config) {
   def run(dut: => SimulationSoc): Unit = {
     val includeDir = VivadoConf.vivadoPath + "/data/verilog/src/xeclib"
 
-    try {
-      SimConfig.withWave
-        .withConfig(SpinalConfig().includeSimulation)
-        .allOptimisation
-        .addSimulatorFlag("-Wno-TIMESCALEMOD")
-        .addSimulatorFlag("-Wno-INITIALDLY")
-        // .addIncludeDir(includeDir)
-        .addSimulatorFlag(s"-I$includeDir")
-        .addSimulatorFlag("--timescale-override 1ns/1ns")
-        .compile(dut)
-        .doSimUntilVoid(doSim _)
-    } finally {
-      for (plugin <- plugins) {
-        plugin.close()
-      }
-    }
+    SimConfig.withWave
+      .withConfig(SpinalConfig().includeSimulation)
+      .allOptimisation
+      .addSimulatorFlag("-Wno-TIMESCALEMOD")
+      .addSimulatorFlag("-Wno-INITIALDLY")
+      // .addIncludeDir(includeDir)
+      .addSimulatorFlag(s"-I$includeDir")
+      .addSimulatorFlag("--timescale-override 1ns/1ns")
+      .compile(dut)
+      .doSimUntilVoid(doSim _)
   }
 
   private def doSim(soc: SimulationSoc): Unit = {
@@ -141,6 +135,12 @@ case class Simulator(config: Simulator.Config) {
     for (plugin <- plugins) {
       fork {
         plugin.setupSim(pluginThreadContext)
+      }
+    }
+
+    onSimEnd {
+      for (plugin <- plugins) {
+        plugin.close()
       }
     }
   }
