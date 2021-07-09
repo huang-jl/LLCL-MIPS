@@ -69,12 +69,19 @@ class ICache(config: CacheRamConfig) extends Component {
     val datas = Array.fill(config.wayNum)(new DualPortBram(ramIPConfig))
   }
 
-  //读LRU，延迟来源于一个多选一
   val LRU = new Area {
-    val plru       = Array.fill(config.setSize)(new LRUManegr(config.wayNum)) //setSize是组的个数，不是“设置大小”的意思
-    val plruOutput = Vec(UInt(log2Up(config.wayNum) bits), config.setSize)
+    val manager = LRUCalculator(config.wayNum)
+//    val plru = Vec.fill(config.setSize) {
+//      Updating(Bits(manager.statusLength bits)) init(0)
+//    }
+    val plru = Vec.fill(config.setSize)(new PLRU(manager.statusLength))
     for (i <- 0 until config.setSize) {
-      plruOutput(i) := plru(i).io.next
+      plru(i).prev := plru(i).next
+      plru(i).next := plru(i).prev
+    }
+    val wayIndex = Vec(UInt(log2Up(config.wayNum) bits), config.setSize)
+    for (i <- 0 until config.setSize) {
+      wayIndex(i) := manager.leastRecentUsedIndex(plru(i).prev)
     }
     val replaceAddr = Reg(UInt(log2Up(config.wayNum) bits)) init (0)
   }
@@ -144,8 +151,8 @@ class ICache(config: CacheRamConfig) extends Component {
     }
   }
   //如果需要保持住当前阶段读出的值（比如EX.stall住了），那么直接保持replaceAddr
-  when(!keepRData) {
-    LRU.replaceAddr := LRU.plruOutput(io.cpu.stage1.index) //stage 2 会使用这个值，用来进行替换
+  when(!io.cpu.stage1.keepRData) {
+    LRU.replaceAddr := LRU.wayIndex(io.cpu.stage1.index) //stage 2 会使用这个值，用来进行替换
   }
 
   /** *********************************
@@ -198,9 +205,8 @@ class ICache(config: CacheRamConfig) extends Component {
   val hitTag: Meta   = MuxOH(hitPerWay, for (i <- 0 until config.wayNum) yield cacheTags(i).next)
   io.cpu.stage2.rdata := hitLine(addr.wordOffset)
   //更新LRU
-  for (i <- 0 until config.setSize) {
-    LRU.plru(i).io.update := io.cpu.stage2.en & addr.index === i & hit
-    LRU.plru(i).io.access := hitPerWay
+  when(io.cpu.stage2.en & hit) {
+    LRU.manager.updateStatus(OHToUInt(hitPerWay), LRU.plru(addr.index).next)
   }
 
   //不命中处理：访存，并且写Cache Ram
@@ -245,9 +251,8 @@ class ICache(config: CacheRamConfig) extends Component {
         tagWe(replace.wayIndex.next) := True
         dataWe(replace.wayIndex.next) := True
         // 重写Cache的时候也需要更新LRU
-        for (i <- 0 until config.setSize) {
-          LRU.plru(i).io.update := io.cpu.stage2.en & addr.index === i
-          LRU.plru(i).io.access := B"1'b1" << replace.wayIndex.next
+        when(io.cpu.stage2.en) {
+          LRU.manager.updateStatus(replace.wayIndex.next, LRU.plru(addr.index).next)
         }
         //不命中则从writeData返回
         io.cpu.stage2.rdata := writeData.next(addr.wordOffset)
@@ -265,6 +270,11 @@ class ICache(config: CacheRamConfig) extends Component {
     cacheTags(replace.wayIndex.prev).next := writeMeta.prev
     cacheDatas(replace.wayIndex.prev).next.assignFromBits(writeData.prev.asBits)
   }
+  val plruForward = io.cpu.stage1.index === addr.index & !io.cpu.stage2.stall &
+    io.cpu.stage2.en & (icacheFSM.isActive(icacheFSM.readMem) | hit)
+  when(plruForward) {
+    LRU.wayIndex(addr.index) := LRU.manager.leastRecentUsedIndex(LRU.plru(addr.index).next)
+  }
   //写回cache ram的数据
   writeMeta.next.tag := addr.tag
   writeMeta.next.valid := True
@@ -278,6 +288,6 @@ class ICache(config: CacheRamConfig) extends Component {
 
 object ICache {
   def main(args: Array[String]): Unit = {
-    SpinalVerilog(new ICache(CacheRamConfig())).printPruned()
+    SpinalVerilog(new ICache(CacheRamConfig(wayNum = 4))).printPruned()
   }
 }

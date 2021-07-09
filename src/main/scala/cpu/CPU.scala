@@ -1,15 +1,15 @@
 package cpu
 
+import defs.Mips32InstImplicits._
+import defs.{ConstantVal, Mips32Inst}
 import cache.CacheRamConfig
-import cpu.defs.Mips32InstImplicits._
+import lib.{Key, Optional, Task, Updating}
+import tlb.{MMU, MMUTranslationRes}
 import cpu.defs.config._
-import cpu.defs.{ConstantVal, Mips32Inst}
 import ip._
-import lib.{Key, Optional, Task}
 import spinal.core._
-import spinal.lib.bus.amba4.axi._
 import spinal.lib.{cpu => _, _}
-import tlb.MMU
+import spinal.lib.bus.amba4.axi._
 
 class CPU extends Component {
   val io = new Bundle {
@@ -63,7 +63,6 @@ class CPU extends Component {
   val pcPlus4    = Key(UInt(32 bits))
   val bd         = Key(Bool)
   val inst       = Key(Mips32Inst()) setEmptyValue ConstantVal.INST_NOP
-  val exception  = Key(Optional(EXCEPTION()))
   val eret       = Key(Bool) setEmptyValue False
   val aluOp      = Key(ALU_OP()) setEmptyValue ALU_OP.sll()
   val aluASrc    = Key(ALU_A_SRC())
@@ -94,8 +93,8 @@ class CPU extends Component {
 
   val ifPaddr    = Key(UInt(32 bits))
   val if2En      = Key(Bool) setEmptyValue False
-  val me2Uncache = Key(Bool) //ME2是否经过cache
 
+  val dataMMURes  = Key(new MMUTranslationRes(ConstantVal.USE_TLB))  //EX阶段查询数据TLB
   val tlbr        = Key(Bool)          //ID解码
   val tlbw        = Key(Bool)          //ID解码
   val tlbp        = Key(Bool)          //ID解码
@@ -144,30 +143,26 @@ class CPU extends Component {
       dcu.io.stage2.read := input(memRe)
       dcu.io.stage2.write := input(memWe)
       dcu.io.stage2.byteEnable := input(memBe)
-      dcu.io.stage2.paddr := input(memAddr)
+      dcu.io.stage2.paddr := input(dataMMURes).paddr
       dcu.io.stage2.extend := input(memEx)
-      dcu.io.stage2.uncache := input(me2Uncache)
+      dcu.io.stage2.uncache := !input(dataMMURes).cached
       dcu.io.stage2.wdata := input(rtValue)
 
       output(rfuData) := dcu.io.stage2.rdata
     }
 
     produced(rfuData) := stored(memRe) ? output(rfuData) | stored(rfuData)
+
   }
 
   val ME1 = new Stage {
     val assignSetTask = !RegNext(cp0.io.jumpPc.isDefined) & cp0.io.jumpPc.isDefined
 
     val dcuC = new StageComponent {
-      dcu.io.stage1.offset := input(memAddr)(0, dcacheConfig.offsetWidth bits)
-      dcu.io.stage1.index := input(memAddr)(dcacheConfig.offsetWidth, dcacheConfig.indexWidth bits)
+      dcu.io.stage1.paddr := input(dataMMURes).paddr
       dcu.io.stage1.keepRData := !ME2.is.empty & !ME2.will.input
       dcu.io.stage1.byteEnable := input(memBe)
     }
-    // MMU translate
-    mmu.io.dataVaddr := input(memAddr)
-    output(memAddr) := mmu.io.dataRes.paddr
-    output(me2Uncache) := !mmu.io.dataCached
 
     //因为写hi lo的指令以及写cp0本身不会触发异常
     //因此全部放到ME第一阶段完成
@@ -200,6 +195,14 @@ class CPU extends Component {
       cp0.io.externalInterrupt := io.externalInterrupt
     }
 
+    //数据前传：解决先load 后store的数据冲突
+    when(ME2.stored(rfuWe) && ME2.stored(rfuAddr) === input(inst).rs) {
+      produced(rsValue) := ME2.produced(rfuData)
+    }
+    when(ME2.stored(rfuWe) && ME2.stored(rfuAddr) === input(inst).rt) {
+      produced(rtValue) := ME2.produced(rfuData)
+    }
+
     //TLB相关：写MMU和写CP0的逻辑信号
     val cp0TLB = new StageComponent {
       if (ConstantVal.USE_TLB) {
@@ -221,10 +224,10 @@ class CPU extends Component {
     exceptionToRaise := None
     // TLB异常
     if (ConstantVal.USE_TLB) {
-      val refillException  = mmu.io.dataMapped & mmu.io.dataRes.miss
-      val invalidException = mmu.io.dataMapped & !mmu.io.dataRes.miss & !mmu.io.dataRes.valid
-      val modifiedException = mmu.io.dataMapped & input(memWe) &
-        !mmu.io.dataRes.miss & mmu.io.dataRes.valid & !mmu.io.dataRes.dirty
+      val refillException  = input(dataMMURes).mapped & input(dataMMURes).miss
+      val invalidException = input(dataMMURes).mapped & !input(dataMMURes).miss & !mmu.io.dataRes.valid
+      val modifiedException = input(dataMMURes).mapped & input(memWe) &
+        !input(dataMMURes).miss & input(dataMMURes).valid & !input(dataMMURes).dirty
       when(refillException | invalidException) {
         when(input(memRe))(exceptionToRaise := EXCEPTION.TLBL)
           .elsewhen(input(memWe))(exceptionToRaise := EXCEPTION.TLBS)
@@ -328,6 +331,27 @@ class CPU extends Component {
       default        -> stored(rfuData)
     )
 
+    //EX阶段计算出地址后再去查TLB
+    val ME_Translate = new StageComponent {
+      // MMU translate
+      mmu.io.dataVaddr := aguC.output(memAddr)
+      output(dataMMURes) := mmu.io.dataRes
+    }
+
+
+    //数据前传：解决load + 中间一条无关指令 + store的数据冲突
+    when(ME1.stored(rfuWe) && ME1.stored(rfuAddr) === input(inst).rs) {
+      produced(rsValue) := ME1.produced(rfuData)
+    }.elsewhen(ME2.stored(rfuWe) && ME2.stored(rfuAddr) === input(inst).rs) {
+      produced(rsValue) := ME2.produced(rfuData)
+    }
+
+    when(ME1.stored(rfuWe) && ME1.stored(rfuAddr) === input(inst).rt) {
+      produced(rtValue) := ME1.produced(rfuData)
+    }.elsewhen(ME2.stored(rfuWe) && ME2.stored(rfuAddr) === input(inst).rt) {
+      produced(rtValue) := ME2.produced(rfuData)
+    }
+
     // CP0 harzard : 根据ME1的情况暂停EX阶段
     val cp0_RAW_hazard = new Area {
       //当前指令mfc0，上一条指令mtc0 | tlbp | tlbr ，则需要暂停一个周期
@@ -335,7 +359,8 @@ class CPU extends Component {
         input(inst).rd === ME1.stored(inst).rd &
         input(inst).sel === ME1.stored(inst).sel
 
-      val mfc0_tlb_hazard = if (ConstantVal.USE_TLB) Bool else null
+      val mfc0_tlb_hazard = Utils.instantiateWhen(Bool, ConstantVal.USE_TLB)
+//      val mfc0_tlb_hazard = if (ConstantVal.USE_TLB) Bool else null
       if (ConstantVal.USE_TLB) {
         mfc0_tlb_hazard := !ME1.is.empty & input(cp0Re) &
           (
@@ -417,6 +442,25 @@ class CPU extends Component {
       output(rtValue) := rfu.io.rb.data
     }
 
+//一旦一条指令output，那么可以更新prevBranch，表示这条output的指令是否是branch
+//will.input表明下一周期会有一条新的指令过来，那么delayWillInput表明当前指令是新进来的指令
+//val prevBranch = RegInit(False)
+//    val delayWillInput = RegNext(will.input) init(False)
+//    val bdValue = Updating(Bool) init(False)
+//    when(will.output) {
+//      prevBranch := du.io.ju_op =/= JU_OP.f
+//    }
+//    when(delayWillInput) {
+//      bdValue.next := prevBranch
+//    }.otherwise {
+//      bdValue.next := bdValue.prev
+//    }
+//    when(will.flush) {
+//      prevBranch := False
+//    }
+//    output(bd) := bdValue.next
+
+
     when(EX.stored(rfuWe) && EX.stored(rfuAddr) === stored(inst).rs) {
       produced(rsValue) := EX.produced(rfuData)
     } elsewhen (ME1.stored(rfuWe) && ME1.stored(rfuAddr) === stored(inst).rs) {
@@ -480,9 +524,7 @@ class CPU extends Component {
       io.icacheAXI <> icu.io.axi
       //ibus
       icu.io.ibus.stage2.paddr := input(ifPaddr)
-//      icu.io.ibus.stage2.en := prevException.isEmpty & firing
       icu.io.ibus.stage2.en := input(if2En)
-//      produced(inst) := input(if2En) ? icu.io.ibus.stage2.rdata | ConstantVal.INST_NOP
       output(inst) := icu.io.ibus.stage2.rdata
     }
   }
@@ -516,7 +558,6 @@ class CPU extends Component {
       output(ifPaddr) := mmu.io.instRes.paddr
       output(if2En) := True
 
-//      icu.io.ibus.stage1.keepRData := IF2.valid & !IF2.sending & !IF2.wantsFlush
       icu.io.ibus.stage1.keepRData := !IF2.is.empty & !IF2.will.input
 
       // 异常
@@ -524,8 +565,8 @@ class CPU extends Component {
       exceptionToRaise := None
       // TLB异常
       if (ConstantVal.USE_TLB) {
-        val refillException  = mmu.io.instMapped & mmu.io.instRes.miss
-        val invalidException = mmu.io.instMapped & !mmu.io.instRes.miss & !mmu.io.instRes.valid
+        val refillException  = mmu.io.instRes.mapped & mmu.io.instRes.miss
+        val invalidException = mmu.io.instRes.mapped & !mmu.io.instRes.miss & !mmu.io.instRes.valid
         when(refillException | invalidException) {
           exceptionToRaise := EXCEPTION.TLBL
           output(instFetch) := True
@@ -590,6 +631,36 @@ class CPU extends Component {
       IF1.want.flush := True
     }
   }
+  IF1.stored(pc).addAttribute("mark_debug", "true")
+  IF2.stored(ifPaddr).addAttribute("mark_debug", "true")
+  IF2.stored(pc).addAttribute("mark_debug", "true")
+  ME1.stored(pc).addAttribute("mark_debug", "true")
+  ME1.stored(dataMMURes).paddr.addAttribute("mark_debug", "true")
+  ME2.stored(pc).addAttribute("mark_debug", "true")
+//  cp0.interruptOnNextInst.addAttribute("mark_debug", "true")
+//  cp0.regs("Cause")("IP_HW").addAttribute("mark_debug", "true")
+  cp0.regs("Cause")("ExcCode").addAttribute("mark_debug", "true")
+//  cp0.regs("Status")("IM").addAttribute("mark_debug", "true")
+//
+//  dcu.io.stage2.read.addAttribute("mark_debug", "true")
+//  dcu.io.stage2.write.addAttribute("mark_debug", "true")
+//  dcu.io.stage2.stall.addAttribute("mark_debug", "true")
+//  dcu.dcache.dcacheFSM.stateReg.addAttribute("mark_debug", "true")
+//  dcu.io.stage2.uncache.addAttribute("mark_debug", "true")
+//
+//  io.uncacheAXI.aw.valid.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.aw.ready.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.aw.addr.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.aw.len.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.aw.size.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.aw.burst.addAttribute("mark_debug", "true")
+//
+//  io.uncacheAXI.w.ready.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.w.valid.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.w.data.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.w.strb.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.b.valid.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.b.ready.addAttribute("mark_debug", "true")
 }
 
 object CPU {

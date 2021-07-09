@@ -13,14 +13,26 @@ package object Utils {
 
   def equalAny[T <: Data](left: T, right: T*): Bool = {
     val ans = Bits(right.length bits)
-    right.zipWithIndex.foreach(ele  => ans(ele._2) := (ele._1 === left))
+    right.zipWithIndex.foreach(ele => ans(ele._2) := (ele._1 === left))
     ans.orR
   }
 
   def equalAny[T <: SpinalEnum](left: SpinalEnumCraft[T], right: SpinalEnumCraft[T]*): Bool = {
     val ans = Bits(right.length bits)
-    right.zipWithIndex.foreach(ele  => ans(ele._2) := (ele._1 === left))
+    right.zipWithIndex.foreach(ele => ans(ele._2) := (ele._1 === left))
     ans.orR
   }
 
+  /** 用于初始化CP0寄存器的 */
+  implicit class IntToFixedLengthBinaryString(value: Int) {
+    def toBinaryString(length:Int):String = {
+      val str = Integer.toBinaryString(value)
+      assert(length >= str.length)
+      if (length > str.length) {
+        Array.fill(length - str.length)("0").mkString.concat(str)
+      } else {
+        str
+      }
+    }
+  }
 }

@@ -1,8 +1,7 @@
 package tlb
 
 import spinal.core._
-import spinal.lib.OHToUInt
-
+import spinal.lib.{MuxOH, OHToUInt}
 import cpu.defs.ConstantVal
 
 //R1仅支持4KiB的页
@@ -30,26 +29,27 @@ class TLBTranslationRes extends Bundle {
   val miss, dirty, valid = Bool
 
   /** 匹配到的TLB表项编号 */
-  val index = UInt(TLBConfig.tlbIndexWidth bits)
+//  val index = UInt(TLBConfig.tlbIndexWidth bits)
 
   //根据每一个表项hit的情况，来对TLBTranslationRes进行赋值
   def assignFromHit(hit: Bits, evenOddBit: Bool, entry: Vec[TLBEntry]): Unit = {
     assert(entry.length == ConstantVal.TLBEntryNum)
     assert(hit.getBitsWidth == ConstantVal.TLBEntryNum)
     this.miss := !hit.orR
-    this.index := OHToUInt(hit)
+//    this.index := OHToUInt(hit)
+    val hitEntry = MuxOH(hit, for(i <- 0 until ConstantVal.TLBEntryNum) yield entry(i))
     when(evenOddBit) {
       //evenOddBit为1，选择pfn1
-      this.paddr(12, 20 bits) := entry(this.index).pfn1(0, 20 bits).asUInt
-      this.dirty := entry(this.index).D1
-      this.valid := entry(this.index).V1
-      this.cacheAttr := entry(this.index).C1
+      this.paddr(12, 20 bits) := hitEntry.pfn1(0, 20 bits).asUInt
+      this.dirty := hitEntry.D1
+      this.valid := hitEntry.V1
+      this.cacheAttr := hitEntry.C1
     }.otherwise {
       //evenOddBit为0，选择pfn0
-      this.paddr(12, 20 bits) := entry(this.index).pfn0(0, 20 bits).asUInt
-      this.dirty := entry(this.index).D0
-      this.valid := entry(this.index).V0
-      this.cacheAttr := entry(this.index).C0
+      this.paddr(12, 20 bits) := hitEntry.pfn0(0, 20 bits).asUInt
+      this.dirty := hitEntry.D0
+      this.valid := hitEntry.V0
+      this.cacheAttr := hitEntry.C0
     }
   }
 }

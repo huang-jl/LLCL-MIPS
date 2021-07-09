@@ -1,5 +1,6 @@
 package ip
 
+import cpu.Utils
 import spinal.core._
 import spinal.lib._
 
@@ -10,10 +11,12 @@ import spinal.lib._
  * */
 case class RamPort(dataWidth: Int, addrWidth: Int, readOnly: Boolean = false) extends Bundle with IMasterSlave {
   val en = Bool
-  val we = if (!readOnly) Bool else null //write enable
+  val we = Utils.instantiateWhen(Bool, !readOnly)
+//  val we = if (!readOnly) Bool else null //write enable
   val addr = UInt(addrWidth bits)
-  val din = if (!readOnly) in(Bits(dataWidth bits)) else null
-  val dout = out(Bits(dataWidth bits))
+  val din = Utils.instantiateWhen(Bits(dataWidth bits), !readOnly)
+//  val din = if (!readOnly) in(Bits(dataWidth bits)) else null
+  val dout = Bits(dataWidth bits)
 
   override def asMaster(): Unit = {
     in(dout)

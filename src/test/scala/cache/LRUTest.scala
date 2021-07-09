@@ -1,7 +1,26 @@
 package cache
 
+import lib.Updating
+import spinal.core._
 import spinal.core.sim._
+
 import scala.util.Random
+
+class LRUTest(wayNum: Int = 8) extends Component {
+  val io = new Bundle {
+    val access = in UInt (log2Up(wayNum) bits)
+    val update = in Bool
+    val next   = out UInt (log2Up(wayNum) bits)
+  }
+  val manager = LRUCalculator(wayNum)
+  val plru    = new PLRU(manager.statusLength)
+  plru.prev := plru.next
+  plru.next := plru.prev
+  when(io.update) {
+    manager.updateStatus(io.access, plru.next)
+  }
+  io.next := manager.leastRecentUsedIndex(plru.prev)
+}
 
 object LRUTest {
   //下面是两个手动模拟plru的测例
@@ -32,26 +51,31 @@ object LRUTest {
     val rand = new Random(2021)
     for (width <- 1 to 3) {
       val way = 1 << width
-      SimConfig.addSimulatorFlag("-Wno-CASEINCOMPLETE").withWave.allOptimisation.compile(new LRUManegr(way))
-        .doSim("LRU_Test_8_way", 2021) { dut => {
-          dut.clockDomain.forkStimulus(10)
-          dut.clockDomain.assertReset()
-          sleep(10)
-          dut.clockDomain.deassertReset()
-          dut.clockDomain.waitSampling()
-          var status: Array[Array[Int]] = Array(Array(0), Array(0, 0), Array(0, 0, 0, 0))
-          for (iter <- 0 until 200) {
-            val num = rand.nextInt(way)
-            access(num, status, width)
-            dut.io.access #= 1 << num
-            dut.io.update #= true
+      SimConfig
+        .addSimulatorFlag("-Wno-CASEINCOMPLETE")
+        .withWave
+        .allOptimisation
+        .compile(new LRUTest(way))
+        .doSim(s"LRU_Test_${width}", 2021) { dut =>
+          {
+            dut.clockDomain.forkStimulus(10)
+            dut.clockDomain.assertReset()
+            sleep(10)
+            dut.clockDomain.deassertReset()
             dut.clockDomain.waitSampling()
-            dut.io.update #= false
-            dut.clockDomain.waitFallingEdge()
-            assert(dut.io.next.toInt == getNext(status, width))
-            dut.clockDomain.waitSampling(rand.nextInt(3))
+            var status: Array[Array[Int]] = Array(Array(0), Array(0, 0), Array(0, 0, 0, 0))
+            for (iter <- 0 until 2000) {
+              val num = rand.nextInt(way)
+              access(num, status, width)
+              dut.io.access #= num
+              dut.io.update #= true
+              dut.clockDomain.waitSampling()
+              dut.io.update #= false
+              dut.clockDomain.waitFallingEdge()
+              assert(dut.io.next.toInt == getNext(status, width))
+              dut.clockDomain.waitSampling(rand.nextInt(3))
+            }
           }
-        }
         }
     }
 

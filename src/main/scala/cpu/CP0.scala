@@ -5,6 +5,7 @@ import lib.{Optional, Updating}
 import spinal.core._
 import spinal.lib.{cpu => _, _}
 import tlb.{TLBConfig, TLBEntry}
+import Utils.IntToFixedLengthBinaryString
 
 import scala.collection.mutable
 
@@ -304,6 +305,30 @@ object CP0 {
     describeRegister("EPC", 14, 0)
       .field("EPC", 31 downto 0)
 
+    //TODO K0可能需要修改？现在的MMU实现kseg0因为是unmapped，因此会被cache
+    describeRegister("Config0", 16, 0)
+      .hardwiredField("M", 31, true)
+      .hardwiredField("MT", 9 downto 7, "001")
+      .hardwiredField("K0", 2 downto 0, "011")
+
+    //TODO 实现了CP2需要加入C2域，实现了FPU需要加入FPU域
+    describeRegister("Config1", 16, 1)
+      .hardwiredField("MMUSize", 30 downto 25,
+        ConstantVal.TLBEntryNum.toBinaryString(6))
+      .hardwiredField("IS", 24 downto 22,
+        (log2Up(ConstantVal.IcacheSetsPerWay) - 6).toBinaryString(3))
+      .hardwiredField("IL", 21 downto 19,
+        (log2Up(ConstantVal.IcacheLineSize) - 1).toBinaryString(3))
+      .hardwiredField("IA", 18 downto 16,
+        (ConstantVal.IcacheWayNum - 1).toBinaryString(3))
+      .hardwiredField("DS", 15 downto 13,
+        (log2Up(ConstantVal.DcacheSetsPerWay) - 6).toBinaryString(3))
+      .hardwiredField("DL", 12 downto 10,
+        (log2Up(ConstantVal.DcacheLineSize) - 1).toBinaryString(3))
+      .hardwiredField("DA", 9 downto 7,
+        (ConstantVal.DcacheWayNum - 1).toBinaryString(3))
+
+
     //CP0 Reg for TLB-based MMU
     if (ConstantVal.USE_TLB) {
       val TLBIndexWidth: Int = log2Up(ConstantVal.TLBEntryNum)
@@ -340,13 +365,19 @@ object CP0 {
       //In Release1 MaskX(12 downto 11) is hardwired to 0
 
       //TODO Random be set with (TLBEntryNum - 1)  when Reset Exception and write wired register
+      //TODO Implemented Random
       //Random Range : [Wired, TLBEntryNum - 1]
       describeRegister("Random", number = 1, sel = 0)
-        .readOnlyField("Random", 0 until TLBIndexWidth, "1" * TLBIndexWidth)
+        .readOnlyField("Random", 0 until TLBIndexWidth,
+          (ConstantVal.TLBEntryNum - 1).toBinaryString(TLBIndexWidth))
 
-      //TODO Wired is set to 0 when Reset Exception
       describeRegister("Wired", number = 6, sel = 0)
         .field("Wired", 0 until TLBIndexWidth, "0" * TLBIndexWidth)
+
+      // Context.BadVPN2记录发生TLB异常的VA[31...13]
+      describeRegister("Context", number = 4, sel = 0)
+        .field("PTEBase", 31 downto 23, "0" * (31 - 23 + 1))
+        .readOnlyField("BadVPN2", 22 downto 4, "0" * (22 - 4 + 1))
     }
   }
 
@@ -377,7 +408,9 @@ class CP0 extends Component {
     val softwareWrite = slave Flow (Write())
     val read          = slave(Read())
 
-    val tlbBus = if (ConstantVal.USE_TLB) slave(new TLBInterface) else null //tlbBus
+
+    val tlbBus = Utils.instantiateWhen(slave(new TLBInterface), ConstantVal.USE_TLB)
+//    val tlbBus = if (ConstantVal.USE_TLB) slave(new TLBInterface) else null //tlbBus
 
     val externalInterrupt = in Bits (6 bits)
     val exceptionInput    = in(ExceptionInput())
@@ -510,19 +543,21 @@ class CP0 extends Component {
       regs("Cause")("BD") := io.exceptionInput.bd.asBits
       regs("Cause")("ExcCode") := exc.asBits.resized
 
-      when(Utils.equalAny(exc, EXCEPTION.AdES, EXCEPTION.AdEL, EXCEPTION.TLBL, EXCEPTION.TLBS)) {
-        regs("BadVAddr")("BadVAddr") :=
-          (io.exceptionInput.instFetch
-            ? io.exceptionInput.pc
-            | io.exceptionInput.memAddr).asBits
+      when(Utils.equalAny(exc, EXCEPTION.AdES, EXCEPTION.AdEL, EXCEPTION.TLBL, EXCEPTION.TLBS, EXCEPTION.Mod)) {
+        regs("BadVAddr")("BadVAddr") := (io.exceptionInput.instFetch
+          ? io.exceptionInput.pc
+          | io.exceptionInput.memAddr).asBits
 
       }
       if (ConstantVal.USE_TLB) {
-        when(Utils.equalAny(exc, EXCEPTION.TLBS, EXCEPTION.TLBL)) {
-          regs("EntryHi")("VPN2") :=
-            (io.exceptionInput.instFetch
-              ? io.exceptionInput.pc
-              | io.exceptionInput.memAddr)(31 downto 13).asBits
+        when(Utils.equalAny(exc, EXCEPTION.TLBS, EXCEPTION.TLBL, EXCEPTION.Mod)) {
+          regs("EntryHi")("VPN2") := (io.exceptionInput.instFetch
+            ? io.exceptionInput.pc
+            | io.exceptionInput.memAddr)(31 downto 13).asBits
+
+          regs("Context")("BadVPN2") := (io.exceptionInput.instFetch
+            ? io.exceptionInput.pc
+            | io.exceptionInput.memAddr)(31 downto 13).asBits
         }
       }
       //      when(exc === EXCEPTION.AdEL || exc === EXCEPTION.AdES) {
@@ -543,7 +578,7 @@ class CP0 extends Component {
   }
 
   // Interrupt
-  val interrupts          = regs("Cause")("IP_HW") ## regs("Cause").next("IP_SW")
+  val interrupts          = (regs("Cause")("IP_HW") ## regs("Cause").next("IP_SW")) & regs("Status")("IM")
   val interruptOnNextInst = Updating(Bool) init False
   io.interruptOnNextInst := interruptOnNextInst.next
 
