@@ -2,14 +2,14 @@ package cpu
 
 import cache.CacheRamConfig
 import cpu.defs.Mips32InstImplicits._
+import cpu.defs.config._
 import cpu.defs.{ConstantVal, Mips32Inst}
+import ip._
 import lib.{Key, Optional, Task}
 import spinal.core._
 import spinal.lib.bus.amba4.axi._
 import spinal.lib.{cpu => _, _}
 import tlb.MMU
-import ip._
-import defs.config._
 
 class CPU extends Component {
   val io = new Bundle {
@@ -368,24 +368,22 @@ class CPU extends Component {
           stored(btbHitLine),
           B(0, 1 + BTB.TAG_WIDTH bits)
         )
-        btb.getP(1, stored(btbHitLine), True, output(btbSetP))
-        btb.getP(1, stored(btbHitLine), False, output(btbClearP))
+        btb.getP(stored(btbP), stored(btbHitLine), True, output(btbSetP))
       } otherwise {
         val jumpPC = du.io.ju_pc_src.mux(
           JU_PC_SRC.offset -> U(S(stored(pcPlus4)) + S(du.io.inst.offset ## B"00")),
           default          -> U(stored(pcPlus4)(31 downto 28) ## du.io.inst.index ## B"00")
         )
-        val wea = Bits(BTB.NUM_WAYS bits)
+        val wea = btb.plru(stored(btbP))
         output(btbDataLine) := btb.dataMem.write(stored(btbDataLine), wea, B(jumpPC))
         output(btbTagLine) := btb.tagMem.write(
           stored(btbTagLine),
           wea,
           True ## B(stored(pc)(BTB.TAG_OFFSET, BTB.TAG_WIDTH bits))
         )
-        wea := btb.plru(1, stored(btbP), True)
-        btb.getP(1, wea, True, output(btbSetP))
-        output(btbClearP).clearAll
+        btb.getP(stored(btbP), wea, True, output(btbSetP))
       }
+      btb.getP(stored(btbP), stored(btbHitLine), False, output(btbClearP))
     }
 
     val duC = new StageComponent {

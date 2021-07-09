@@ -1,7 +1,6 @@
 package ip
 
 import spinal.core._
-import spinal.lib._
 
 class SDPRAM(numEntries: Int, numWays: Int, indexWidth: Int, entryWidth: Int) extends Component {
   val memGeneric = new xpm_memory_sdpram_generic
@@ -38,22 +37,24 @@ class SDPRAM(numEntries: Int, numWays: Int, indexWidth: Int, entryWidth: Int) ex
   mem.io.ena := io.ena
   mem.io.addra := io.addra
   mem.io.dina := io.dina
-  mem.io.wea := io.wea
+  mem.io.wea := io.wea.asBits
 
   mem.io.enb := True
   mem.io.addrb := io.enb ? io.addrb | currAddrb
-  io.doutb := (mem.io.ena & currAddrb === mem.io.addra) ?
-    mem.io.dina | ((prevEna & currAddrb === prevAddra) ? prevDina | mem.io.doutb)
+  io.doutb := (io.ena & currAddrb === io.addra) ?
+    io.dina | ((prevEna & currAddrb === prevAddra) ? prevDina | mem.io.doutb)
 
-  def write(data: Bits, we: Bits, din: Bits): Bits = {
-    val dout = Bits(data.getBitsWidth bits)
-    dout := data
-    for (i <- 0 until numWays) {
+  def write(input: Bits, we: Bits, data: Bits): Bits = {
+    val output = Bits(input.getBitsWidth bits)
+    output := input
+    output(0, entryWidth bits) := data
+    for (i <- 1 until numWays) {
       when(we(i)) {
-        dout(i * entryWidth, entryWidth bits) := din
+        output := input
+        output(i * entryWidth, entryWidth bits) := data
       }
     }
-    dout
+    output
   }
 }
 
@@ -83,7 +84,7 @@ class Cache(
       val wea      = in Bool ()
       val p        = in Bits (numWays - 1 bits)
 
-      val pEn = in Bool () default False
+      val pEn = in Bool ()
     }
     val r = new Bundle {
       val en       = in Bool ()
@@ -93,63 +94,76 @@ class Cache(
       val p        = out Bits (numWays - 1 bits)
     }
   }
+
+  val wIndex = io.w.addr(indexOffset, indexWidth bits)
+  val rIndex = io.r.addr(indexOffset, indexWidth bits)
+
   //
   dataMem.io.ena := io.w.en
-  dataMem.io.addra := io.w.addr(indexOffset, indexWidth bits)
+  dataMem.io.addra := wIndex
   dataMem.io.dina := io.w.dataLine
   dataMem.io.wea := io.w.wea
 
   dataMem.io.enb := io.r.en
-  dataMem.io.addrb := io.r.addr(indexOffset, indexWidth bits)
+  dataMem.io.addrb := rIndex
   io.r.dataLine := dataMem.io.doutb
 
   //
   tagMem.io.ena := io.w.en
-  tagMem.io.addra := io.w.addr(indexOffset, indexWidth bits)
+  tagMem.io.addra := wIndex
   tagMem.io.dina := io.w.tagLine
   tagMem.io.wea := io.w.wea
 
   tagMem.io.enb := io.r.en
-  tagMem.io.addrb := io.r.addr(indexOffset, indexWidth bits)
+  tagMem.io.addrb := rIndex
   io.r.tagLine := tagMem.io.doutb
 
   //
   io.r.p := pMem(dataMem.currAddrb)
   when(io.w.pEn) {
-    pMem(io.w.addr(indexOffset, indexWidth bits)) := io.w.p
-    when(tagMem.currAddrb === io.w.addr(indexOffset, indexWidth bits)) {
+    pMem(wIndex) := io.w.p
+    when(tagMem.currAddrb === wIndex) {
       io.r.p := io.w.p
     }
   }
 
   //
-  def plru(i: Int, p: Bits, v: Bool): Bits = {
+  def plru(p: Bits, i: Int = 1, v: Bool = True): Bits = {
     if (i < numWays) {
-      plru(i << 1, p, v & p(i - 1)) ## plru(i << 1 | 1, p, v & !p(i - 1))
+      plru(p, i << 1, v & p(i - 1)) ## plru(p, i << 1 | 1, v & !p(i - 1))
     } else {
       B(v)
     }
   }
 
-  def getP(i: Int, we: Bits, set: Bool, p: Bits): Bool = {
+  def getP(pIn: Bits, we: Bits, set: Bool, pOut: Bits, i: Int = 1): Bool = {
     if (i < numWays) {
-      val l = getP(i << 1, we, set, p)
-      p(i - 1) := l ^ set
+      val l = getP(pIn, we, set, pOut, i << 1)
+      val r = getP(pIn, we, set, pOut, i << 1 | 1)
 
-      l | getP(i << 1 | 1, we, set, p)
+      pOut(i - 1) := pIn(i - 1)
+      when(l) {
+        pOut(i - 1) := !set
+      }
+      when(r) {
+        pOut(i - 1) := set
+      }
+
+      l | r
     } else {
       we(i % numWays)
     }
   }
 
   def getHitLineAndData(tagLine: Bits, dataLine: Bits, addr: UInt, hitLine: Bits, data: Bits) {
-    data.clearAll
     for (i <- 0 until numWays) {
       hitLine(i) :=
         tagLine(i * (1 + tagWidth), 1 + tagWidth bits) === True ## addr(tagOffset, tagWidth bits)
-      when(hitLine(i)) {
-        data := dataLine(i * dataWidth, dataWidth bits)
-      }
+    }
+
+    data := dataLine(0, dataWidth bits)
+    for (i <- 1 until numWays) {
+      when(hitLine(i)) { data := dataLine(i * dataWidth, dataWidth bits) }
     }
   }
 }
