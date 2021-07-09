@@ -32,7 +32,7 @@ spinal_verilog:
   tags:
     - vivado
   script:
-    - sbt ${SPT_OPTIONS} 'runMain cpu.Generate'
+    - sbt ${SBT_OPTS} 'runMain cpu.Generate'
   artifacts:
     paths:
       - ./mycpu_top.v
