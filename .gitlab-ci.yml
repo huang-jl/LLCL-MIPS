@@ -24,6 +24,8 @@ stages:
 
 spinal_verilog:
   stage: generate_verilog
+  tags:
+    - vivado
   script:
     - "sbt 'runMain cpu.Generate'"
   artifacts:
@@ -34,6 +36,8 @@ spinal_verilog:
 
 spinal_test:
   stage: func_test
+  tags:
+    - vivado
   rules:
     - if: '$CI_COMMIT_MESSAGE =~ /\[func-test/i'
   script:
@@ -50,6 +54,8 @@ spinal_test:
 
 build_func_ip:
   stage: init_vivado
+  tags:
+    - vivado
   variables:
     PROJECT_NAME: "mycpu"
     XPR_PATH: "run_vivado/mycpu_prj1/${PROJECT_NAME}.xpr"
@@ -62,6 +68,8 @@ build_func_ip:
 
 build_perf_ip:
   stage: init_vivado
+  tags:
+    - vivado
   variables:
     PROJECT_NAME: "mycpu"
     XPR_PATH: "run_vivado/mycpu_prj1/${PROJECT_NAME}.xpr"
@@ -75,6 +83,8 @@ build_perf_ip:
 
 generate_func_bit_stream:
   stage: bitstreams
+  tags:
+    - vivado
   variables:
     PROJECT_NAME: "mycpu"
     XPR_PATH: "run_vivado/mycpu_prj1/${PROJECT_NAME}.xpr"
@@ -91,6 +101,8 @@ generate_func_bit_stream:
 
 generate_perf_bit_stream:
   stage: bitstreams
+  tags:
+    - vivado
   variables:
     PROJECT_NAME: "mycpu"
     XPR_PATH: "run_vivado/mycpu_prj1/${PROJECT_NAME}.xpr"
