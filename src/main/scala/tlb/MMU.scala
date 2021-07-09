@@ -1,5 +1,6 @@
 package tlb
 
+import cpu.Utils
 import spinal.core._
 import spinal.lib._
 
@@ -13,7 +14,7 @@ class MMUTranslationRes(useTLB: Boolean) extends Bundle {
   val paddr              = UInt(32 bits)
   val miss, dirty, valid = Bool
   val cached             = Bool
-  val mapped             = if (useTLB) Bool else null
+  val mapped             = Utils.instantiateWhen(Bool, useTLB)
 }
 
 /** @param useTLB 是否使用TLB进行地址转换
@@ -27,16 +28,24 @@ class CPUMMUInterface(useTLB: Boolean) extends Bundle with IMasterSlave {
 
   //TLB指令相关的内容，包括tlbp, tlbr, tlbwi, tlbwr
   /** 不是Index寄存器，而是Index寄存器（或者Random寄存器）中的值 */
-  val index = if (useTLB) UInt(TLBConfig.tlbIndexWidth bits) else null //要读或者要写的index
-  val wdata = if (useTLB) new TLBEntry else null                       //需要把要写入的TLB内容提前填充成一个Entry项
-  val write = if (useTLB) Bool else null                               //是否把wdata写入TLB中
-  val rdata = if (useTLB) new TLBEntry else null
+  val index = Utils.instantiateWhen(UInt(TLBConfig.tlbIndexWidth bits), useTLB)
+  val wdata = Utils.instantiateWhen(new TLBEntry, useTLB)                       //需要把要写入的TLB内容提前填充成一个Entry项
+  val write = Utils.instantiateWhen(Bool, useTLB)                               //是否把wdata写入TLB中
+  val rdata = Utils.instantiateWhen(new TLBEntry, useTLB)
+//  val index = if (useTLB) UInt(TLBConfig.tlbIndexWidth bits) else null //要读或者要写的index
+//  val wdata = if (useTLB) new TLBEntry else null                       //需要把要写入的TLB内容提前填充成一个Entry项
+//  val write = if (useTLB) Bool else null                               //是否把wdata写入TLB中
+//  val rdata = if (useTLB) new TLBEntry else null
 
   //针对tlbp的
-  val probeVPN2 = if (useTLB) Bits(TLBConfig.vpn2Width bits) else null
+  val probeVPN2 = Utils.instantiateWhen(Bits(TLBConfig.vpn2Width bits), useTLB)
   val probeASID =
-    if (useTLB) Bits(TLBConfig.asidWidth bits) else null //TODO: 这里的asid和上面的asid应该一直是一样的？
-  val probeIndex = if (useTLB) Bits(32 bits) else null //这个值可以直接写回Index CP0寄存器
+    Utils.instantiateWhen(Bits(TLBConfig.asidWidth bits), useTLB) //TODO: 这里的asid和上面的asid应该一直是一样的？
+  val probeIndex = Utils.instantiateWhen(Bits(32 bits), useTLB) //这个值可以直接写回Index CP0寄存器
+//  val probeVPN2 = if (useTLB) Bits(TLBConfig.vpn2Width bits) else null
+//  val probeASID =
+//    if (useTLB) Bits(TLBConfig.asidWidth bits) else null //TODO: 这里的asid和上面的asid应该一直是一样的？
+//  val probeIndex = if (useTLB) Bits(32 bits) else null //这个值可以直接写回Index CP0寄存器
 
   override def asMaster(): Unit = {
     in(instRes, dataRes)

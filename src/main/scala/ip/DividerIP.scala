@@ -1,5 +1,6 @@
 package ip
 
+import cpu.Utils
 import spinal.core._
 
 /** @param dataWidth  被除数和除数的宽度
@@ -13,24 +14,25 @@ class DividerIP(dataWidth: Int = 32, detectZero: Boolean = false, name: String =
   setDefinitionName(name)
   val alignedDataWidth = ((dataWidth + 7) / 8) * 8
   val io = new Bundle {
-    val aclk   = in Bool
+    val aclk = in Bool
 
     /** 被除数 */
     val dividend = new Bundle {
       setName("s_axis_dividend")
-      val tdata = in UInt (alignedDataWidth bits)
+      val tdata  = in UInt (alignedDataWidth bits)
       val tvalid = in Bool
     }
     val divisor = new Bundle {
       setName("s_axis_divisor")
-      val tdata = in UInt (alignedDataWidth bits)
+      val tdata  = in UInt (alignedDataWidth bits)
       val tvalid = in Bool
     }
     val dout = new Bundle {
       setName("m_axis_dout")
-      val tdata = out UInt (2 * alignedDataWidth bits)
+      val tdata  = out UInt (2 * alignedDataWidth bits)
       val tvalid = out Bool
-      val tuser = if (detectZero) out(Bool) else null
+      val tuser  = Utils.instantiateWhen(out(Bool), detectZero)
+//      val tuser = if (detectZero) out(Bool) else null
       def divideByZero = tuser
     }
   }

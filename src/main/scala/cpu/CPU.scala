@@ -287,7 +287,8 @@ class CPU extends Component {
         input(inst).rd === ME1.stored(inst).rd &
         input(inst).sel === ME1.stored(inst).sel
 
-      val mfc0_tlb_hazard = if (ConstantVal.USE_TLB) Bool else null
+      val mfc0_tlb_hazard = Utils.instantiateWhen(Bool, ConstantVal.USE_TLB)
+//      val mfc0_tlb_hazard = if (ConstantVal.USE_TLB) Bool else null
       if (ConstantVal.USE_TLB) {
         mfc0_tlb_hazard := !ME1.is.empty & input(cp0Re) &
           (

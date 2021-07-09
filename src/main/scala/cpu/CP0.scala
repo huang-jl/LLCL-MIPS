@@ -5,6 +5,7 @@ import lib.{Optional, Updating}
 import spinal.core._
 import spinal.lib.{cpu => _, _}
 import tlb.{TLBConfig, TLBEntry}
+import Utils.IntToFixedLengthBinaryString
 
 import scala.collection.mutable
 
@@ -312,19 +313,20 @@ object CP0 {
 
     //TODO 实现了CP2需要加入C2域，实现了FPU需要加入FPU域
     describeRegister("Config1", 16, 1)
-      .hardwiredField("MMUSize", 30 downto 25, Utils.toBinaryString(ConstantVal.TLBEntryNum, 6))
+      .hardwiredField("MMUSize", 30 downto 25,
+        ConstantVal.TLBEntryNum.toBinaryString(6))
       .hardwiredField("IS", 24 downto 22,
-        Utils.toBinaryString(log2Up(ConstantVal.IcacheSetsPerWay) - 6, 3))
+        (log2Up(ConstantVal.IcacheSetsPerWay) - 6).toBinaryString(3))
       .hardwiredField("IL", 21 downto 19,
-        Utils.toBinaryString(log2Up(ConstantVal.IcacheLineSize) - 1 ,3))
+        (log2Up(ConstantVal.IcacheLineSize) - 1).toBinaryString(3))
       .hardwiredField("IA", 18 downto 16,
-        Utils.toBinaryString(ConstantVal.IcacheWayNum - 1,3))
+        (ConstantVal.IcacheWayNum - 1).toBinaryString(3))
       .hardwiredField("DS", 15 downto 13,
-        Utils.toBinaryString(log2Up(ConstantVal.DcacheSetsPerWay) - 6, 3))
+        (log2Up(ConstantVal.DcacheSetsPerWay) - 6).toBinaryString(3))
       .hardwiredField("DL", 12 downto 10,
-        Utils.toBinaryString(log2Up(ConstantVal.DcacheLineSize) - 1 ,3))
+        (log2Up(ConstantVal.DcacheLineSize) - 1).toBinaryString(3))
       .hardwiredField("DA", 9 downto 7,
-        Utils.toBinaryString(ConstantVal.DcacheWayNum - 1,3))
+        (ConstantVal.DcacheWayNum - 1).toBinaryString(3))
 
 
     //CP0 Reg for TLB-based MMU
@@ -367,7 +369,7 @@ object CP0 {
       //Random Range : [Wired, TLBEntryNum - 1]
       describeRegister("Random", number = 1, sel = 0)
         .readOnlyField("Random", 0 until TLBIndexWidth,
-          Utils.toBinaryString(ConstantVal.TLBEntryNum - 1, TLBIndexWidth))
+          (ConstantVal.TLBEntryNum - 1).toBinaryString(TLBIndexWidth))
 
       describeRegister("Wired", number = 6, sel = 0)
         .field("Wired", 0 until TLBIndexWidth, "0" * TLBIndexWidth)
@@ -406,7 +408,9 @@ class CP0 extends Component {
     val softwareWrite = slave Flow (Write())
     val read          = slave(Read())
 
-    val tlbBus = if (ConstantVal.USE_TLB) slave(new TLBInterface) else null //tlbBus
+
+    val tlbBus = Utils.instantiateWhen(slave(new TLBInterface), ConstantVal.USE_TLB)
+//    val tlbBus = if (ConstantVal.USE_TLB) slave(new TLBInterface) else null //tlbBus
 
     val externalInterrupt = in Bits (6 bits)
     val exceptionInput    = in(ExceptionInput())

@@ -24,13 +24,15 @@ package object Utils {
   }
 
   /** 用于初始化CP0寄存器的 */
-  def toBinaryString(value: Int, length: Int): String = {
-    val str = value.toBinaryString
-    assert(length >= str.length)
-    if (length > str.length) {
-      Array.fill(length - str.length)("0").mkString.concat(str)
-    } else {
-      str
+  implicit class IntToFixedLengthBinaryString(value: Int) {
+    def toBinaryString(length:Int):String = {
+      val str = Integer.toBinaryString(value)
+      assert(length >= str.length)
+      if (length > str.length) {
+        Array.fill(length - str.length)("0").mkString.concat(str)
+      } else {
+        str
+      }
     }
   }
 }
