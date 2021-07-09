@@ -5,6 +5,7 @@ variables:
   VIVADO: "${VIVADO_DIR}/bin/vivado"
   FUNC_TEST_WORK_DIR: "./official/soc_axi_func"
   PERF_TEST_WORK_DIR: "./official/soc_axi_perf"
+  SBT_OPTS: "-Dsbt.global.base=sbt-cache/.sbtboot -Dsbt.boot.directory=sbt-cache/.boot -Dsbt.ivy.home=sbt-cache/.ivy -Dsbt.repository.config=repositories"
 
 cache:
   key: "$CI_COMMIT_REF_SLUG"
@@ -15,6 +16,10 @@ cache:
     - official/**/run_vivado/mycpu_prj1/mycpu.sim
     - official/**/run_vivado/mycpu_prj1/mycpu.runs
     - official/**/run_vivado/mycpu_prj1/mycpu.cache
+    - "sbt-cache/.ivy/cache"
+    - "sbt-cache/.boot"
+    - "sbt-cache/.sbtboot"
+    - "sbt-cache/target"
 
 stages:
   - generate_verilog
@@ -27,7 +32,7 @@ spinal_verilog:
   tags:
     - vivado
   script:
-    - "sbt 'runMain cpu.Generate'"
+    - "sbt ${SPT_OPTIONS} 'runMain cpu.Generate'"
   artifacts:
     paths:
       - ./mycpu_top.v
