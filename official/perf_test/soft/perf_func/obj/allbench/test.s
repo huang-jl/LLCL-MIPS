@@ -18764,88 +18764,88 @@ search_small():
 
 9fc12720 <fopen>:
 fopen():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:20
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:20
 9fc12720:	3c029fc2 	lui	v0,0x9fc2
 9fc12724:	2447b030 	addiu	a3,v0,-20432
 9fc12728:	00e02821 	move	a1,a3
 9fc1272c:	00001821 	move	v1,zero
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:22
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:22
 9fc12730:	2406000a 	li	a2,10
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:23
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:23
 9fc12734:	8ca20000 	lw	v0,0(a1)
 9fc12738:	00000000 	nop
 9fc1273c:	10400004 	beqz	v0,9fc12750 <fopen+0x30>
 9fc12740:	24a50008 	addiu	a1,a1,8
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:22
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:22
 9fc12744:	24630001 	addiu	v1,v1,1
 9fc12748:	1466fffa 	bne	v1,a2,9fc12734 <fopen+0x14>
 9fc1274c:	00000000 	nop
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:27
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:27
 9fc12750:	000310c0 	sll	v0,v1,0x3
 9fc12754:	00471021 	addu	v0,v0,a3
 9fc12758:	ac440000 	sw	a0,0(v0)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:30
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:30
 9fc1275c:	03e00008 	jr	ra
 9fc12760:	ac400004 	sw	zero,4(v0)
 
 9fc12764 <fclose>:
 fclose():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:61
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:61
 9fc12764:	3c029fc2 	lui	v0,0x9fc2
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:63
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:63
 9fc12768:	3c039fc2 	lui	v1,0x9fc2
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:61
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:61
 9fc1276c:	2442b030 	addiu	v0,v0,-20432
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:63
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:63
 9fc12770:	2463b080 	addiu	v1,v1,-20352
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:64
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:64
 9fc12774:	10820004 	beq	a0,v0,9fc12788 <fclose+0x24>
 9fc12778:	00000000 	nop
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:65
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:65
 9fc1277c:	24420008 	addiu	v0,v0,8
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:63
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:63
 9fc12780:	1443fffc 	bne	v0,v1,9fc12774 <fclose+0x10>
 9fc12784:	00000000 	nop
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:69
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:69
 9fc12788:	ac800004 	sw	zero,4(a0)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:70
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:70
 9fc1278c:	03e00008 	jr	ra
 9fc12790:	ac800000 	sw	zero,0(a0)
 
 9fc12794 <getc>:
 getc():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:88
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:88
 9fc12794:	27bdffe0 	addiu	sp,sp,-32
 9fc12798:	afb00014 	sw	s0,20(sp)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:89
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:89
 9fc1279c:	8c900000 	lw	s0,0(a0)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:88
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:88
 9fc127a0:	afb10018 	sw	s1,24(sp)
 9fc127a4:	00808821 	move	s1,a0
 9fc127a8:	afbf001c 	sw	ra,28(sp)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:90
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:90
 9fc127ac:	0ff04b88 	jal	9fc12e20 <strlen>
 9fc127b0:	02002021 	move	a0,s0
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:91
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:91
 9fc127b4:	8e230004 	lw	v1,4(s1)
 9fc127b8:	00000000 	nop
 9fc127bc:	10620009 	beq	v1,v0,9fc127e4 <getc+0x50>
 9fc127c0:	02031021 	addu	v0,s0,v1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:97
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:97
 9fc127c4:	8fbf001c 	lw	ra,28(sp)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:94
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:94
 9fc127c8:	24630001 	addiu	v1,v1,1
 9fc127cc:	90420000 	lbu	v0,0(v0)
 9fc127d0:	ae230004 	sw	v1,4(s1)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:97
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:97
 9fc127d4:	8fb00014 	lw	s0,20(sp)
 9fc127d8:	8fb10018 	lw	s1,24(sp)
 9fc127dc:	03e00008 	jr	ra
 9fc127e0:	27bd0020 	addiu	sp,sp,32
 9fc127e4:	8fbf001c 	lw	ra,28(sp)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:91
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:91
 9fc127e8:	2402ffff 	li	v0,-1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:97
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:97
 9fc127ec:	8fb10018 	lw	s1,24(sp)
 9fc127f0:	8fb00014 	lw	s0,20(sp)
 9fc127f4:	03e00008 	jr	ra
@@ -18853,26 +18853,26 @@ getc():
 
 9fc127fc <fgets>:
 fgets():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:72
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:72
 9fc127fc:	27bdffe0 	addiu	sp,sp,-32
 9fc12800:	afb10014 	sw	s1,20(sp)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:73
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:73
 9fc12804:	8cd10000 	lw	s1,0(a2)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:72
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:72
 9fc12808:	afb20018 	sw	s2,24(sp)
 9fc1280c:	afb00010 	sw	s0,16(sp)
 9fc12810:	00809021 	move	s2,a0
 9fc12814:	00c08021 	move	s0,a2
 9fc12818:	afbf001c 	sw	ra,28(sp)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:74
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:74
 9fc1281c:	0ff04b88 	jal	9fc12e20 <strlen>
 9fc12820:	02202021 	move	a0,s1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:77
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:77
 9fc12824:	8e040004 	lw	a0,4(s0)
 9fc12828:	00000000 	nop
 9fc1282c:	10820012 	beq	a0,v0,9fc12878 <fgets+0x7c>
 9fc12830:	00403821 	move	a3,v0
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:78
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:78
 9fc12834:	02242821 	addu	a1,s1,a0
 9fc12838:	80a30000 	lb	v1,0(a1)
 9fc1283c:	2402000a 	li	v0,10
@@ -18884,15 +18884,15 @@ fgets():
 9fc12854:	00000000 	nop
 9fc12858:	1068000e 	beq	v1,t0,9fc12894 <fgets+0x98>
 9fc1285c:	24a50001 	addiu	a1,a1,1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:82
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:82
 9fc12860:	02461021 	addu	v0,s2,a2
 9fc12864:	24840001 	addiu	a0,a0,1
 9fc12868:	a0430000 	sb	v1,0(v0)
 9fc1286c:	24c60001 	addiu	a2,a2,1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:77
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:77
 9fc12870:	14e4fff7 	bne	a3,a0,9fc12850 <fgets+0x54>
 9fc12874:	ae040004 	sw	a0,4(s0)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:86
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:86
 9fc12878:	8fbf001c 	lw	ra,28(sp)
 9fc1287c:	00001021 	move	v0,zero
 9fc12880:	8fb20018 	lw	s2,24(sp)
@@ -18900,16 +18900,16 @@ fgets():
 9fc12888:	8fb00010 	lw	s0,16(sp)
 9fc1288c:	03e00008 	jr	ra
 9fc12890:	27bd0020 	addiu	sp,sp,32
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:79
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:79
 9fc12894:	02461021 	addu	v0,s2,a2
 9fc12898:	2403000a 	li	v1,10
 9fc1289c:	a0430000 	sb	v1,0(v0)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:86
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:86
 9fc128a0:	8fbf001c 	lw	ra,28(sp)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:79
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:79
 9fc128a4:	24840001 	addiu	a0,a0,1
 9fc128a8:	ae040004 	sw	a0,4(s0)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:86
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:86
 9fc128ac:	00001021 	move	v0,zero
 9fc128b0:	8fb20018 	lw	s2,24(sp)
 9fc128b4:	8fb10014 	lw	s1,20(sp)
@@ -18919,49 +18919,49 @@ fgets():
 
 9fc128c4 <fread>:
 fread():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:32
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:32
 9fc128c4:	27bdffd8 	addiu	sp,sp,-40
 9fc128c8:	afb10014 	sw	s1,20(sp)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:34
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:34
 9fc128cc:	8cf10000 	lw	s1,0(a3)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:32
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:32
 9fc128d0:	afb40020 	sw	s4,32(sp)
 9fc128d4:	0080a021 	move	s4,a0
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:35
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:35
 9fc128d8:	02202021 	move	a0,s1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:32
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:32
 9fc128dc:	afb3001c 	sw	s3,28(sp)
 9fc128e0:	afb20018 	sw	s2,24(sp)
 9fc128e4:	afb00010 	sw	s0,16(sp)
 9fc128e8:	afbf0024 	sw	ra,36(sp)
 9fc128ec:	00e08021 	move	s0,a3
 9fc128f0:	00a09821 	move	s3,a1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:35
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:35
 9fc128f4:	0ff04b88 	jal	9fc12e20 <strlen>
 9fc128f8:	00c09021 	move	s2,a2
 9fc128fc:	00404821 	move	t1,v0
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:36
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:36
 9fc12900:	8e020004 	lw	v0,4(s0)
 9fc12904:	00000000 	nop
 9fc12908:	10490017 	beq	v0,t1,9fc12968 <fread+0xa4>
 9fc1290c:	02530018 	mult	s2,s3
 9fc12910:	00003821 	move	a3,zero
 9fc12914:	00002812 	mflo	a1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:40
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:40
 9fc12918:	00e5102b 	sltu	v0,a3,a1
 9fc1291c:	10400009 	beqz	v0,9fc12944 <fread+0x80>
 9fc12920:	02874021 	addu	t0,s4,a3
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:41
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:41
 9fc12924:	8e020004 	lw	v0,4(s0)
 9fc12928:	24e70001 	addiu	a3,a3,1
 9fc1292c:	02221821 	addu	v1,s1,v0
 9fc12930:	90640000 	lbu	a0,0(v1)
 9fc12934:	24420001 	addiu	v0,v0,1
 9fc12938:	a1040000 	sb	a0,0(t0)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:42
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:42
 9fc1293c:	1522fff6 	bne	t1,v0,9fc12918 <fread+0x54>
 9fc12940:	ae020004 	sw	v0,4(s0)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:47
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:47
 9fc12944:	8fbf0024 	lw	ra,36(sp)
 9fc12948:	00e01021 	move	v0,a3
 9fc1294c:	8fb40020 	lw	s4,32(sp)
@@ -18972,9 +18972,9 @@ fread():
 9fc12960:	03e00008 	jr	ra
 9fc12964:	27bd0028 	addiu	sp,sp,40
 9fc12968:	8fbf0024 	lw	ra,36(sp)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:36
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:36
 9fc1296c:	00003821 	move	a3,zero
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/stdio.c:47
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/stdio.c:47
 9fc12970:	00e01021 	move	v0,a3
 9fc12974:	8fb40020 	lw	s4,32(sp)
 9fc12978:	8fb3001c 	lw	s3,28(sp)
@@ -18986,7 +18986,7 @@ fread():
 
 9fc12990 <printf>:
 printf():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:2
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:2
 9fc12990:	27bdffc8 	addiu	sp,sp,-56
 9fc12994:	afb30024 	sw	s3,36(sp)
 9fc12998:	afbf0034 	sw	ra,52(sp)
@@ -18996,48 +18996,48 @@ printf():
 9fc129a8:	afb20020 	sw	s2,32(sp)
 9fc129ac:	afb1001c 	sw	s1,28(sp)
 9fc129b0:	afb00018 	sw	s0,24(sp)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:10
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:10
 9fc129b4:	80900000 	lb	s0,0(a0)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:2
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:2
 9fc129b8:	00809821 	move	s3,a0
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:8
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:8
 9fc129bc:	27a4003c 	addiu	a0,sp,60
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:2
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:2
 9fc129c0:	afa5003c 	sw	a1,60(sp)
 9fc129c4:	afa60040 	sw	a2,64(sp)
 9fc129c8:	afa70044 	sw	a3,68(sp)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:10
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:10
 9fc129cc:	12000013 	beqz	s0,9fc12a1c <printf+0x8c>
 9fc129d0:	afa40010 	sw	a0,16(sp)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:17
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:17
 9fc129d4:	3c029fc1 	lui	v0,0x9fc1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:9
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:9
 9fc129d8:	00809021 	move	s2,a0
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:17
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:17
 9fc129dc:	24567510 	addiu	s6,v0,29968
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:9
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:9
 9fc129e0:	00008821 	move	s1,zero
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:13
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:13
 9fc129e4:	24140025 	li	s4,37
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:79
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:79
 9fc129e8:	2415000a 	li	s5,10
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:13
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:13
 9fc129ec:	12140016 	beq	s0,s4,9fc12a48 <printf+0xb8>
 9fc129f0:	02711021 	addu	v0,s3,s1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:79
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:79
 9fc129f4:	1215002f 	beq	s0,s5,9fc12ab4 <printf+0x124>
 9fc129f8:	00000000 	nop
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:80
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:80
 9fc129fc:	0ff04afd 	jal	9fc12bf4 <putchar>
 9fc12a00:	02002021 	move	a0,s0
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:10
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:10
 9fc12a04:	26310001 	addiu	s1,s1,1
 9fc12a08:	02711021 	addu	v0,s3,s1
 9fc12a0c:	80500000 	lb	s0,0(v0)
 9fc12a10:	00000000 	nop
 9fc12a14:	1600fff5 	bnez	s0,9fc129ec <printf+0x5c>
 9fc12a18:	00000000 	nop
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:84
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:84
 9fc12a1c:	8fbf0034 	lw	ra,52(sp)
 9fc12a20:	00001021 	move	v0,zero
 9fc12a24:	8fb60030 	lw	s6,48(sp)
@@ -19049,167 +19049,167 @@ printf():
 9fc12a3c:	8fb00018 	lw	s0,24(sp)
 9fc12a40:	03e00008 	jr	ra
 9fc12a44:	27bd0038 	addiu	sp,sp,56
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:13
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:13
 9fc12a48:	80440001 	lb	a0,1(v0)
 9fc12a4c:	24050001 	li	a1,1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:17
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:17
 9fc12a50:	2482ffdb 	addiu	v0,a0,-37
 9fc12a54:	304200ff 	andi	v0,v0,0xff
 9fc12a58:	2c430054 	sltiu	v1,v0,84
 9fc12a5c:	14600005 	bnez	v1,9fc12a74 <printf+0xe4>
 9fc12a60:	00021080 	sll	v0,v0,0x2
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:73
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:73
 9fc12a64:	0ff04afd 	jal	9fc12bf4 <putchar>
 9fc12a68:	24040025 	li	a0,37
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:10
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:10
 9fc12a6c:	0bf04a82 	j	9fc12a08 <printf+0x78>
 9fc12a70:	26310001 	addiu	s1,s1,1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:17
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:17
 9fc12a74:	02c21021 	addu	v0,s6,v0
 9fc12a78:	8c430000 	lw	v1,0(v0)
 9fc12a7c:	00000000 	nop
 9fc12a80:	00600008 	jr	v1
 9fc12a84:	00000000 	nop
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:65
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:65
 9fc12a88:	26310001 	addiu	s1,s1,1
 9fc12a8c:	02711021 	addu	v0,s3,s1
 9fc12a90:	80440001 	lb	a0,1(v0)
 9fc12a94:	00000000 	nop
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:67
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:67
 9fc12a98:	2482ffcf 	addiu	v0,a0,-49
 9fc12a9c:	304200ff 	andi	v0,v0,0xff
 9fc12aa0:	2c420009 	sltiu	v0,v0,9
 9fc12aa4:	1440003f 	bnez	v0,9fc12ba4 <printf+0x214>
 9fc12aa8:	00002821 	move	a1,zero
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:17
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:17
 9fc12aac:	0bf04a95 	j	9fc12a54 <printf+0xc4>
 9fc12ab0:	2482ffdb 	addiu	v0,a0,-37
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:79
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:79
 9fc12ab4:	0ff04afd 	jal	9fc12bf4 <putchar>
 9fc12ab8:	2404000d 	li	a0,13
 9fc12abc:	0bf04a7f 	j	9fc129fc <printf+0x6c>
 9fc12ac0:	00000000 	nop
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:30
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:30
 9fc12ac4:	8e440000 	lw	a0,0(s2)
 9fc12ac8:	2406000a 	li	a2,10
 9fc12acc:	0ff04b38 	jal	9fc12ce0 <printbase>
 9fc12ad0:	00003821 	move	a3,zero
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:31
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:31
 9fc12ad4:	26520004 	addiu	s2,s2,4
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:32
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:32
 9fc12ad8:	0bf04a81 	j	9fc12a04 <printf+0x74>
 9fc12adc:	26310001 	addiu	s1,s1,1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:20
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:20
 9fc12ae0:	8e440000 	lw	a0,0(s2)
 9fc12ae4:	0ff04b08 	jal	9fc12c20 <putstring>
 9fc12ae8:	26310001 	addiu	s1,s1,1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:21
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:21
 9fc12aec:	0bf04a81 	j	9fc12a04 <printf+0x74>
 9fc12af0:	26520004 	addiu	s2,s2,4
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:56
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:56
 9fc12af4:	8e440000 	lw	a0,0(s2)
 9fc12af8:	24060010 	li	a2,16
 9fc12afc:	0ff04b38 	jal	9fc12ce0 <printbase>
 9fc12b00:	00003821 	move	a3,zero
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:57
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:57
 9fc12b04:	26520004 	addiu	s2,s2,4
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:58
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:58
 9fc12b08:	0bf04a81 	j	9fc12a04 <printf+0x74>
 9fc12b0c:	26310001 	addiu	s1,s1,1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:45
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:45
 9fc12b10:	8e440000 	lw	a0,0(s2)
 9fc12b14:	24060008 	li	a2,8
 9fc12b18:	0ff04b38 	jal	9fc12ce0 <printbase>
 9fc12b1c:	00003821 	move	a3,zero
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:46
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:46
 9fc12b20:	26520004 	addiu	s2,s2,4
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:47
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:47
 9fc12b24:	0bf04a81 	j	9fc12a04 <printf+0x74>
 9fc12b28:	26310001 	addiu	s1,s1,1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:40
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:40
 9fc12b2c:	8e440000 	lw	a0,0(s2)
 9fc12b30:	2406000a 	li	a2,10
 9fc12b34:	0ff04b38 	jal	9fc12ce0 <printbase>
 9fc12b38:	00003821 	move	a3,zero
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:41
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:41
 9fc12b3c:	26520004 	addiu	s2,s2,4
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:42
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:42
 9fc12b40:	0bf04a81 	j	9fc12a04 <printf+0x74>
 9fc12b44:	26310002 	addiu	s1,s1,2
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:35
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:35
 9fc12b48:	8e440000 	lw	a0,0(s2)
 9fc12b4c:	2406000a 	li	a2,10
 9fc12b50:	0ff04b38 	jal	9fc12ce0 <printbase>
 9fc12b54:	24070001 	li	a3,1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:36
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:36
 9fc12b58:	26520004 	addiu	s2,s2,4
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:37
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:37
 9fc12b5c:	0bf04a81 	j	9fc12a04 <printf+0x74>
 9fc12b60:	26310001 	addiu	s1,s1,1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:25
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:25
 9fc12b64:	8e440000 	lw	a0,0(s2)
 9fc12b68:	0ff04afd 	jal	9fc12bf4 <putchar>
 9fc12b6c:	26310001 	addiu	s1,s1,1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:26
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:26
 9fc12b70:	0bf04a81 	j	9fc12a04 <printf+0x74>
 9fc12b74:	26520004 	addiu	s2,s2,4
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:50
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:50
 9fc12b78:	8e440000 	lw	a0,0(s2)
 9fc12b7c:	24060002 	li	a2,2
 9fc12b80:	0ff04b38 	jal	9fc12ce0 <printbase>
 9fc12b84:	00003821 	move	a3,zero
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:51
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:51
 9fc12b88:	26520004 	addiu	s2,s2,4
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:52
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:52
 9fc12b8c:	0bf04a81 	j	9fc12a04 <printf+0x74>
 9fc12b90:	26310001 	addiu	s1,s1,1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:61
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:61
 9fc12b94:	0ff04afd 	jal	9fc12bf4 <putchar>
 9fc12b98:	24040025 	li	a0,37
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:62
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:62
 9fc12b9c:	0bf04a81 	j	9fc12a04 <printf+0x74>
 9fc12ba0:	26310001 	addiu	s1,s1,1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:67
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:67
 9fc12ba4:	02713021 	addu	a2,s3,s1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:68
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:68
 9fc12ba8:	000510c0 	sll	v0,a1,0x3
 9fc12bac:	00051840 	sll	v1,a1,0x1
 9fc12bb0:	00621821 	addu	v1,v1,v0
 9fc12bb4:	00641821 	addu	v1,v1,a0
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:67
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:67
 9fc12bb8:	80c40002 	lb	a0,2(a2)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:68
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:68
 9fc12bbc:	2465ffd0 	addiu	a1,v1,-48
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:67
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:67
 9fc12bc0:	2482ffcf 	addiu	v0,a0,-49
 9fc12bc4:	304200ff 	andi	v0,v0,0xff
 9fc12bc8:	2c420009 	sltiu	v0,v0,9
 9fc12bcc:	26310001 	addiu	s1,s1,1
 9fc12bd0:	1040ff9f 	beqz	v0,9fc12a50 <printf+0xc0>
 9fc12bd4:	24c60001 	addiu	a2,a2,1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printf.c:68
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printf.c:68
 9fc12bd8:	0bf04aeb 	j	9fc12bac <printf+0x21c>
 9fc12bdc:	000510c0 	sll	v0,a1,0x3
 
 9fc12be0 <tgt_putchar>:
 tgt_putchar():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/putchar.c:9
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/putchar.c:9
 9fc12be0:	3c19bfb0 	lui	t9,0xbfb0
 9fc12be4:	03e00008 	jr	ra
 9fc12be8:	a324fff0 	sb	a0,-16(t9)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/putchar.c:18
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/putchar.c:18
 9fc12bec:	03e00008 	jr	ra
 9fc12bf0:	00000000 	nop
 
 9fc12bf4 <putchar>:
 putchar():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/putchar.c:2
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/putchar.c:2
 9fc12bf4:	27bdffe8 	addiu	sp,sp,-24
 9fc12bf8:	afbf0014 	sw	ra,20(sp)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/putchar.c:3
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/putchar.c:3
 9fc12bfc:	0ff04af8 	jal	9fc12be0 <tgt_putchar>
 9fc12c00:	00000000 	nop
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/putchar.c:5
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/putchar.c:5
 9fc12c04:	8fbf0014 	lw	ra,20(sp)
 9fc12c08:	00001021 	move	v0,zero
 9fc12c0c:	03e00008 	jr	ra
@@ -19218,42 +19218,42 @@ putchar():
 
 9fc12c20 <putstring>:
 putstring():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/puts.c:2
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/puts.c:2
 9fc12c20:	27bdffe0 	addiu	sp,sp,-32
 9fc12c24:	afb10014 	sw	s1,20(sp)
 9fc12c28:	afbf001c 	sw	ra,28(sp)
 9fc12c2c:	afb20018 	sw	s2,24(sp)
 9fc12c30:	afb00010 	sw	s0,16(sp)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/puts.c:4
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/puts.c:4
 9fc12c34:	80900000 	lb	s0,0(a0)
 9fc12c38:	00000000 	nop
 9fc12c3c:	12000013 	beqz	s0,9fc12c8c <putstring+0x6c>
 9fc12c40:	00808821 	move	s1,a0
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/puts.c:6
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/puts.c:6
 9fc12c44:	0bf04b19 	j	9fc12c64 <putstring+0x44>
 9fc12c48:	2412000a 	li	s2,10
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/puts.c:7
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/puts.c:7
 9fc12c4c:	0ff04afd 	jal	9fc12bf4 <putchar>
 9fc12c50:	02002021 	move	a0,s0
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/puts.c:4
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/puts.c:4
 9fc12c54:	82300000 	lb	s0,0(s1)
 9fc12c58:	00000000 	nop
 9fc12c5c:	1200000b 	beqz	s0,9fc12c8c <putstring+0x6c>
 9fc12c60:	00000000 	nop
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/puts.c:6
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/puts.c:6
 9fc12c64:	1612fff9 	bne	s0,s2,9fc12c4c <putstring+0x2c>
 9fc12c68:	26310001 	addiu	s1,s1,1
 9fc12c6c:	0ff04afd 	jal	9fc12bf4 <putchar>
 9fc12c70:	2404000d 	li	a0,13
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/puts.c:7
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/puts.c:7
 9fc12c74:	0ff04afd 	jal	9fc12bf4 <putchar>
 9fc12c78:	02002021 	move	a0,s0
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/puts.c:4
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/puts.c:4
 9fc12c7c:	82300000 	lb	s0,0(s1)
 9fc12c80:	00000000 	nop
 9fc12c84:	1600fff7 	bnez	s0,9fc12c64 <putstring+0x44>
 9fc12c88:	00000000 	nop
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/puts.c:11
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/puts.c:11
 9fc12c8c:	8fbf001c 	lw	ra,28(sp)
 9fc12c90:	00001021 	move	v0,zero
 9fc12c94:	8fb20018 	lw	s2,24(sp)
@@ -19264,19 +19264,19 @@ putstring():
 
 9fc12ca8 <puts>:
 puts():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/puts.c:15
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/puts.c:15
 9fc12ca8:	27bdffe8 	addiu	sp,sp,-24
 9fc12cac:	afbf0014 	sw	ra,20(sp)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/puts.c:16
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/puts.c:16
 9fc12cb0:	0ff04b08 	jal	9fc12c20 <putstring>
 9fc12cb4:	00000000 	nop
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/puts.c:17
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/puts.c:17
 9fc12cb8:	0ff04afd 	jal	9fc12bf4 <putchar>
 9fc12cbc:	2404000d 	li	a0,13
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/puts.c:18
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/puts.c:18
 9fc12cc0:	0ff04afd 	jal	9fc12bf4 <putchar>
 9fc12cc4:	2404000a 	li	a0,10
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/puts.c:20
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/puts.c:20
 9fc12cc8:	8fbf0014 	lw	ra,20(sp)
 9fc12ccc:	00001021 	move	v0,zero
 9fc12cd0:	03e00008 	jr	ra
@@ -19285,7 +19285,7 @@ puts():
 
 9fc12ce0 <printbase>:
 printbase():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printbase.c:2
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printbase.c:2
 9fc12ce0:	27bdff98 	addiu	sp,sp,-104
 9fc12ce4:	afb30060 	sw	s3,96(sp)
 9fc12ce8:	afb2005c 	sw	s2,92(sp)
@@ -19294,54 +19294,54 @@ printbase():
 9fc12cf4:	afb00054 	sw	s0,84(sp)
 9fc12cf8:	00801821 	move	v1,a0
 9fc12cfc:	00a09821 	move	s3,a1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printbase.c:7
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printbase.c:7
 9fc12d00:	10e00003 	beqz	a3,9fc12d10 <printbase+0x30>
 9fc12d04:	00c09021 	move	s2,a2
 9fc12d08:	0480002f 	bltz	a0,9fc12dc8 <printbase+0xe8>
 9fc12d0c:	2404002d 	li	a0,45
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printbase.c:12
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printbase.c:12
 9fc12d10:	00608021 	move	s0,v1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printbase.c:14
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printbase.c:14
 9fc12d14:	1200000c 	beqz	s0,9fc12d48 <printbase+0x68>
 9fc12d18:	00008821 	move	s1,zero
 9fc12d1c:	27a50010 	addiu	a1,sp,16
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printbase.c:16
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printbase.c:16
 9fc12d20:	16400002 	bnez	s2,9fc12d2c <printbase+0x4c>
 9fc12d24:	0212001b 	divu	zero,s0,s2
 9fc12d28:	0007000d 	break	0x7
 9fc12d2c:	00b12021 	addu	a0,a1,s1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printbase.c:14
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printbase.c:14
 9fc12d30:	26310001 	addiu	s1,s1,1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printbase.c:16
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printbase.c:16
 9fc12d34:	00001010 	mfhi	v0
 9fc12d38:	a0820000 	sb	v0,0(a0)
 9fc12d3c:	00001812 	mflo	v1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printbase.c:14
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printbase.c:14
 9fc12d40:	1460fff7 	bnez	v1,9fc12d20 <printbase+0x40>
 9fc12d44:	00608021 	move	s0,v1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printbase.c:22
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printbase.c:22
 9fc12d48:	0233102a 	slt	v0,s1,s3
 9fc12d4c:	10400002 	beqz	v0,9fc12d58 <printbase+0x78>
 9fc12d50:	02201821 	move	v1,s1
 9fc12d54:	02601821 	move	v1,s3
 9fc12d58:	1060000c 	beqz	v1,9fc12d8c <printbase+0xac>
 9fc12d5c:	2470ffff 	addiu	s0,v1,-1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printbase.c:2
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printbase.c:2
 9fc12d60:	27a20010 	addiu	v0,sp,16
 9fc12d64:	00509021 	addu	s2,v0,s0
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printbase.c:24
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printbase.c:24
 9fc12d68:	26020001 	addiu	v0,s0,1
 9fc12d6c:	0222102a 	slt	v0,s1,v0
 9fc12d70:	1040000e 	beqz	v0,9fc12dac <printbase+0xcc>
 9fc12d74:	24040030 	li	a0,48
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printbase.c:25
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printbase.c:25
 9fc12d78:	02009821 	move	s3,s0
 9fc12d7c:	0ff04afd 	jal	9fc12bf4 <putchar>
 9fc12d80:	2610ffff 	addiu	s0,s0,-1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printbase.c:22
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printbase.c:22
 9fc12d84:	1660fff8 	bnez	s3,9fc12d68 <printbase+0x88>
 9fc12d88:	2652ffff 	addiu	s2,s2,-1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printbase.c:28
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printbase.c:28
 9fc12d8c:	8fbf0064 	lw	ra,100(sp)
 9fc12d90:	00001021 	move	v0,zero
 9fc12d94:	8fb30060 	lw	s3,96(sp)
@@ -19350,72 +19350,72 @@ printbase():
 9fc12da0:	8fb00054 	lw	s0,84(sp)
 9fc12da4:	03e00008 	jr	ra
 9fc12da8:	27bd0068 	addiu	sp,sp,104
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printbase.c:24
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printbase.c:24
 9fc12dac:	82440000 	lb	a0,0(s2)
 9fc12db0:	00000000 	nop
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printbase.c:25
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printbase.c:25
 9fc12db4:	2882000a 	slti	v0,a0,10
 9fc12db8:	14400007 	bnez	v0,9fc12dd8 <printbase+0xf8>
 9fc12dbc:	02009821 	move	s3,s0
 9fc12dc0:	0bf04b5f 	j	9fc12d7c <printbase+0x9c>
 9fc12dc4:	24840057 	addiu	a0,a0,87
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printbase.c:10
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printbase.c:10
 9fc12dc8:	0ff04afd 	jal	9fc12bf4 <putchar>
 9fc12dcc:	00038023 	negu	s0,v1
 9fc12dd0:	0bf04b45 	j	9fc12d14 <printbase+0x34>
 9fc12dd4:	00000000 	nop
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/printbase.c:25
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/printbase.c:25
 9fc12dd8:	0bf04b5e 	j	9fc12d78 <printbase+0x98>
 9fc12ddc:	24840030 	addiu	a0,a0,48
 
 9fc12de0 <strcmp>:
 strcmp():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/strcmp.c:6
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/strcmp.c:6
 9fc12de0:	0bf04b7b 	j	9fc12dec <strcmp+0xc>
 9fc12de4:	00000000 	nop
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/strcmp.c:8
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/strcmp.c:8
 9fc12de8:	00c02821 	move	a1,a2
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/strcmp.c:7
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/strcmp.c:7
 9fc12dec:	80a30000 	lb	v1,0(a1)
 9fc12df0:	80820000 	lb	v0,0(a0)
 9fc12df4:	00000000 	nop
 9fc12df8:	14620005 	bne	v1,v0,9fc12e10 <strcmp+0x30>
 9fc12dfc:	24a60001 	addiu	a2,a1,1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/strcmp.c:8
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/strcmp.c:8
 9fc12e00:	1460fff9 	bnez	v1,9fc12de8 <strcmp+0x8>
 9fc12e04:	24840001 	addiu	a0,a0,1
 9fc12e08:	03e00008 	jr	ra
 9fc12e0c:	00001021 	move	v0,zero
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/strcmp.c:10
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/strcmp.c:10
 9fc12e10:	90830000 	lbu	v1,0(a0)
 9fc12e14:	90a20000 	lbu	v0,0(a1)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/strcmp.c:11
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/strcmp.c:11
 9fc12e18:	03e00008 	jr	ra
 9fc12e1c:	00621023 	subu	v0,v1,v0
 
 9fc12e20 <strlen>:
 strlen():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:14
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:14
 9fc12e20:	80820000 	lb	v0,0(a0)
 9fc12e24:	00000000 	nop
 9fc12e28:	10400008 	beqz	v0,9fc12e4c <strlen+0x2c>
 9fc12e2c:	00002821 	move	a1,zero
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:15
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:15
 9fc12e30:	24a50001 	addiu	a1,a1,1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:14
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:14
 9fc12e34:	00851021 	addu	v0,a0,a1
 9fc12e38:	80430000 	lb	v1,0(v0)
 9fc12e3c:	00000000 	nop
 9fc12e40:	1460fffc 	bnez	v1,9fc12e34 <strlen+0x14>
 9fc12e44:	24a50001 	addiu	a1,a1,1
 9fc12e48:	24a5ffff 	addiu	a1,a1,-1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:18
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:18
 9fc12e4c:	03e00008 	jr	ra
 9fc12e50:	00a01021 	move	v0,a1
 
 9fc12e54 <strnlen>:
 strnlen():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:36
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:36
 9fc12e54:	10a00010 	beqz	a1,9fc12e98 <strnlen+0x44>
 9fc12e58:	00001821 	move	v1,zero
 9fc12e5c:	80820000 	lb	v0,0(a0)
@@ -19429,55 +19429,55 @@ strnlen():
 9fc12e7c:	00000000 	nop
 9fc12e80:	10400005 	beqz	v0,9fc12e98 <strnlen+0x44>
 9fc12e84:	00000000 	nop
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:37
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:37
 9fc12e88:	24630001 	addiu	v1,v1,1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:36
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:36
 9fc12e8c:	0065102b 	sltu	v0,v1,a1
 9fc12e90:	1440fff9 	bnez	v0,9fc12e78 <strnlen+0x24>
 9fc12e94:	00833021 	addu	a2,a0,v1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:40
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:40
 9fc12e98:	03e00008 	jr	ra
 9fc12e9c:	00601021 	move	v0,v1
 
 9fc12ea0 <strcpy>:
 strcpy():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:55
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:55
 9fc12ea0:	00801821 	move	v1,a0
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:60
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:60
 9fc12ea4:	80a20000 	lb	v0,0(a1)
 9fc12ea8:	24a50001 	addiu	a1,a1,1
 9fc12eac:	a0620000 	sb	v0,0(v1)
 9fc12eb0:	1440fffc 	bnez	v0,9fc12ea4 <strcpy+0x4>
 9fc12eb4:	24630001 	addiu	v1,v1,1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:64
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:64
 9fc12eb8:	03e00008 	jr	ra
 9fc12ebc:	00801021 	move	v0,a0
 
 9fc12ec0 <strncpy>:
 strncpy():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:79
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:79
 9fc12ec0:	10c00009 	beqz	a2,9fc12ee8 <strncpy+0x28>
 9fc12ec4:	00801821 	move	v1,a0
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:80
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:80
 9fc12ec8:	80a20000 	lb	v0,0(a1)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:83
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:83
 9fc12ecc:	24c6ffff 	addiu	a2,a2,-1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:80
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:80
 9fc12ed0:	a0620000 	sb	v0,0(v1)
 9fc12ed4:	10400002 	beqz	v0,9fc12ee0 <strncpy+0x20>
 9fc12ed8:	24630001 	addiu	v1,v1,1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:81
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:81
 9fc12edc:	24a50001 	addiu	a1,a1,1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:79
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:79
 9fc12ee0:	14c0fff9 	bnez	a2,9fc12ec8 <strncpy+0x8>
 9fc12ee4:	00000000 	nop
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:86
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:86
 9fc12ee8:	03e00008 	jr	ra
 9fc12eec:	00801021 	move	v0,a0
 
 9fc12ef0 <strncmp>:
 strncmp():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:101
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:101
 9fc12ef0:	10c00016 	beqz	a2,9fc12f4c <strncmp+0x5c>
 9fc12ef4:	00000000 	nop
 9fc12ef8:	80830000 	lb	v1,0(a0)
@@ -19497,17 +19497,17 @@ strncmp():
 9fc12f30:	1062fff7 	beq	v1,v0,9fc12f10 <strncmp+0x20>
 9fc12f34:	24c6ffff 	addiu	a2,a2,-1
 9fc12f38:	24c60001 	addiu	a2,a2,1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:104
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:104
 9fc12f3c:	306300ff 	andi	v1,v1,0xff
 9fc12f40:	304200ff 	andi	v0,v0,0xff
 9fc12f44:	03e00008 	jr	ra
 9fc12f48:	00621023 	subu	v0,v1,v0
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:105
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:105
 9fc12f4c:	03e00008 	jr	ra
 9fc12f50:	00001021 	move	v0,zero
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:101
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:101
 9fc12f54:	80a20000 	lb	v0,0(a1)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:104
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:104
 9fc12f58:	306300ff 	andi	v1,v1,0xff
 9fc12f5c:	304200ff 	andi	v0,v0,0xff
 9fc12f60:	03e00008 	jr	ra
@@ -19515,29 +19515,29 @@ strncmp():
 
 9fc12f68 <strchr>:
 strchr():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:117
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:117
 9fc12f68:	80830000 	lb	v1,0(a0)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:116
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:116
 9fc12f6c:	00052e00 	sll	a1,a1,0x18
 9fc12f70:	00801021 	move	v0,a0
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:117
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:117
 9fc12f74:	1060000c 	beqz	v1,9fc12fa8 <strchr+0x40>
 9fc12f78:	00052e03 	sra	a1,a1,0x18
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:118
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:118
 9fc12f7c:	14650006 	bne	v1,a1,9fc12f98 <strchr+0x30>
 9fc12f80:	24420001 	addiu	v0,v0,1
 9fc12f84:	03e00008 	jr	ra
 9fc12f88:	2442ffff 	addiu	v0,v0,-1
 9fc12f8c:	10650008 	beq	v1,a1,9fc12fb0 <strchr+0x48>
 9fc12f90:	00000000 	nop
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:121
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:121
 9fc12f94:	24420001 	addiu	v0,v0,1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:117
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:117
 9fc12f98:	80430000 	lb	v1,0(v0)
 9fc12f9c:	00000000 	nop
 9fc12fa0:	1460fffa 	bnez	v1,9fc12f8c <strchr+0x24>
 9fc12fa4:	00000000 	nop
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:124
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:124
 9fc12fa8:	03e00008 	jr	ra
 9fc12fac:	00001021 	move	v0,zero
 9fc12fb0:	03e00008 	jr	ra
@@ -19545,29 +19545,29 @@ strchr():
 
 9fc12fb8 <strfind>:
 strfind():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:137
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:137
 9fc12fb8:	80830000 	lb	v1,0(a0)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:136
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:136
 9fc12fbc:	00052e00 	sll	a1,a1,0x18
 9fc12fc0:	00801021 	move	v0,a0
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:137
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:137
 9fc12fc4:	1060000c 	beqz	v1,9fc12ff8 <strfind+0x40>
 9fc12fc8:	00052e03 	sra	a1,a1,0x18
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:138
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:138
 9fc12fcc:	14650006 	bne	v1,a1,9fc12fe8 <strfind+0x30>
 9fc12fd0:	24420001 	addiu	v0,v0,1
 9fc12fd4:	03e00008 	jr	ra
 9fc12fd8:	2442ffff 	addiu	v0,v0,-1
 9fc12fdc:	10650008 	beq	v1,a1,9fc13000 <strfind+0x48>
 9fc12fe0:	00000000 	nop
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:141
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:141
 9fc12fe4:	24420001 	addiu	v0,v0,1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:137
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:137
 9fc12fe8:	80430000 	lb	v1,0(v0)
 9fc12fec:	00000000 	nop
 9fc12ff0:	1460fffa 	bnez	v1,9fc12fdc <strfind+0x24>
 9fc12ff4:	00000000 	nop
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:144
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:144
 9fc12ff8:	03e00008 	jr	ra
 9fc12ffc:	00000000 	nop
 9fc13000:	03e00008 	jr	ra
@@ -19575,45 +19575,45 @@ strfind():
 
 9fc13008 <memset>:
 memset():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:246
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:246
 9fc13008:	00052e00 	sll	a1,a1,0x18
 9fc1300c:	00801021 	move	v0,a0
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:251
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:251
 9fc13010:	10c00006 	beqz	a2,9fc1302c <memset+0x24>
 9fc13014:	00052e03 	sra	a1,a1,0x18
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:250
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:250
 9fc13018:	00801821 	move	v1,a0
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:252
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:252
 9fc1301c:	24c6ffff 	addiu	a2,a2,-1
 9fc13020:	a0650000 	sb	a1,0(v1)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:251
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:251
 9fc13024:	14c0fffd 	bnez	a2,9fc1301c <memset+0x14>
 9fc13028:	24630001 	addiu	v1,v1,1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:256
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:256
 9fc1302c:	03e00008 	jr	ra
 9fc13030:	00000000 	nop
 
 9fc13034 <memcpy>:
 memcpy():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:279
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:279
 9fc13034:	10c00008 	beqz	a2,9fc13058 <memcpy+0x24>
 9fc13038:	00804021 	move	t0,a0
 9fc1303c:	00003821 	move	a3,zero
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:280
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:280
 9fc13040:	00a71021 	addu	v0,a1,a3
 9fc13044:	90440000 	lbu	a0,0(v0)
 9fc13048:	01071821 	addu	v1,t0,a3
 9fc1304c:	24e70001 	addiu	a3,a3,1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:279
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:279
 9fc13050:	14e6fffb 	bne	a3,a2,9fc13040 <memcpy+0xc>
 9fc13054:	a0640000 	sb	a0,0(v1)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:284
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:284
 9fc13058:	03e00008 	jr	ra
 9fc1305c:	01001021 	move	v0,t0
 
 9fc13060 <memmove>:
 memmove():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:302
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:302
 9fc13060:	00a4102b 	sltu	v0,a1,a0
 9fc13064:	10400005 	beqz	v0,9fc1307c <memmove+0x1c>
 9fc13068:	00804021 	move	t0,a0
@@ -19621,50 +19621,50 @@ memmove():
 9fc13070:	0104102b 	sltu	v0,t0,a0
 9fc13074:	1440000b 	bnez	v0,9fc130a4 <memmove+0x44>
 9fc13078:	00000000 	nop
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:308
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:308
 9fc1307c:	10c00007 	beqz	a2,9fc1309c <memmove+0x3c>
 9fc13080:	00003821 	move	a3,zero
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:309
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:309
 9fc13084:	00a71021 	addu	v0,a1,a3
 9fc13088:	90440000 	lbu	a0,0(v0)
 9fc1308c:	01071821 	addu	v1,t0,a3
 9fc13090:	24e70001 	addiu	a3,a3,1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:308
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:308
 9fc13094:	14c7fffb 	bne	a2,a3,9fc13084 <memmove+0x24>
 9fc13098:	a0640000 	sb	a0,0(v1)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:314
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:314
 9fc1309c:	03e00008 	jr	ra
 9fc130a0:	01001021 	move	v0,t0
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:304
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:304
 9fc130a4:	10c0fffd 	beqz	a2,9fc1309c <memmove+0x3c>
 9fc130a8:	01061821 	addu	v1,t0,a2
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:305
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:305
 9fc130ac:	2484ffff 	addiu	a0,a0,-1
 9fc130b0:	90820000 	lbu	v0,0(a0)
 9fc130b4:	2463ffff 	addiu	v1,v1,-1
 9fc130b8:	24c6ffff 	addiu	a2,a2,-1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:304
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:304
 9fc130bc:	14c0fffb 	bnez	a2,9fc130ac <memmove+0x4c>
 9fc130c0:	a0620000 	sb	v0,0(v1)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:314
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:314
 9fc130c4:	03e00008 	jr	ra
 9fc130c8:	01001021 	move	v0,t0
 
 9fc130cc <memcmp>:
 memcmp():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:334
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:334
 9fc130cc:	10c00011 	beqz	a2,9fc13114 <memcmp+0x48>
 9fc130d0:	00000000 	nop
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:335
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:335
 9fc130d4:	80830000 	lb	v1,0(a0)
 9fc130d8:	80a20000 	lb	v0,0(a1)
 9fc130dc:	00000000 	nop
 9fc130e0:	1462000e 	bne	v1,v0,9fc1311c <memcmp+0x50>
 9fc130e4:	24c6ffff 	addiu	a2,a2,-1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:334
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:334
 9fc130e8:	0bf04c41 	j	9fc13104 <memcmp+0x38>
 9fc130ec:	00003821 	move	a3,zero
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:335
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:335
 9fc130f0:	80630001 	lb	v1,1(v1)
 9fc130f4:	80420001 	lb	v0,1(v0)
 9fc130f8:	00000000 	nop
@@ -19672,13 +19672,13 @@ memcmp():
 9fc13100:	24c6ffff 	addiu	a2,a2,-1
 9fc13104:	00871821 	addu	v1,a0,a3
 9fc13108:	00a71021 	addu	v0,a1,a3
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:334
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:334
 9fc1310c:	14c0fff8 	bnez	a2,9fc130f0 <memcmp+0x24>
 9fc13110:	24e70001 	addiu	a3,a3,1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:341
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:341
 9fc13114:	03e00008 	jr	ra
 9fc13118:	00001021 	move	v0,zero
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:336
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:336
 9fc1311c:	306300ff 	andi	v1,v1,0xff
 9fc13120:	304200ff 	andi	v0,v0,0xff
 9fc13124:	03e00008 	jr	ra
@@ -19686,13 +19686,13 @@ memcmp():
 
 9fc1312c <bzero>:
 memset():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:251
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:251
 9fc1312c:	10a00005 	beqz	a1,9fc13144 <bzero+0x18>
 9fc13130:	00000000 	nop
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:252
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:252
 9fc13134:	24a5ffff 	addiu	a1,a1,-1
 9fc13138:	a0800000 	sb	zero,0(a0)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/string.c:251
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/string.c:251
 9fc1313c:	14a0fffd 	bnez	a1,9fc13134 <bzero+0x8>
 9fc13140:	24840001 	addiu	a0,a0,1
 9fc13144:	03e00008 	jr	ra
@@ -19702,7 +19702,7 @@ bzero():
 
 9fc13150 <_get_count>:
 _get_count():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/time.c:14
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/time.c:14
 9fc13150:	3c19bfb0 	lui	t9,0xbfb0
 9fc13154:	8f22e000 	lw	v0,-8192(t9)
 9fc13158:	03e00008 	jr	ra
@@ -19710,7 +19710,7 @@ _get_count():
 
 9fc13160 <get_count>:
 get_count():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/time.c:19
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/time.c:19
 9fc13160:	3c19bfb0 	lui	t9,0xbfb0
 9fc13164:	8f22e000 	lw	v0,-8192(t9)
 9fc13168:	03e00008 	jr	ra
@@ -19718,15 +19718,15 @@ get_count():
 
 9fc13170 <get_count_my>:
 get_count_my():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/time.c:24
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/time.c:24
 9fc13170:	40024800 	mfc0	v0,$9
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/time.c:29
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/time.c:29
 9fc13174:	03e00008 	jr	ra
 9fc13178:	00000000 	nop
 
 9fc1317c <get_clock>:
 get_clock():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/time.c:48
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/time.c:48
 9fc1317c:	3c19bfb0 	lui	t9,0xbfb0
 9fc13180:	8f22e000 	lw	v0,-8192(t9)
 9fc13184:	03e00008 	jr	ra
@@ -19734,25 +19734,25 @@ get_clock():
 
 9fc1318c <get_ns>:
 _get_count():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/time.c:6
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/time.c:6
 9fc1318c:	3c19bfb0 	lui	t9,0xbfb0
 9fc13190:	8f22e000 	lw	v0,-8192(t9)
 9fc13194:	00000000 	nop
 9fc13198:	000218c0 	sll	v1,v0,0x3
 9fc1319c:	00021040 	sll	v0,v0,0x1
 get_ns():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/time.c:56
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/time.c:56
 9fc131a0:	03e00008 	jr	ra
 9fc131a4:	00431021 	addu	v0,v0,v1
 
 9fc131a8 <get_us>:
 _get_count():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/time.c:6
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/time.c:6
 9fc131a8:	3c19bfb0 	lui	t9,0xbfb0
 9fc131ac:	8f23e000 	lw	v1,-8192(t9)
 9fc131b0:	24020064 	li	v0,100
 get_us():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/time.c:65
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/time.c:65
 9fc131b4:	14400002 	bnez	v0,9fc131c0 <get_us+0x18>
 9fc131b8:	0062001b 	divu	zero,v1,v0
 9fc131bc:	0007000d 	break	0x7
@@ -19762,70 +19762,70 @@ get_us():
 
 9fc131cc <clock_gettime>:
 clock_gettime():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/time.c:32
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/time.c:32
 9fc131cc:	27bdffe8 	addiu	sp,sp,-24
 9fc131d0:	afbf0014 	sw	ra,20(sp)
 9fc131d4:	00a05021 	move	t2,a1
 _get_count():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/time.c:6
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/time.c:6
 9fc131d8:	3c19bfb0 	lui	t9,0xbfb0
 9fc131dc:	8f26e000 	lw	a2,-8192(t9)
 clock_gettime():
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/time.c:37
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/time.c:37
 9fc131e0:	3c030001 	lui	v1,0x1
 9fc131e4:	346386a0 	ori	v1,v1,0x86a0
 9fc131e8:	14600002 	bnez	v1,9fc131f4 <clock_gettime+0x28>
 9fc131ec:	00c3001b 	divu	zero,a2,v1
 9fc131f0:	0007000d 	break	0x7
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/time.c:36
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/time.c:36
 9fc131f4:	24080064 	li	t0,100
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/time.c:38
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/time.c:38
 9fc131f8:	3c054876 	lui	a1,0x4876
 9fc131fc:	34a5e800 	ori	a1,a1,0xe800
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/time.c:35
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/time.c:35
 9fc13200:	000610c0 	sll	v0,a2,0x3
 9fc13204:	00063840 	sll	a3,a2,0x1
 9fc13208:	00e23821 	addu	a3,a3,v0
 9fc1320c:	240203e8 	li	v0,1000
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/time.c:39
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/time.c:39
 9fc13210:	3c049fc1 	lui	a0,0x9fc1
 9fc13214:	24847660 	addiu	a0,a0,30304
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/time.c:37
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/time.c:37
 9fc13218:	00001812 	mflo	v1
 9fc1321c:	00000000 	nop
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/time.c:36
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/time.c:36
 9fc13220:	15000002 	bnez	t0,9fc1322c <clock_gettime+0x60>
 9fc13224:	00c8001b 	divu	zero,a2,t0
 9fc13228:	0007000d 	break	0x7
 9fc1322c:	00004012 	mflo	t0
 9fc13230:	00000000 	nop
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/time.c:38
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/time.c:38
 9fc13234:	14a00002 	bnez	a1,9fc13240 <clock_gettime+0x74>
 9fc13238:	00c5001b 	divu	zero,a2,a1
 9fc1323c:	0007000d 	break	0x7
 9fc13240:	00003012 	mflo	a2
 9fc13244:	ad460000 	sw	a2,0(t2)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/time.c:37
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/time.c:37
 9fc13248:	14400002 	bnez	v0,9fc13254 <clock_gettime+0x88>
 9fc1324c:	0062001b 	divu	zero,v1,v0
 9fc13250:	0007000d 	break	0x7
 9fc13254:	00004810 	mfhi	t1
 9fc13258:	ad49000c 	sw	t1,12(t2)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/time.c:35
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/time.c:35
 9fc1325c:	14400002 	bnez	v0,9fc13268 <clock_gettime+0x9c>
 9fc13260:	00e2001b 	divu	zero,a3,v0
 9fc13264:	0007000d 	break	0x7
 9fc13268:	00002810 	mfhi	a1
 9fc1326c:	ad450004 	sw	a1,4(t2)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/time.c:36
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/time.c:36
 9fc13270:	14400002 	bnez	v0,9fc1327c <clock_gettime+0xb0>
 9fc13274:	0102001b 	divu	zero,t0,v0
 9fc13278:	0007000d 	break	0x7
 9fc1327c:	00001810 	mfhi	v1
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/time.c:39
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/time.c:39
 9fc13280:	0ff04a64 	jal	9fc12990 <printf>
 9fc13284:	ad430008 	sw	v1,8(t2)
-/media/sf_nscscc2019/final_develp/perf_test_final/soft/perf_func/lib/time.c:41
+/home/dreamhuang/nscscc/LLCL-MIPS/official/perf_test/soft/perf_func/lib/time.c:41
 9fc13288:	8fbf0014 	lw	ra,20(sp)
 9fc1328c:	00001021 	move	v0,zero
 9fc13290:	03e00008 	jr	ra
@@ -28225,9 +28225,9 @@ Disassembly of section .debug_info:
    0:	00000278 	0x278
    4:	00000002 	srl	zero,zero,0x0
    8:	01040000 	0x1040000
-   c:	0000009a 	0x9a
-  10:	00007001 	0x7001
-  14:	00002b00 	sll	a1,zero,0xc
+   c:	00000055 	0x55
+  10:	00002b01 	0x2b01
+  14:	00006400 	sll	t4,zero,0x10
   18:	c1272000 	lwc0	$7,8192(t1)
   1c:	c129909f 	lwc0	$9,-28513(t1)
   20:	0000009f 	0x9f
@@ -28238,7 +28238,7 @@ Disassembly of section .debug_info:
   34:	00060400 	sll	zero,a2,0x10
   38:	13030000 	beq	t8,v1,3c <data_size-0x6960>
   3c:	00000027 	nor	zero,zero,zero
-  40:	00008b05 	0x8b05
+  40:	00004605 	0x4605
   44:	09020800 	j	4082000 <data_size+0x407b664>
   48:	00000069 	0x69
   4c:	72747306 	0x72747306
@@ -28250,8 +28250,8 @@ Disassembly of section .debug_info:
   64:	04100200 	bltzal	zero,868 <data_size-0x6134>
   68:	6f040700 	0x6f040700
   6c:	03000000 	0x3000000
-  70:	00d30601 	0xd30601
-  74:	8b040000 	lwl	a0,0(t8)
+  70:	00d60601 	0xd60601
+  74:	46040000 	add.s	$f0,$f0,$f4
   78:	02000000 	0x2000000
   7c:	0000400e 	0x400e
   80:	25010800 	addiu	at,t0,2048
@@ -28272,19 +28272,19 @@ Disassembly of section .debug_info:
   bc:	0b000000 	j	c000000 <data_size+0xbff9664>
   c0:	6e690504 	0x6e690504
   c4:	010c0074 	0x10c0074
-  c8:	000000af 	0xaf
+  c8:	000000b2 	0xb2
   cc:	64013d01 	0x64013d01
   d0:	949fc127 	lhu	ra,-16089(a0)
   d4:	209fc127 	addi	ra,a0,-16089
   d8:	01000000 	0x1000000
   dc:	0000f86d 	0xf86d
-  e0:	00780d00 	0x780d00
+  e0:	00330d00 	0x330d00
   e4:	3d010000 	0x3d010000
   e8:	000000b9 	0xb9
   ec:	690e5401 	0x690e5401
   f0:	bf3e0100 	0xbf3e0100
   f4:	00000000 	nop
-  f8:	0095010f 	0x95010f
+  f8:	0050010f 	0x50010f
   fc:	58010000 	0x58010000
  100:	0000bf01 	0xbf01
  104:	c1279400 	lwc0	$7,-27648(t1)
@@ -28292,7 +28292,7 @@ Disassembly of section .debug_info:
  10c:	0000309f 	0x309f
  110:	00000000 	nop
  114:	00014300 	sll	t0,at,0xc
- 118:	00781000 	0x781000
+ 118:	00331000 	0x331000
  11c:	58010000 	0x58010000
  120:	000000b9 	0xb9
  124:	0000001f 	0x1f
@@ -28300,7 +28300,7 @@ Disassembly of section .debug_info:
  12c:	69590100 	0x69590100
  130:	48000000 	mfc2	zero,$0
  134:	12000000 	beqz	s0,138 <data_size-0x6864>
- 138:	00000085 	0x85
+ 138:	00000040 	sll	zero,zero,0x1
  13c:	00355a01 	0x355a01
  140:	0f000000 	jal	c000000 <data_size+0xbff9664>
  144:	00000001 	0x1
@@ -28314,18 +28314,18 @@ Disassembly of section .debug_info:
  164:	01007313 	0x1007313
  168:	00006948 	0x6948
  16c:	00008500 	sll	s0,zero,0x14
- 170:	00901000 	0x901000
+ 170:	004b1000 	0x4b1000
  174:	48010000 	mfc2	at,$0
  178:	000000bf 	0xbf
  17c:	000000ae 	0xae
- 180:	00007810 	mfhi	t7
+ 180:	00003310 	0x3310
  184:	b9480100 	swr	t0,256(t2)
  188:	c1000000 	lwc0	$0,0(t0)
  18c:	11000000 	beqz	t0,190 <data_size-0x680c>
  190:	00727473 	0x727473
  194:	00694901 	0x694901
  198:	00ea0000 	0xea0000
- 19c:	85140000 	lh	s4,0(t0)
+ 19c:	40140000 	mfc0	s4,c0_index
  1a0:	01000000 	0x1000000
  1a4:	0000354a 	0x354a
  1a8:	00010800 	sll	at,at,0x0
@@ -28335,7 +28335,7 @@ Disassembly of section .debug_info:
  1b8:	720e0000 	0x720e0000
  1bc:	694c0100 	0x694c0100
  1c0:	00000000 	nop
- 1c4:	00a9010f 	0xa9010f
+ 1c4:	00ac010f 	0xac010f
  1c8:	20010000 	addi	at,zero,0
  1cc:	00003501 	0x3501
  1d0:	c128c400 	lwc0	$8,-15360(t1)
@@ -28347,14 +28347,14 @@ Disassembly of section .debug_info:
  1e8:	20010072 	addi	at,zero,114
  1ec:	00000025 	move	zero,zero
  1f0:	0000016e 	0x16e
- 1f4:	00009010 	mfhi	s2
+ 1f4:	00004b10 	0x4b10
  1f8:	35200100 	ori	zero,t1,0x100
  1fc:	97000000 	lhu	zero,0(t8)
  200:	10000001 	b	208 <data_size-0x6794>
  204:	0000001f 	0x1f
  208:	00352001 	0x352001
  20c:	01c00000 	0x1c00000
- 210:	78100000 	0x78100000
+ 210:	33100000 	andi	s0,t8,0x0
  214:	01000000 	0x1000000
  218:	0000b920 	0xb920
  21c:	0001e900 	sll	sp,at,0x4
@@ -28365,7 +28365,7 @@ Disassembly of section .debug_info:
  230:	69220100 	0x69220100
  234:	12000000 	beqz	s0,238 <data_size-0x6764>
  238:	15000002 	bnez	t0,244 <data_size-0x6758>
- 23c:	00000085 	0x85
+ 23c:	00000040 	sll	zero,zero,0x1
  240:	00352301 	0x352301
  244:	59010000 	0x59010000
  248:	01006311 	0x1006311
@@ -28376,7 +28376,7 @@ Disassembly of section .debug_info:
  25c:	17000002 	bnez	t8,268 <data_size-0x6734>
  260:	00000266 	0x266
  264:	04180009 	0x4180009
- 268:	007f1907 	0x7f1907
+ 268:	003a1907 	0x3a1907
  26c:	05010000 	bgez	t0,270 <data_size-0x672c>
  270:	00000256 	0x256
  274:	30030501 	andi	v1,zero,0x501
@@ -28384,9 +28384,9 @@ Disassembly of section .debug_info:
  27c:	000000c9 	0xc9
  280:	01750002 	0x1750002
  284:	01040000 	0x1040000
- 288:	0000009a 	0x9a
- 28c:	0000bc01 	0xbc01
- 290:	00002b00 	sll	a1,zero,0xc
+ 288:	00000055 	0x55
+ 28c:	0000bf01 	0xbf01
+ 290:	00006400 	sll	t4,zero,0x10
  294:	c1299000 	lwc0	$9,-28672(t1)
  298:	c12be09f 	lwc0	$11,-8033(t1)
  29c:	0000ac9f 	0xac9f
@@ -28394,7 +28394,7 @@ Disassembly of section .debug_info:
  2a4:	00120704 	0x120704
  2a8:	04030000 	0x4030000
  2ac:	00000d07 	0xd07
- 2b0:	c5010400 	lwc1	$f1,1024(t0)
+ 2b0:	c8010400 	lwc2	$1,1024(zero)
  2b4:	01000000 	0x1000000
  2b8:	00ad0102 	0xad0102
  2bc:	29900000 	slti	s0,t4,0
@@ -28422,22 +28422,22 @@ Disassembly of section .debug_info:
  314:	01007707 	0x1007707
  318:	0000ad07 	0xad07
  31c:	0002d200 	sll	k0,v0,0x8
- 320:	00b60a00 	0xb60a00
+ 320:	00b90a00 	0xb90a00
  324:	45010000 	bc1t	328 <data_size-0x6674>
  328:	05040b00 	0x5040b00
  32c:	00746e69 	0x746e69
  330:	00ba040c 	syscall	0x2e810
  334:	bf0d0000 	0xbf0d0000
  338:	03000000 	0x3000000
- 33c:	00d30601 	0xd30601
+ 33c:	00d60601 	0xd60601
  340:	040c0000 	0x40c0000
  344:	00000025 	move	zero,zero
  348:	00008800 	sll	s1,zero,0x0
  34c:	1c000200 	bgtz	zero,b50 <data_size-0x5e4c>
  350:	04000002 	bltz	zero,35c <data_size-0x6640>
- 354:	00009a01 	0x9a01
- 358:	00d80100 	0xd80100
- 35c:	002b0000 	0x2b0000
+ 354:	00005501 	0x5501
+ 358:	00db0100 	0xdb0100
+ 35c:	00640000 	0x640000
  360:	2be00000 	slti	zero,ra,0
  364:	2c149fc1 	sltiu	s4,zero,-24639
  368:	01589fc1 	0x1589fc1
@@ -28445,7 +28445,7 @@ Disassembly of section .debug_info:
  370:	00001207 	0x1207
  374:	07040200 	0x7040200
  378:	0000000d 	break
- 37c:	00cc0103 	0xcc0103
+ 37c:	00cf0103 	0xcf0103
  380:	08010000 	j	40000 <data_size+0x39664>
  384:	9fc12be0 	0x9fc12be0
  388:	9fc12bf4 	0x9fc12bf4
@@ -28456,7 +28456,7 @@ Disassembly of section .debug_info:
  39c:	01000000 	0x1000000
  3a0:	04050054 	0x4050054
  3a4:	746e6905 	jalx	1b9a414 <data_size+0x1b93a78>
- 3a8:	d0010600 	0xd0010600
+ 3a8:	d3010600 	0xd3010600
  3ac:	01000000 	0x1000000
  3b0:	00590102 	0x590102
  3b4:	2bf40000 	slti	s4,ra,0
@@ -28470,9 +28470,9 @@ Disassembly of section .debug_info:
  3d4:	0000ab00 	sll	s5,zero,0xc
  3d8:	96000200 	lhu	zero,512(s0)
  3dc:	04000002 	bltz	zero,3e8 <data_size-0x65b4>
- 3e0:	00009a01 	0x9a01
- 3e4:	00e20100 	0xe20100
- 3e8:	002b0000 	0x2b0000
+ 3e0:	00005501 	0x5501
+ 3e4:	00e50100 	0xe50100
+ 3e8:	00640000 	0x640000
  3ec:	2c200000 	sltiu	zero,at,0
  3f0:	2cd89fc1 	sltiu	t8,a2,-24639
  3f4:	01989fc1 	0x1989fc1
@@ -28480,7 +28480,7 @@ Disassembly of section .debug_info:
  3fc:	00001207 	0x1207
  400:	07040200 	0x7040200
  404:	0000000d 	break
- 408:	00ee0103 	0xee0103
+ 408:	00f10103 	0xf10103
  40c:	02010000 	0x2010000
  410:	00006f01 	0x6f01
  414:	c12c2000 	lwc0	$12,8192(t1)
@@ -28499,8 +28499,8 @@ Disassembly of section .debug_info:
  448:	0700746e 	bltz	t8,1d604 <data_size+0x16c68>
  44c:	00007c04 	0x7c04
  450:	06010200 	bgez	s0,c54 <data_size-0x5d48>
- 454:	000000d3 	0xd3
- 458:	00e90108 	0xe90108
+ 454:	000000d6 	0xd6
+ 458:	00ec0108 	0xec0108
  45c:	0f010000 	jal	c040000 <data_size+0xc039664>
  460:	00006f01 	0x6f01
  464:	c12ca800 	lwc0	$12,-22528(t1)
@@ -28514,9 +28514,9 @@ Disassembly of section .debug_info:
  484:	000000f7 	0xf7
  488:	031d0002 	0x31d0002
  48c:	01040000 	0x1040000
- 490:	0000009a 	0x9a
- 494:	0000f801 	0xf801
- 498:	00002b00 	sll	a1,zero,0xc
+ 490:	00000055 	0x55
+ 494:	0000fb01 	0xfb01
+ 498:	00006400 	sll	t4,zero,0x10
  49c:	c12ce000 	lwc0	$12,-8192(t1)
  4a0:	c12de09f 	lwc0	$13,-8033(t1)
  4a4:	0001db9f 	0x1db9f
@@ -28524,7 +28524,7 @@ Disassembly of section .debug_info:
  4ac:	00000012 	mflo	zero
  4b0:	0d070402 	jal	41c1008 <data_size+0x41ba66c>
  4b4:	03000000 	0x3000000
- 4b8:	00011801 	0x11801
+ 4b8:	00011b01 	0x11b01
  4bc:	01020100 	0x1020100
  4c0:	000000d2 	0xd2
  4c4:	9fc12ce0 	0x9fc12ce0
@@ -28538,11 +28538,11 @@ Disassembly of section .debug_info:
  4e4:	00770400 	0x770400
  4e8:	00d20101 	0xd20101
  4ec:	049d0000 	0x49d0000
- 4f0:	1d050000 	0x1d050000
+ 4f0:	20050000 	addi	a1,zero,0
  4f4:	01000001 	0x1000001
  4f8:	0000d201 	0xd201
  4fc:	00050800 	sll	at,a1,0x0
- 500:	01130500 	0x1130500
+ 500:	01160500 	0x1160500
  504:	01010000 	0x1010000
  508:	000000d2 	0xd2
  50c:	0000055d 	0x55d
@@ -28559,27 +28559,27 @@ Disassembly of section .debug_info:
  538:	00667562 	0x667562
  53c:	00e00501 	0xe00501
  540:	91030000 	lbu	v1,0(t0)
- 544:	04087fa8 	0x4087fa8
+ 544:	07087fa8 	0x7087fa8
  548:	01000001 	0x1000001
  54c:	00002c06 	0x2c06
  550:	0005f600 	sll	s8,a1,0x18
  554:	04090000 	0x4090000
  558:	746e6905 	jalx	1b9a414 <data_size+0x1b93a78>
  55c:	05040200 	0x5040200
- 560:	0000010a 	0x10a
+ 560:	0000010d 	break	0x0,0x4
  564:	0000f30a 	0xf30a
  568:	0000f000 	sll	s8,zero,0x0
  56c:	00f00b00 	0xf00b00
  570:	003f0000 	0x3f0000
  574:	0207040c 	syscall	0x81c10
- 578:	00d30601 	0xd30601
+ 578:	00d60601 	0xd60601
  57c:	83000000 	lb	zero,0(t8)
  580:	02000000 	0x2000000
  584:	0003c900 	sll	t9,v1,0x4
- 588:	9a010400 	lwr	at,1024(s0)
+ 588:	55010400 	0x55010400
  58c:	01000000 	0x1000000
- 590:	00000129 	0x129
- 594:	0000002b 	sltu	zero,zero,zero
+ 590:	0000012c 	0x12c
+ 594:	00000064 	0x64
  598:	9fc12de0 	0x9fc12de0
  59c:	9fc12e20 	0x9fc12e20
  5a0:	00000232 	0x232
@@ -28587,7 +28587,7 @@ Disassembly of section .debug_info:
  5a8:	02000000 	0x2000000
  5ac:	000d0704 	0xd0704
  5b0:	01030000 	0x1030000
- 5b4:	00000122 	0x122
+ 5b4:	00000125 	0x125
  5b8:	6d010601 	0x6d010601
  5bc:	e0000000 	swc0	$0,0(zero)
  5c0:	209fc12d 	addi	ra,a0,-16083
@@ -28606,13 +28606,13 @@ Disassembly of section .debug_info:
  5f4:	00007a04 	0x7a04
  5f8:	007f0800 	0x7f0800
  5fc:	01020000 	0x1020000
- 600:	0000d306 	0xd306
+ 600:	0000d606 	0xd606
  604:	04200000 	bltz	at,608 <data_size-0x6394>
  608:	00020000 	sll	zero,v0,0x0
  60c:	0000043d 	0x43d
- 610:	009a0104 	0x9a0104
- 614:	48010000 	mfc2	at,$0
- 618:	2b000001 	slti	zero,t8,1
+ 610:	00550104 	0x550104
+ 614:	4b010000 	c2	0x1010000
+ 618:	64000001 	0x64000001
  61c:	20000000 	addi	zero,zero,0
  620:	4c9fc12e 	0x4c9fc12e
  624:	6e9fc131 	0x6e9fc131
@@ -28624,7 +28624,7 @@ Disassembly of section .debug_info:
  63c:	00000006 	srlv	zero,zero,zero
  640:	00271302 	0x271302
  644:	01050000 	0x1050000
- 648:	0000018c 	syscall	0x6
+ 648:	0000018f 	0x18f
  64c:	2501f601 	addiu	at,t0,-2559
  650:	00000000 	nop
  654:	00000077 	0x77
@@ -28638,10 +28638,10 @@ Disassembly of section .debug_info:
  674:	fa010070 	0xfa010070
  678:	0000007e 	0x7e
  67c:	06010300 	bgez	s0,1280 <data_size-0x571c>
- 680:	000000d3 	0xd3
+ 680:	000000d6 	0xd6
  684:	00770408 	0x770408
  688:	01090000 	0x1090000
- 68c:	00000177 	0x177
+ 68c:	00000180 	sll	zero,zero,0x6
  690:	35010c01 	ori	at,t0,0xc01
  694:	20000000 	addi	zero,zero,0
  698:	549fc12e 	0x549fc12e
@@ -28658,7 +28658,7 @@ Disassembly of section .debug_info:
  6c4:	00c40408 	0xc40408
  6c8:	770c0000 	jalx	c300000 <data_size+0xc2f9664>
  6cc:	09000000 	j	4000000 <data_size+0x3ff9664>
- 6d0:	00016001 	0x16001
+ 6d0:	00016301 	0x16301
  6d4:	01220100 	0x1220100
  6d8:	00000035 	0x35
  6dc:	9fc12e54 	0x9fc12e54
@@ -28676,7 +28676,7 @@ Disassembly of section .debug_info:
  70c:	00003523 	0x3523
  710:	00067100 	sll	t6,a2,0x4
  714:	01090000 	0x1090000
- 718:	00000132 	0x132
+ 718:	00000135 	0x135
  71c:	7e013701 	0x7e013701
  720:	a0000000 	sb	zero,0(zero)
  724:	c09fc12e 	lwc0	$31,-16082(a0)
@@ -28693,7 +28693,7 @@ Disassembly of section .debug_info:
  750:	3b010070 	xori	at,t8,0x70
  754:	0000007e 	0x7e
  758:	09005301 	j	4014c04 <data_size+0x400e268>
- 75c:	00015801 	0x15801
+ 75c:	00015b01 	0x15b01
  760:	014d0100 	0x14d0100
  764:	0000007e 	0x7e
  768:	9fc12ec0 	0x9fc12ec0
@@ -28713,7 +28713,7 @@ Disassembly of section .debug_info:
  7a0:	00700d56 	0x700d56
  7a4:	007e4e01 	0x7e4e01
  7a8:	53010000 	0x53010000
- 7ac:	6f010900 	0x6f010900
+ 7ac:	78010900 	0x78010900
  7b0:	01000001 	0x1000001
  7b4:	01ea0164 	0x1ea0164
  7b8:	2ef00000 	sltiu	s0,s7,0
@@ -28732,7 +28732,7 @@ Disassembly of section .debug_info:
  7ec:	00560100 	0x560100
  7f0:	6905040e 	0x6905040e
  7f4:	0900746e 	j	401d1b8 <data_size+0x401681c>
- 7f8:	00014101 	0x14101
+ 7f8:	00014401 	0x14401
  7fc:	01740100 	0x1740100
  800:	0000007e 	0x7e
  804:	9fc12f68 	0x9fc12f68
@@ -28746,7 +28746,7 @@ Disassembly of section .debug_info:
  824:	74010063 	jalx	4018c <data_size+0x397f0>
  828:	00000077 	0x77
  82c:	09005501 	j	4015404 <data_size+0x400ea68>
- 830:	00013901 	0x13901
+ 830:	00013c01 	0x13c01
  834:	01880100 	0x1880100
  838:	0000007e 	0x7e
  83c:	9fc12fb8 	0x9fc12fb8
@@ -28773,7 +28773,7 @@ Disassembly of section .debug_info:
  890:	01000000 	0x1000000
  894:	006d1356 	0x6d1356
  898:	53010000 	0x53010000
- 89c:	68011400 	0x68011400
+ 89c:	71011400 	0x71011400
  8a0:	01000001 	0x1000001
  8a4:	25010111 	addiu	at,t0,273
  8a8:	34000000 	li	zero,0x0
@@ -28799,7 +28799,7 @@ Disassembly of section .debug_info:
  8f8:	00000000 	nop
  8fc:	02fc0408 	0x2fc0408
  900:	14180000 	bne	zero,t8,904 <data_size-0x6098>
- 904:	00017e01 	0x17e01
+ 904:	00018701 	0x18701
  908:	01280100 	0x1280100
  90c:	00002501 	0x2501
  910:	c1306000 	lwc0	$16,24576(t1)
@@ -28824,7 +28824,7 @@ Disassembly of section .debug_info:
  95c:	2d010064 	sltiu	at,t0,100
  960:	00007e01 	0x7e01
  964:	00530100 	0x530100
- 968:	01510114 	0x1510114
+ 968:	01540114 	0x1540114
  96c:	4b010000 	c2	0x1010000
  970:	01ea0101 	0x1ea0101
  974:	30cc0000 	andi	t4,a2,0x0
@@ -28847,7 +28847,7 @@ Disassembly of section .debug_info:
  9b8:	32731700 	andi	s3,s3,0x1700
  9bc:	014d0100 	0x14d0100
  9c0:	000000be 	0xbe
- 9c4:	86011b00 	lh	at,6912(s0)
+ 9c4:	6b011b00 	0x6b011b00
  9c8:	01000001 	0x1000001
  9cc:	2c010157 	sltiu	at,zero,343
  9d0:	4c9fc131 	0x4c9fc131
@@ -28875,9 +28875,9 @@ Disassembly of section .debug_info:
  a28:	02370000 	0x2370000
  a2c:	00020000 	sll	zero,v0,0x0
  a30:	000005e0 	0x5e0
- a34:	009a0104 	0x9a0104
- a38:	d3010000 	0xd3010000
- a3c:	2b000001 	slti	zero,t8,1
+ a34:	00550104 	0x550104
+ a38:	d6010000 	0xd6010000
+ a3c:	64000001 	0x64000001
  a40:	50000000 	0x50000000
  a44:	989fc131 	lwr	ra,-16079(a0)
  a48:	319fc132 	andi	ra,t4,0xc132
@@ -28885,33 +28885,33 @@ Disassembly of section .debug_info:
  a50:	00120704 	0x120704
  a54:	04020000 	0x4020000
  a58:	00000d07 	0xd07
- a5c:	01bb0300 	0x1bb0300
+ a5c:	01be0300 	0x1be0300
  a60:	03020000 	0x3020000
  a64:	0000002c 	0x2c
  a68:	69050404 	0x69050404
  a6c:	0500746e 	bltz	t0,1dc28 <data_size+0x1728c>
- a70:	000001b2 	0x1b2
+ a70:	000001b5 	0x1b5
  a74:	8a1f0210 	lwl	ra,528(s0)
  a78:	06000000 	bltz	s0,a7c <data_size-0x5f20>
- a7c:	000001f5 	0x1f5
+ a7c:	000001f8 	0x1f8
  a80:	00332002 	0x332002
  a84:	10020000 	beq	zero,v0,a88 <data_size-0x5f14>
- a88:	01fc0600 	0x1fc0600
+ a88:	01ff0600 	0x1ff0600
  a8c:	21020000 	addi	v0,t0,0
  a90:	00000033 	0x33
  a94:	06041002 	0x6041002
- a98:	000001ed 	0x1ed
+ a98:	000001f0 	0x1f0
  a9c:	00332202 	0x332202
  aa0:	10020000 	beq	zero,v0,aa4 <data_size-0x5ef8>
- aa4:	01c40608 	0x1c40608
+ aa4:	01c70608 	0x1c70608
  aa8:	23020000 	addi	v0,t8,0
  aac:	00000033 	0x33
  ab0:	000c1002 	srl	v0,t4,0x0
- ab4:	01a70107 	0x1a70107
+ ab4:	01aa0107 	0x1aa0107
  ab8:	04010000 	b	abc <data_size-0x5ee0>
  abc:	0000002c 	0x2c
  ac0:	0000a700 	sll	s4,zero,0x1c
- ac4:	01da0800 	0x1da0800
+ ac4:	01dd0800 	0x1dd0800
  ac8:	05010000 	bgez	t0,acc <data_size-0x5ed0>
  acc:	0000002c 	0x2c
  ad0:	008a0900 	0x8a0900
@@ -28922,13 +28922,13 @@ Disassembly of section .debug_info:
  ae4:	000000c4 	0xc4
  ae8:	00009b0a 	0x9b0a
  aec:	010b0000 	0x10b0000
- af0:	000001a8 	0x1a8
+ af0:	000001ab 	0x1ab
  af4:	002c1101 	0x2c1101
  af8:	31600000 	andi	zero,t3,0x0
  afc:	31709fc1 	andi	s0,t3,0x9fc1
  b00:	02809fc1 	0x2809fc1
  b04:	6d010000 	0x6d010000
- b08:	019a010c 	syscall	0x66804
+ b08:	019d010c 	syscall	0x67404
  b0c:	16010000 	bne	s0,at,b10 <data_size-0x5e8c>
  b10:	0000002c 	0x2c
  b14:	9fc13170 	0x9fc13170
@@ -28939,7 +28939,7 @@ Disassembly of section .debug_info:
  b28:	2c170100 	sltiu	s7,zero,256
  b2c:	98000000 	lwr	zero,0(zero)
  b30:	00000007 	srav	zero,zero,zero
- b34:	01e3010c 	syscall	0x78c04
+ b34:	01e6010c 	syscall	0x79804
  b38:	2c010000 	sltiu	at,zero,0
  b3c:	0000002c 	0x2c
  b40:	9fc1317c 	0x9fc1317c
@@ -28949,7 +28949,7 @@ Disassembly of section .debug_info:
  b50:	6e0e0000 	0x6e0e0000
  b54:	2c2d0100 	sltiu	t5,at,256
  b58:	00000000 	nop
- b5c:	01cc010f 	0x1cc010f
+ b5c:	01cf010f 	0x1cf010f
  b60:	33010000 	andi	at,t8,0x0
  b64:	00002c01 	0x2c01
  b68:	c1318c00 	lwc0	$17,-29696(t1)
@@ -28968,7 +28968,7 @@ Disassembly of section .debug_info:
  b9c:	9fc131a0 	0x9fc131a0
  ba0:	00009b0a 	0x9b0a
  ba4:	00000000 	nop
- ba8:	0193010f 	0x193010f
+ ba8:	0196010f 	0x196010f
  bac:	3c010000 	lui	at,0x0
  bb0:	00002c01 	0x2c01
  bb4:	c131a800 	lwc0	$17,-22528(t1)
@@ -28987,7 +28987,7 @@ Disassembly of section .debug_info:
  be8:	9b0a9fc1 	lwr	t2,-24639(t8)
  bec:	00000000 	nop
  bf0:	01130000 	0x1130000
- bf4:	00000204 	0x204
+ bf4:	00000207 	0x207
  bf8:	2c012001 	sltiu	at,zero,8193
  bfc:	cc000000 	lwc3	$0,0(zero)
  c00:	989fc131 	lwr	ra,-16079(a0)
@@ -29963,127 +29963,127 @@ Disassembly of section .debug_str:
   1c:	6e00746e 	0x6e00746e
   20:	626d656d 	0x626d656d
   24:	706f6600 	0x706f6600
-  28:	2f006e65 	sltiu	zero,t8,28261
-  2c:	6964656d 	0x6964656d
-  30:	66732f61 	0x66732f61
-  34:	63736e5f 	0x63736e5f
-  38:	32636373 	andi	v1,s3,0x6373
-  3c:	2f393130 	sltiu	t9,t9,12592
-  40:	616e6966 	0x616e6966
-  44:	65645f6c 	0x65645f6c
-  48:	706c6576 	0x706c6576
-  4c:	7265702f 	0x7265702f
-  50:	65745f66 	0x65745f66
-  54:	665f7473 	0x665f7473
-  58:	6c616e69 	0x6c616e69
-  5c:	666f732f 	0x666f732f
-  60:	65702f74 	0x65702f74
-  64:	665f6672 	0x665f6672
-  68:	2f636e75 	sltiu	v1,k1,28277
-  6c:	0062696c 	0x62696c
-  70:	69647473 	0x69647473
-  74:	00632e6f 	0x632e6f
-  78:	65727473 	0x65727473
-  7c:	66006d61 	0x66006d61
-  80:	73656c69 	0x73656c69
-  84:	746f7400 	jalx	1bdd000 <data_size+0x1bd6664>
-  88:	46006c61 	cvt.d.s	$f17,$f13
-  8c:	00454c49 	0x454c49
-  90:	657a6973 	0x657a6973
-  94:	74656700 	jalx	1959c00 <data_size+0x1953264>
-  98:	4e470063 	c3	0x470063
-  9c:	20432055 	addi	v1,v0,8277
-  a0:	2e332e34 	sltiu	s3,s1,11828
-  a4:	672d2030 	0x672d2030
-  a8:	65726600 	0x65726600
-  ac:	66006461 	0x66006461
-  b0:	736f6c63 	0x736f6c63
-  b4:	67610065 	0x67610065
-  b8:	006e6961 	0x6e6961
-  bc:	6e697270 	0x6e697270
-  c0:	632e6674 	0x632e6674
-  c4:	69727000 	0x69727000
-  c8:	0066746e 	0x66746e
-  cc:	5f746774 	0x5f746774
-  d0:	63747570 	0x63747570
-  d4:	00726168 	0x726168
-  d8:	63747570 	0x63747570
-  dc:	2e726168 	sltiu	s2,s3,24936
-  e0:	75700063 	jalx	5c0018c <data_size+0x5bf97f0>
-  e4:	632e7374 	0x632e7374
-  e8:	74757000 	jalx	1d5c000 <data_size+0x1d55664>
-  ec:	75700073 	jalx	5c001cc <data_size+0x5bf9830>
-  f0:	72747374 	0x72747374
-  f4:	00676e69 	0x676e69
-  f8:	6e697270 	0x6e697270
-  fc:	73616274 	0x73616274
- 100:	00632e65 	0x632e65
- 104:	756c6176 	jalx	5b185d8 <data_size+0x5b11c3c>
- 108:	6f6c0065 	0x6f6c0065
- 10c:	6920676e 	0x6920676e
- 110:	7300746e 	0x7300746e
- 114:	006e6769 	0x6e6769
- 118:	6e697270 	0x6e697270
- 11c:	73616274 	0x73616274
- 120:	74730065 	jalx	1cc0194 <data_size+0x1cb97f8>
- 124:	706d6372 	0x706d6372
- 128:	72747300 	0x72747300
- 12c:	2e706d63 	sltiu	s0,s3,28003
- 130:	74730063 	jalx	1cc018c <data_size+0x1cb97f0>
- 134:	79706372 	0x79706372
- 138:	72747300 	0x72747300
- 13c:	646e6966 	0x646e6966
- 140:	72747300 	0x72747300
- 144:	00726863 	0x726863
- 148:	69727473 	0x69727473
- 14c:	632e676e 	0x632e676e
- 150:	6d656d00 	0x6d656d00
- 154:	00706d63 	0x706d63
- 158:	6e727473 	0x6e727473
- 15c:	00797063 	0x797063
- 160:	6e727473 	0x6e727473
- 164:	006e656c 	0x6e656c
- 168:	636d656d 	0x636d656d
- 16c:	73007970 	0x73007970
- 170:	636e7274 	0x636e7274
- 174:	7300706d 	0x7300706d
- 178:	656c7274 	0x656c7274
- 17c:	656d006e 	0x656d006e
- 180:	766f6d6d 	jalx	9bdb5b4 <data_size+0x9bd4c18>
- 184:	7a620065 	0x7a620065
- 188:	006f7265 	0x6f7265
- 18c:	736d656d 	0x736d656d
- 190:	67007465 	0x67007465
- 194:	755f7465 	jalx	57dd194 <data_size+0x57d67f8>
- 198:	65670073 	0x65670073
- 19c:	6f635f74 	0x6f635f74
- 1a0:	5f746e75 	0x5f746e75
- 1a4:	5f00796d 	0x5f00796d
- 1a8:	5f746567 	0x5f746567
- 1ac:	6e756f63 	0x6e756f63
- 1b0:	69740074 	0x69740074
- 1b4:	7073656d 	0x7073656d
- 1b8:	5f006365 	0x5f006365
- 1bc:	636f6c63 	0x636f6c63
- 1c0:	00745f6b 	0x745f6b
- 1c4:	6d5f7674 	0x6d5f7674
- 1c8:	00636573 	0x636573
- 1cc:	5f746567 	0x5f746567
- 1d0:	7400736e 	jalx	1cdb8 <data_size+0x1641c>
- 1d4:	2e656d69 	sltiu	a1,s3,28009
- 1d8:	635f0063 	0x635f0063
- 1dc:	76746e6f 	jalx	9d1b9bc <data_size+0x9d15020>
- 1e0:	67006c61 	0x67006c61
- 1e4:	635f7465 	0x635f7465
- 1e8:	6b636f6c 	0x6b636f6c
- 1ec:	5f767400 	0x5f767400
- 1f0:	63657375 	0x63657375
- 1f4:	5f767400 	0x5f767400
- 1f8:	00636573 	0x636573
- 1fc:	6e5f7674 	0x6e5f7674
- 200:	00636573 	0x636573
- 204:	636f6c63 	0x636f6c63
- 208:	65675f6b 	0x65675f6b
- 20c:	6d697474 	0x6d697474
- 210:	Address 0x0000000000000210 is out of bounds.
-
+  28:	73006e65 	0x73006e65
+  2c:	6f696474 	0x6f696474
+  30:	7300632e 	0x7300632e
+  34:	61657274 	0x61657274
+  38:	6966006d 	0x6966006d
+  3c:	0073656c 	0x73656c
+  40:	61746f74 	0x61746f74
+  44:	4946006c 	0x4946006c
+  48:	7300454c 	0x7300454c
+  4c:	00657a69 	0x657a69
+  50:	63746567 	0x63746567
+  54:	554e4700 	0x554e4700
+  58:	34204320 	ori	zero,at,0x4320
+  5c:	302e332e 	andi	t6,at,0x332e
+  60:	00672d20 	0x672d20
+  64:	6d6f682f 	0x6d6f682f
+  68:	72642f65 	0x72642f65
+  6c:	686d6165 	0x686d6165
+  70:	676e6175 	0x676e6175
+  74:	63736e2f 	0x63736e2f
+  78:	2f636373 	sltiu	v1,k1,25459
+  7c:	4c434c4c 	0x4c434c4c
+  80:	50494d2d 	0x50494d2d
+  84:	666f2f53 	0x666f2f53
+  88:	69636966 	0x69636966
+  8c:	702f6c61 	0x702f6c61
+  90:	5f667265 	0x5f667265
+  94:	74736574 	jalx	1cd95d0 <data_size+0x1cd2c34>
+  98:	666f732f 	0x666f732f
+  9c:	65702f74 	0x65702f74
+  a0:	665f6672 	0x665f6672
+  a4:	2f636e75 	sltiu	v1,k1,28277
+  a8:	0062696c 	0x62696c
+  ac:	61657266 	0x61657266
+  b0:	63660064 	0x63660064
+  b4:	65736f6c 	0x65736f6c
+  b8:	61676100 	0x61676100
+  bc:	70006e69 	0x70006e69
+  c0:	746e6972 	jalx	1b9a5c8 <data_size+0x1b93c2c>
+  c4:	00632e66 	0x632e66
+  c8:	6e697270 	0x6e697270
+  cc:	74006674 	jalx	199d0 <data_size+0x13034>
+  d0:	705f7467 	0x705f7467
+  d4:	68637475 	0x68637475
+  d8:	70007261 	0x70007261
+  dc:	68637475 	0x68637475
+  e0:	632e7261 	0x632e7261
+  e4:	74757000 	jalx	1d5c000 <data_size+0x1d55664>
+  e8:	00632e73 	0x632e73
+  ec:	73747570 	0x73747570
+  f0:	74757000 	jalx	1d5c000 <data_size+0x1d55664>
+  f4:	69727473 	0x69727473
+  f8:	7000676e 	0x7000676e
+  fc:	746e6972 	jalx	1b9a5c8 <data_size+0x1b93c2c>
+ 100:	65736162 	0x65736162
+ 104:	7600632e 	jalx	8018cb8 <data_size+0x801231c>
+ 108:	65756c61 	0x65756c61
+ 10c:	6e6f6c00 	0x6e6f6c00
+ 110:	6e692067 	0x6e692067
+ 114:	69730074 	0x69730074
+ 118:	70006e67 	0x70006e67
+ 11c:	746e6972 	jalx	1b9a5c8 <data_size+0x1b93c2c>
+ 120:	65736162 	0x65736162
+ 124:	72747300 	0x72747300
+ 128:	00706d63 	0x706d63
+ 12c:	63727473 	0x63727473
+ 130:	632e706d 	0x632e706d
+ 134:	72747300 	0x72747300
+ 138:	00797063 	0x797063
+ 13c:	66727473 	0x66727473
+ 140:	00646e69 	0x646e69
+ 144:	63727473 	0x63727473
+ 148:	73007268 	0x73007268
+ 14c:	6e697274 	0x6e697274
+ 150:	00632e67 	0x632e67
+ 154:	636d656d 	0x636d656d
+ 158:	7300706d 	0x7300706d
+ 15c:	636e7274 	0x636e7274
+ 160:	73007970 	0x73007970
+ 164:	6c6e7274 	0x6c6e7274
+ 168:	62006e65 	0x62006e65
+ 16c:	6f72657a 	0x6f72657a
+ 170:	6d656d00 	0x6d656d00
+ 174:	00797063 	0x797063
+ 178:	6e727473 	0x6e727473
+ 17c:	00706d63 	0x706d63
+ 180:	6c727473 	0x6c727473
+ 184:	6d006e65 	0x6d006e65
+ 188:	6f6d6d65 	0x6f6d6d65
+ 18c:	6d006576 	0x6d006576
+ 190:	65736d65 	0x65736d65
+ 194:	65670074 	0x65670074
+ 198:	73755f74 	0x73755f74
+ 19c:	74656700 	jalx	1959c00 <data_size+0x1953264>
+ 1a0:	756f635f 	jalx	5bd8d7c <data_size+0x5bd23e0>
+ 1a4:	6d5f746e 	0x6d5f746e
+ 1a8:	675f0079 	0x675f0079
+ 1ac:	635f7465 	0x635f7465
+ 1b0:	746e756f 	jalx	1b9d5bc <data_size+0x1b96c20>
+ 1b4:	6d697400 	0x6d697400
+ 1b8:	65707365 	0x65707365
+ 1bc:	635f0063 	0x635f0063
+ 1c0:	6b636f6c 	0x6b636f6c
+ 1c4:	7400745f 	jalx	1d17c <data_size+0x167e0>
+ 1c8:	736d5f76 	0x736d5f76
+ 1cc:	67006365 	0x67006365
+ 1d0:	6e5f7465 	0x6e5f7465
+ 1d4:	69740073 	0x69740073
+ 1d8:	632e656d 	0x632e656d
+ 1dc:	6f635f00 	0x6f635f00
+ 1e0:	6176746e 	0x6176746e
+ 1e4:	6567006c 	0x6567006c
+ 1e8:	6c635f74 	0x6c635f74
+ 1ec:	006b636f 	0x6b636f
+ 1f0:	755f7674 	jalx	57dd9d0 <data_size+0x57d7034>
+ 1f4:	00636573 	0x636573
+ 1f8:	735f7674 	0x735f7674
+ 1fc:	74006365 	jalx	18d94 <data_size+0x123f8>
+ 200:	736e5f76 	0x736e5f76
+ 204:	63006365 	0x63006365
+ 208:	6b636f6c 	0x6b636f6c
+ 20c:	7465675f 	jalx	1959d7c <data_size+0x19533e0>
+ 210:	656d6974 	0x656d6974
+	...

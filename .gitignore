@@ -6,9 +6,10 @@
 *.coe
 *.o
 *.a
-golden_trace.txt
-
-!core/**/rtl/*.v
+**/obj/
+vivado.conf
+*.txt
+!golden_trace.txt
 
 # sbt specific
 .bsp/
@@ -57,24 +58,19 @@ simWorkspace/
 tmp/
 null
 
-official/soft/func/bin.lds
-official/soft/func/convert
-official/soft/func/**/obj
 tests/func/bin.lds
 tests/func/convert
 tests/func/**/obj
 core/*.v
 
 # Vivado
+*.hw/
 *.runs/
 *.sim/
+*.tmp/
+*.cache/
+*.Xil/
 *.jou
 *.ip_user_files/
-**/xilinx_ip/clk_pll/*
-!**/xilinx_ip/clk_pll/*.xci
-**/xilinx_ip/data_ram/*
-!**/xilinx_ip/data_ram/*.xci
-**/xilinx_ip/inst_ram/*
-!**/xilinx_ip/inst_ram/*.xci
-
-vivado.conf
+**/xilinx_ip/**/*
+!**/xilinx_ip/**/*.xci
