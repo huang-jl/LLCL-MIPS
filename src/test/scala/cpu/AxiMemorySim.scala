@@ -58,7 +58,8 @@ trait PerWord {
       simFailure("Unaligned read to PerWord MappedIODevice")
 
     for (i <- 0 until length by 4) {
-      writeWord(addr + i, (0 until 4) map { j => data(i + j).toInt << (j * 8) } reduce { _ | _ })
+      // & 0xff for positivity
+      writeWord(addr + i, (0 until 4) map { j => (data(i + j).toInt & 0xff) << (j * 8) } reduce { _ | _ })
     }
   }
 }
@@ -99,7 +100,7 @@ case class AxiMemorySim(axi: Axi4, clockDomain: ClockDomain, config: AxiMemorySi
     )
 
     /** Not inclusive */
-    def endAddress = alignedAddress + (burstLength + 1) * size
+    def endAddress = alignedAddress + (burstLength + 1) * numberBytes
 
     def addrRange = address until endAddress
   }
@@ -111,6 +112,8 @@ case class AxiMemorySim(axi: Axi4, clockDomain: ClockDomain, config: AxiMemorySi
       (startAddr % busWordWidth).toInt until ((endAddr - 1) % busWordWidth + 1).toInt
   }
 
+  def addSingleByteMappedIO(addr: Long, device: MappedIODevice): this.type =
+    addMappedIO(addr to addr, device)
   def addSingleWordMappedIO(addr: Long, device: MappedIODevice): this.type =
     addMappedIO(addr until (addr + 4), device)
   def addMappedIO(addrRange: NumericRange[Long], device: MappedIODevice): this.type = {
@@ -123,6 +126,17 @@ case class AxiMemorySim(axi: Axi4, clockDomain: ClockDomain, config: AxiMemorySi
 
     mappedIODevices += ((addrRange, device))
     this
+  }
+
+  private def findIODevice(job: AxiJob): Option[MappedIODevice] = {
+    for ((range, device) <- mappedIODevices) {
+      if ((range contains job.address) && (range contains (job.endAddress - 1))) {
+        return Some(device)
+      } else if ((job.addrRange contains range.min) || (job.addrRange contains range.max)) {
+        return None
+      }
+    }
+    return Some(memoryDevice)
   }
 
   def start(): Unit = {
@@ -141,17 +155,6 @@ case class AxiMemorySim(axi: Axi4, clockDomain: ClockDomain, config: AxiMemorySi
     fork {
       handleW(axi.w, axi.b)
     }
-  }
-
-  private def findIODevice(job: AxiJob): Option[MappedIODevice] = {
-    for ((range, device) <- mappedIODevices) {
-      if ((range contains job.address) && (range contains (job.endAddress - 1))) {
-        return Some(device)
-      } else if ((job.addrRange contains range.min) || (job.addrRange contains range.max)) {
-        return None
-      }
-    }
-    return Some(memoryDevice)
   }
 
   def handleAr(ar: Stream[Axi4Ar]): Unit = {
@@ -308,7 +311,7 @@ case class AxiMemorySim(axi: Axi4, clockDomain: ClockDomain, config: AxiMemorySi
 
           val beat = job.beat(i)
 
-          /** Data written contains invalid bytes around valid ones */
+          // Data written contains invalid bytes around valid ones
           val padded      = w.payload.data.toBigInt.toBinary(busWordWidth)
           val validRange  = beat.bytesRange
           val writtenData = padded.slice(validRange.min, validRange.max + 1)

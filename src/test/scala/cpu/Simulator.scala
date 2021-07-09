@@ -10,13 +10,13 @@ import scala.reflect.{ClassTag, classTag}
 
 object Simulator {
   case class MemSection(
-      startAddr: BigInt,
+      startAddr: Long,
       data: Array[Byte]
   )
 
   case class Config(
       mem: AxiMemorySimConfig,
-      initSections: Seq[MemSection],
+      initSections: Seq[MemSection] = Seq(),
       cpuClockPeriod: Long,
       sysClockPeriod: Long = 10
   )
@@ -24,6 +24,20 @@ object Simulator {
   trait Plugin {
     def setupSim(context: Simulator#Context): Unit
     def close(): Unit = {}
+  }
+
+  def compile[T <: SimulationSoc](dut: => T, withWave: Boolean = true): SimCompiled[T] = {
+    val includeDir = VivadoConf.vivadoPath + "/data/verilog/src/xeclib"
+
+    (if (withWave) SimConfig.withWave else SimConfig)
+      .withConfig(SpinalConfig().includeSimulation)
+      .allOptimisation
+      .addSimulatorFlag("-Wno-TIMESCALEMOD")
+      .addSimulatorFlag("-Wno-INITIALDLY")
+      // .addIncludeDir(includeDir)
+      .addSimulatorFlag(s"-I$includeDir")
+      .addSimulatorFlag("--timescale-override 1ns/1ns")
+      .compile(dut)
   }
 }
 
@@ -84,43 +98,19 @@ case class Simulator(config: Simulator.Config) {
     def getPlugin[T <: Plugin: ClassTag]: T               = Simulator.this.getPlugin
   }
 
-  def run(dut: => SimulationSoc): Unit = {
-    val includeDir = VivadoConf.vivadoPath + "/data/verilog/src/xeclib"
+  def run(dut: => SimulationSoc): Unit = run(dut, withWave = true)
+  def run(dut: => SimulationSoc, withWave: Boolean): Unit = run(Simulator.compile(dut, withWave))
 
-    try {
-      SimConfig.withWave
-        .withConfig(SpinalConfig().includeSimulation)
-        .allOptimisation
-        .addSimulatorFlag("-Wno-TIMESCALEMOD")
-        .addSimulatorFlag("-Wno-INITIALDLY")
-        // .addIncludeDir(includeDir)
-        .addSimulatorFlag(s"-I$includeDir")
-        .addSimulatorFlag("--timescale-override 1ns/1ns")
-        .compile(dut)
-        .doSimUntilVoid(doSim _)
-    } finally {
-      for (plugin <- plugins) {
-        plugin.close()
-      }
-    }
-  }
+  def run[T <: SimulationSoc](compiled: SimCompiled[T], name: String = "test") =
+    compiled.doSimUntilVoid(name)(doSim _)
 
   private def doSim(soc: SimulationSoc): Unit = {
-    val sysClockDomain = ClockDomain(
-      clock = soc.io.sysClock,
-      reset = soc.io.reset,
-      config = ClockDomainConfig(resetActiveLevel = LOW)
-    )
-    sysClockDomain.forkStimulus(period = config.sysClockPeriod)
-
-    val cpuClockDomain = ClockDomain(
-      clock = soc.io.cpuClock
-    )
-    cpuClockDomain.forkStimulus(period = config.cpuClockPeriod)
+    soc.sysClockDomain.forkStimulus(period = config.sysClockPeriod)
+    soc.cpuClockDomain.forkStimulus(period = config.cpuClockPeriod)
 
     soc.io.externalInterrupt #= 0
 
-    val memorySim = AxiMemorySim(soc.io.axi, sysClockDomain, config.mem)
+    val memorySim = AxiMemorySim(soc.io.axi, soc.sysClockDomain, config.mem)
     for (MemSection(addr, data) <- config.initSections) {
       memorySim.memory.writeArray(addr.toLong, data)
     }
@@ -135,12 +125,18 @@ case class Simulator(config: Simulator.Config) {
     val pluginThreadContext = new Context(
       soc = soc,
       memorySim = memorySim,
-      sysClockDomain = sysClockDomain,
-      cpuClockDomain = cpuClockDomain
+      sysClockDomain = soc.sysClockDomain,
+      cpuClockDomain = soc.cpuClockDomain
     )
     for (plugin <- plugins) {
       fork {
         plugin.setupSim(pluginThreadContext)
+      }
+    }
+
+    onSimEnd {
+      for (plugin <- plugins) {
+        plugin.close()
       }
     }
   }

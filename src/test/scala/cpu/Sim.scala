@@ -1,5 +1,6 @@
 package cpu
 
+import cpu.display.DisplayerConfig
 import scopt.OptionParser
 import spinal.lib.bus.amba4.axi.sim.AxiMemorySimConfig
 
@@ -106,8 +107,9 @@ object Sim {
 
     simulator.addPlugin(PCBroadcastPlugin(10000))
 
-    for (plugin <- funcTest.FuncTestConfRegs) {
-      simulator.addPlugin(plugin)
+    funcTest.ConfRegs().addTo(simulator, displayerConfig = Some(DisplayerConfig(throttlePeriod = Some(10000))))
+    simulator.onSetupSim { context =>
+      context.mem.getElseAllocPage(0)
     }
 
     for (finalPc <- config.finalPc) {

@@ -3,6 +3,7 @@ package ip
 import spinal.core._
 import spinal.core.sim._
 import spinal.idslplugin.PostInitCallback
+
 import scala.collection.mutable
 
 package object sim {
@@ -73,17 +74,23 @@ package object sim {
     }
 
     def toJob: () => Unit = { () =>
-      var tick: Long = 0
+      var tick: Long     = 0
+      var resetLastCycle = false
 
       val pendingJobs = mutable.Queue[(() => Unit, Long)]()
 
+      resetJob.foreach { _() }
       idleJob.foreach { _() }
+
       while (true) {
         clockDomain.waitActiveEdge()
 
         if (clockDomain.isResetAsserted) {
-          resetJob.foreach { _() }
+          if (!resetLastCycle) {
+            resetJob.foreach { _() }
+          }
           pendingJobs.clear() // May need to be customizable
+          resetLastCycle = true
         }
 
         if (pendingJobs.isEmpty || pendingJobs.front._2 != tick) {
