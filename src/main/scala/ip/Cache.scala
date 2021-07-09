@@ -21,7 +21,6 @@ class SDPRAM(numEntries: Int, numWays: Int, indexWidth: Int, entryWidth: Int) ex
     val ena   = in Bool ()
     val addra = in UInt (indexWidth bits)
     val dina  = in Bits (numWays * entryWidth bits)
-    val wea   = in Bool ()
 
     val enb   = in Bool ()
     val addrb = in UInt (indexWidth bits)
@@ -37,7 +36,7 @@ class SDPRAM(numEntries: Int, numWays: Int, indexWidth: Int, entryWidth: Int) ex
   mem.io.ena := io.ena
   mem.io.addra := io.addra
   mem.io.dina := io.dina
-  mem.io.wea := io.wea.asBits
+  mem.io.wea := B"1"
 
   mem.io.enb := True
   mem.io.addrb := io.enb ? io.addrb | currAddrb
@@ -81,17 +80,17 @@ class Cache(
       val addr     = in UInt (addrWidth bits)
       val dataLine = in Bits (numWays * dataWidth bits)
       val tagLine  = in Bits (numWays * (1 + tagWidth) bits)
-      val wea      = in Bool ()
-      val p        = in Bits (numWays - 1 bits)
 
       val pEn = in Bool ()
+      val p   = in Bits (numWays - 1 bits)
     }
     val r = new Bundle {
       val en       = in Bool ()
       val addr     = in UInt (addrWidth bits)
       val dataLine = out Bits (numWays * dataWidth bits)
       val tagLine  = out Bits (numWays * (1 + tagWidth) bits)
-      val p        = out Bits (numWays - 1 bits)
+
+      val p = out Bits (numWays - 1 bits)
     }
   }
 
@@ -102,7 +101,6 @@ class Cache(
   dataMem.io.ena := io.w.en
   dataMem.io.addra := wIndex
   dataMem.io.dina := io.w.dataLine
-  dataMem.io.wea := io.w.wea
 
   dataMem.io.enb := io.r.en
   dataMem.io.addrb := rIndex
@@ -112,7 +110,6 @@ class Cache(
   tagMem.io.ena := io.w.en
   tagMem.io.addra := wIndex
   tagMem.io.dina := io.w.tagLine
-  tagMem.io.wea := io.w.wea
 
   tagMem.io.enb := io.r.en
   tagMem.io.addrb := rIndex
