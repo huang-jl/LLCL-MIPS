@@ -15,6 +15,8 @@ object Fields {
   val fn     = 5 downto 0
   val co     = 25
   val sel    = 2 downto 0
+
+  val cacheOp = 20 downto 16
 }
 
 case class Mips32Inst() extends Bundle {
@@ -32,6 +34,8 @@ case class Mips32Inst() extends Bundle {
   def fn          = bits(Fields.fn)
   def co          = bits(Fields.co)
   def sel         = bits(Fields.sel).asUInt
+
+  def cacheOp     = bits(Fields.cacheOp)
 }
 
 object Mips32InstImplicits {
@@ -203,4 +207,6 @@ object InstructionSpec {
   val TLBWI = cop0co(fn = "000010") //write tlb entry indexed by Index CP0 Reg
   val TLBWR = cop0co(fn = "000110") //writte tlb entry indexed by Random CP0 Reg
 
+  // Used only when ConstantVal.FINAL_MODE = true
+  val CACHE = IType(op = "101111")
 }

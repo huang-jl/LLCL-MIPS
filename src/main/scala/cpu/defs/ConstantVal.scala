@@ -35,4 +35,7 @@ object ConstantVal {
   /** 时钟中断配置 */
   val TimeInterruptEnable = false
 
+  /** 是否开启全部指令，关闭的时候基本仅覆盖初赛的指令；
+   * 不能控制TLB相关的指令和逻辑 */
+  val FINAL_MODE = false
 }

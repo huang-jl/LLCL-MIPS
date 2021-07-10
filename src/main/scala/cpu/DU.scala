@@ -55,6 +55,10 @@ class DU extends Component {
     //tlbw index src
     val tlbIndexSrc =
       Utils.instantiateWhen(out(TLBIndexSrc()), ConstantVal.USE_TLB)
+
+    // 仅在开启FINAL_MODE后使用的
+    val dcacheInvalidate = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
+    val icacheInvalidate = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
   }
 
   // wires
@@ -94,6 +98,7 @@ class DU extends Component {
 
   val tlbr, tlbw, tlbp = Key(Bool)
   val tlbIndexSrc      = Key(TLBIndexSrc())
+  val invalidateCache  = Key(Bool)
 
   val decoder = new Decoder(32 bits, enableNotConsidered = true) {
     //下面是默认值，避免出现Latch
@@ -122,6 +127,7 @@ class DU extends Component {
     default(tlbw) to False
     default(tlbp) to False
     default(tlbIndexSrc) to TLBIndexSrc.Index
+    default(invalidateCache) to False
 
     // Arithmetics
     val saShifts = Map(
@@ -356,6 +362,12 @@ class DU extends Component {
         set(tlbp) to True
       }
     }
+
+    if(ConstantVal.FINAL_MODE) {
+      on(CACHE) {
+        set(invalidateCache) to True
+      }
+    }
   }
 
   decoder.input := io.inst
@@ -404,6 +416,11 @@ class DU extends Component {
     io.tlbw := decoder.output(tlbw)
     io.tlbp := decoder.output(tlbp)
     io.tlbIndexSrc := decoder.output(tlbIndexSrc)
+  }
+
+  if(ConstantVal.FINAL_MODE) {
+    io.icacheInvalidate := decoder.output(invalidateCache) & Utils.equalAny(inst.cacheOp, B"5'b00000", B"10000")
+    io.dcacheInvalidate := decoder.output(invalidateCache) & Utils.equalAny(inst.cacheOp, B"5'b00001", B"10101")
   }
 }
 

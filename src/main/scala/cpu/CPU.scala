@@ -102,6 +102,9 @@ class CPU extends Component {
   val instFetch          = Key(Bool)                                       //异常是否是取值时发生的
   val tlbRefillException = Key(Bool)                                       //是否是TLB缺失异常（影响异常处理地址）
 
+  val icacheInvalidate   = Key(Bool) setEmptyValue False
+  val dcacheInvalidate   = Key(Bool) setEmptyValue False
+
   if (ConstantVal.USE_TLB) {
     tlbw.setEmptyValue(False)
     tlbp.setEmptyValue(False)
