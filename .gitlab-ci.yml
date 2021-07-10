@@ -23,14 +23,13 @@ cache:
 
 stages:
   - generate_verilog
-  - func_test
+  - init_test_environment
+  - test
   - init_vivado
   - bitstreams
 
 spinal_verilog:
   stage: generate_verilog
-  tags:
-    - vivado
   script:
     - sbt ${SBT_OPTS} 'runMain cpu.Generate'
   artifacts:
@@ -39,20 +38,30 @@ spinal_verilog:
       - ./mergeRTL.v
 
 
-spinal_test:
-  stage: func_test
-  tags:
-    - vivado
+init_test_environment:
+  stage: init_test_environment
+  script:
+    - echo -e "vivado {\n    path = ${VIVADO_DIR}\n}" > vivado.conf
+
+
+func_test:
+  stage: test
   rules:
     - if: '$CI_COMMIT_MESSAGE =~ /\[func-test/i'
   script:
-    - echo -e "vivado {\n    path = ${VIVADO_DIR}\n}" > vivado.conf
     - sbt ${SBT_OPTS} 'Test / runMain cpu.funcTest.FuncTestNormal'
   artifacts:
     paths:
-      - ./our_trace.txt
       - ./simWorkspace/SimulationSoc/*.vcd
     when: on_failure
+
+
+perf_test:
+  stage: test
+  rules:
+    - if: '$CI_COMMIT_MESSAGE =~ /\[perf-test/i'
+  script:
+    - sbt ${SBT_OPTS} 'Test / runMain cpu.funcTest.PerfTest'
 
 
 # Below is used for generating Bitstream
