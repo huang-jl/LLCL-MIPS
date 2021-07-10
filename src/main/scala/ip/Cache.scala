@@ -69,7 +69,8 @@ class Cache(
 ) extends Component {
   val dataMem = new SDPRAM(numEntries, numWays, indexWidth, dataWidth)
   val tagMem  = new SDPRAM(numEntries, numWays, indexWidth, 1 + tagWidth)
-  val pMem    = Vec(Reg(Bits(numWays - 1 bits)) randBoot, numEntries / numWays)
+  val pMem    = Mem(Bits(numWays - 1 bits), numEntries / numWays) randBoot
+  // Vec(Reg(Bits(numWays - 1 bits)) randBoot, numEntries / numWays)
   //  tagMem.prevEna.setAsComb := dataMem.prevEna
   //  tagMem.prevAddra.setAsComb := dataMem.prevAddra
   //  tagMem.currAddrb.setAsComb := dataMem.currAddrb
@@ -116,13 +117,9 @@ class Cache(
   io.r.tagLine := tagMem.io.doutb
 
   //
-  io.r.p := pMem(dataMem.currAddrb)
-  when(io.w.pEn) {
-    pMem(wIndex) := io.w.p
-    when(tagMem.currAddrb === wIndex) {
-      io.r.p := io.w.p
-    }
-  }
+  io.r.p := (io.w.pEn & tagMem.currAddrb === wIndex) ?
+    io.w.p | pMem.readAsync(dataMem.currAddrb, writeFirst)
+  pMem.write(wIndex, io.w.p, io.w.pEn)
 
   //
   def plru(p: Bits, i: Int = 1, v: Bool = True): Bits = {

@@ -26,4 +26,26 @@ object config {
     val INDEX_RANGE = ADDR_OFFSET until ADDR_OFFSET + INDEX_WIDTH
     val TAG_RANGE   = ADDR_OFFSET + TAG_OFFSET until ADDR_OFFSET + TAG_OFFSET + TAG_WIDTH
   }
+
+  val BHT = new config {
+    val NUM_ENTRIES = 4096
+
+    val ADDR_OFFSET = log2Up(INST_WIDTH / BYTE_WIDTH)
+
+    val INDEX_WIDTH = log2Up(NUM_ENTRIES)
+
+    val DATA_WIDTH = 4
+
+    val BASE_RANGE  = ADDR_OFFSET + INDEX_WIDTH until ADDR_OFFSET + 2 * INDEX_WIDTH
+    val INDEX_RANGE = ADDR_OFFSET until ADDR_OFFSET + INDEX_WIDTH
+  }
+  val PHT = new config {
+    val NUM_ENTRIES = BHT.NUM_ENTRIES * 4
+
+    val ADDR_OFFSET = log2Up(INST_WIDTH / BYTE_WIDTH)
+
+    val INDEX_WIDTH = log2Up(NUM_ENTRIES)
+
+    val INDEX_RANGE = ADDR_OFFSET until ADDR_OFFSET + INDEX_WIDTH
+  }
 }
