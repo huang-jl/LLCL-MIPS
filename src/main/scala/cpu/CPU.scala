@@ -44,8 +44,9 @@ class CPU extends Component {
   )
   btb.io.w.en.clear
   btb.io.w.pEn.clear
-  val bht = Mem(Bits(BHT.DATA_WIDTH bits), BHT.NUM_ENTRIES) randBoot
-  val pht = Mem(UInt(2 bits), PHT.NUM_ENTRIES) randBoot
+  val bpu = new BPU
+  bpu.io.w.bhtEn.clear
+  bpu.io.w.phtEn.clear
 
   val bhtI = Key(UInt(BHT.INDEX_WIDTH bits))
   val bhtV = Key(Bits(BHT.DATA_WIDTH bits))
@@ -252,17 +253,24 @@ class CPU extends Component {
       btb.io.w.tagLine := stored(btbTagLine)
       btb.io.w.p := stored(btbSetP)
 
+      bpu.io.w.bhtI := stored(bhtI)
+      bpu.io.w.bhtV := stored(bhtV) |<< 1 | B(ju.jump, BHT.DATA_WIDTH bits)
+      bpu.io.w.phtI := stored(phtI)
+      bpu.io.w.phtV := ju.jump ?
+        ((stored(phtV) === stored(phtV).maxValue) ? U(stored(phtV).maxValue) | (stored(phtV) + 1)) |
+        ((stored(phtV) === stored(phtV).minValue) ? U(stored(phtV).minValue) | (stored(phtV) - 1))
+
       when(stored(isDJump)) {
         btb.io.w.en := !stored(btbHit)
         btb.io.w.pEn := True
+
+        bpu.io.w.bhtEn := True
+        bpu.io.w.phtEn := True
+
         when(ju.jump) {
-          bht.write(stored(bhtI), stored(bhtV) << 1 | 1)
-          pht.write(stored(phtI), (stored(phtV) === 3) ? U(3) | (stored(phtV) + 1))
           output(jumpPC) := stored(jumpPC)
           output(wantJump) := !stored(wantJump)
         } otherwise {
-          bht.write(stored(bhtI), stored(bhtV) << 1)
-          pht.write(stored(phtI), (stored(phtV) === 0) ? U(0) | (stored(phtV) - 1))
           output(jumpPC) := stored(pcPlus4) + 4
           output(wantJump) := stored(wantJump)
         }
@@ -503,12 +511,14 @@ class CPU extends Component {
   val IF1 = new Stage {
     val readBHT = new StageComponent {
       output(bhtI) := stored(pc)(BHT.BASE_RANGE) ^ stored(pc)(BHT.INDEX_RANGE)
-      output(bhtV) := bht.readAsync(output(bhtI), writeFirst)
+      bpu.io.r.bhtI := output(bhtI)
+      output(bhtV) := bpu.io.r.bhtV
     }
 
     val readPHT = new StageComponent {
       output(phtI) := U(produced(bhtV), PHT.INDEX_WIDTH bits) ^ stored(pc)(PHT.INDEX_RANGE)
-      output(phtV) := pht.readAsync(output(phtI), writeFirst)
+      bpu.io.r.phtI := output(phtI)
+      output(phtV) := bpu.io.r.phtV
     }
 
     val readBTB = new StageComponent {
