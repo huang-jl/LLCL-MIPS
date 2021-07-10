@@ -6,7 +6,7 @@ import spinal.lib.bus.amba4.axi.sim.AxiMemorySimConfig
 import java.io.File
 import scala.util.{Failure, Success}
 
-object FuncTestNormal {
+object FuncTestLowLatency {
   def main(args: Array[String]): Unit = {
     val instRamData = COEParse(new File("official/func_test/soft/func/obj/inst_ram.coe")) match {
       case Success(d) => d
@@ -20,10 +20,10 @@ object FuncTestNormal {
         mem = AxiMemorySimConfig(
           maxOutstandingReads = 4,
           maxOutstandingWrites = 4,
-          readResponseDelay = 200,
-          writeResponseDelay = 30,
-          interruptProbability = 10,
-          interruptMaxDelay = 20
+          readResponseDelay = 10,
+          writeResponseDelay = 10,
+          interruptProbability = 0,
+          interruptMaxDelay = 0
         ),
         initSections = Seq(Simulator.MemSection(0x1fc00000, instRamData)),
         cpuClockPeriod = 10
@@ -43,6 +43,6 @@ object FuncTestNormal {
       .onSetupSim { context =>
         context.mem.getElseAllocPage(0)
       }
-      .run(new SimulationSoc, workspaceName = "FuncTestNormal")
+      .run(new SimulationSoc, workspaceName = "FuncTestLowLatency")
   }
 }

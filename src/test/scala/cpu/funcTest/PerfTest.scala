@@ -24,7 +24,8 @@ object PerfTest {
       "stringsearch"
     )
 
-    val socCompiled = Simulator.compile(new SimulationSoc, withWave = false)
+    val socCompiled =
+      Simulator.compile(new SimulationSoc, workspaceName = "PerfTest", withWave = false)
 
     val baseConfig = Simulator.Config(
       mem = AxiMemorySimConfig(
@@ -91,8 +92,8 @@ object PerfTest {
         else
           0.1
       }
-    val formulaScore = math.pow(ratios.foldLeft(1.0) { _ * _ }, 1.0 / tests.length)
-    val loopTimes    = 10
+    val formulaScore   = math.pow(ratios.foldLeft(1.0) { _ * _ }, 1.0 / tests.length)
+    val loopTimes      = 10
     val estimatedScore = formulaScore / loopTimes
 
     val passAll = results forall { _._1 }

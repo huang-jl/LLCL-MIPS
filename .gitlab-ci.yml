@@ -12,6 +12,7 @@ cache:
   paths:
     - mycpu_top.v
     - mergeRTL.v
+    - vivado.conf
     - official/**/rtl/xilinx_ip
     - official/**/run_vivado/mycpu_prj1/mycpu.sim
     - official/**/run_vivado/mycpu_prj1/mycpu.runs
@@ -30,6 +31,8 @@ stages:
 
 spinal_verilog:
   stage: generate_verilog
+  tags:
+    - vivado
   script:
     - sbt ${SBT_OPTS} 'runMain cpu.Generate'
   artifacts:
@@ -40,24 +43,44 @@ spinal_verilog:
 
 init_test_environment:
   stage: init_test_environment
+  tags:
+    - vivado
   script:
     - echo -e "vivado {\n    path = ${VIVADO_DIR}\n}" > vivado.conf
 
 
 func_test:
   stage: test
+  tags:
+    - vivado
   rules:
     - if: '$CI_COMMIT_MESSAGE =~ /\[func-test/i'
   script:
     - sbt ${SBT_OPTS} 'Test / runMain cpu.funcTest.FuncTestNormal'
   artifacts:
     paths:
-      - ./simWorkspace/SimulationSoc/*.vcd
+      - ./simWorkspace/FuncTestNormal/*.vcd
+    when: on_failure
+
+
+func_test_low_latency:
+  stage: test
+  tags:
+    - vivado
+  rules:
+    - if: '$CI_COMMIT_MESSAGE =~ /\[func-test/i'
+  script:
+    - sbt ${SBT_OPTS} 'Test / runMain cpu.funcTest.FuncTestLowLatency'
+  artifacts:
+    paths:
+      - ./simWorkspace/FuncTestLowLatency/*.vcd
     when: on_failure
 
 
 perf_test:
   stage: test
+  tags:
+    - vivado
   rules:
     - if: '$CI_COMMIT_MESSAGE =~ /\[perf-test/i'
   script:

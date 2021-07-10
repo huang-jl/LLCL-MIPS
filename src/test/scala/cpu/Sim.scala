@@ -132,6 +132,6 @@ object Sim {
       simulator.addPlugin(TimeoutPlugin(timeout))
     }
 
-    simulator.run(new SimulationSoc)
+    simulator.run(new SimulationSoc, workspaceName = "Sim")
   }
 }

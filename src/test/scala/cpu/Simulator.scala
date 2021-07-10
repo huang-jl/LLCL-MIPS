@@ -26,10 +26,15 @@ object Simulator {
     def close(): Unit = {}
   }
 
-  def compile[T <: SimulationSoc](dut: => T, withWave: Boolean = true): SimCompiled[T] = {
+  def compile[T <: SimulationSoc](
+      dut: => T,
+      workspaceName: String,
+      withWave: Boolean = true
+  ): SimCompiled[T] = {
     val includeDir = VivadoConf.vivadoPath + "/data/verilog/src/xeclib"
 
     (if (withWave) SimConfig.withWave else SimConfig)
+      .workspaceName(workspaceName)
       .withConfig(SpinalConfig().includeSimulation)
       .allOptimisation
       .addSimulatorFlag("-Wno-TIMESCALEMOD")
@@ -98,8 +103,10 @@ case class Simulator(config: Simulator.Config) {
     def getPlugin[T <: Plugin: ClassTag]: T               = Simulator.this.getPlugin
   }
 
-  def run(dut: => SimulationSoc): Unit = run(dut, withWave = true)
-  def run(dut: => SimulationSoc, withWave: Boolean): Unit = run(Simulator.compile(dut, withWave))
+  def run(dut: => SimulationSoc, workspaceName: String): Unit =
+    run(dut, workspaceName, withWave = true)
+  def run(dut: => SimulationSoc, workspaceName: String, withWave: Boolean): Unit =
+    run(Simulator.compile(dut, workspaceName, withWave))
 
   def run[T <: SimulationSoc](compiled: SimCompiled[T], name: String = "test") =
     compiled.doSimUntilVoid(name)(doSim _)
