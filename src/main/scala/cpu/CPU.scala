@@ -3,13 +3,14 @@ package cpu
 import defs.Mips32InstImplicits._
 import defs.{ConstantVal, Mips32Inst}
 import cache.CacheRamConfig
-import lib.{Key, Optional, Task}
-import tlb.{MMU, TLBEntry, TLBConfig}
+import lib.{Key, Task}
+import tlb.{MMU, MMUTranslationRes}
+import cpu.defs.config._
+import ip._
 import spinal.core._
 import spinal.lib.{cpu => _, _}
 import spinal.lib.bus.amba4.axi._
 
-//TODO 可以考虑把AGU放到ME1再做一次，这样访存指令可以少暂停一次
 class CPU extends Component {
   val io = new Bundle {
     val externalInterrupt = in Bits (6 bits)
@@ -31,12 +32,37 @@ class CPU extends Component {
   val cp0 = new CP0
   val mmu = new MMU(useTLB = ConstantVal.USE_TLB)
 
-  val jumpPc = Key(Optional(UInt(32 bits)))
+  val btb = new Cache(
+    BTB.NUM_ENTRIES,
+    BTB.NUM_WAYS,
+    BTB.ADDR_WIDTH,
+    0,
+    BTB.INDEX_WIDTH,
+    BTB.TAG_OFFSET,
+    BTB.TAG_WIDTH,
+    BTB.ADDR_WIDTH
+  )
+  btb.io.w.en.clear
+  btb.io.w.p.clearAll
+  btb.io.w.pEn.clear
+
+  val btbDataLine = Key(Bits(BTB.NUM_WAYS * BTB.ADDR_WIDTH bits))
+  val btbTagLine  = Key(Bits(BTB.NUM_WAYS * (1 + BTB.TAG_WIDTH) bits))
+  val btbP        = Key(Bits(BTB.NUM_WAYS - 1 bits))
+  val btbHitLine  = Key(Bits(BTB.NUM_WAYS bits))
+  val btbData     = Key(Bits(BTB.ADDR_WIDTH bits))
+  val btbSetP     = Key(Bits(BTB.NUM_WAYS - 1 bits))
+  val btbClearP   = Key(Bits(BTB.NUM_WAYS - 1 bits))
+
+  val jumpCond = Key(JU_OP()) setEmptyValue JU_OP.f
+  val wantJump = Key(Bool()) setEmptyValue False
+  val jumpToRs = Key(Bool())
+  val jumpPC   = Key(UInt(ADDR_WIDTH bits))
 
   val pc         = Key(UInt(32 bits))
+  val pcPlus4    = Key(UInt(32 bits))
   val bd         = Key(Bool)
   val inst       = Key(Mips32Inst()) setEmptyValue ConstantVal.INST_NOP
-  val exception  = Key(Optional(EXCEPTION()))
   val eret       = Key(Bool) setEmptyValue False
   val aluOp      = Key(ALU_OP()) setEmptyValue ALU_OP.sll()
   val aluASrc    = Key(ALU_A_SRC())
@@ -67,13 +93,14 @@ class CPU extends Component {
 
   val ifPaddr    = Key(UInt(32 bits))
   val if2En      = Key(Bool) setEmptyValue False
-  val me2Uncache = Key(Bool) //ME2是否经过cache
 
-  val tlbr        = Key(Bool)          //ID解码
-  val tlbw        = Key(Bool)          //ID解码
-  val tlbp        = Key(Bool)          //ID解码
-  val tlbIndexSrc = Key(TLBIndexSrc()) //ID解码
-  val instFetch   = Key(Bool)          //异常是否是取值时发生的
+  val dataMMURes         = Key(new MMUTranslationRes(ConstantVal.USE_TLB)) //EX阶段查询数据TLB
+  val tlbr               = Key(Bool)                                       //ID解码
+  val tlbw               = Key(Bool)                                       //ID解码
+  val tlbp               = Key(Bool)                                       //ID解码
+  val tlbIndexSrc        = Key(TLBIndexSrc())                              //ID解码
+  val instFetch          = Key(Bool)                                       //异常是否是取值时发生的
+  val tlbRefillException = Key(Bool)                                       //是否是TLB缺失异常（影响异常处理地址）
 
   if (ConstantVal.USE_TLB) {
     tlbw.setEmptyValue(False)
@@ -107,7 +134,6 @@ class CPU extends Component {
     }
 
     input(pc)
-//    input(rfuRdSrc)
   }
 
   val ME2 = new Stage {
@@ -118,43 +144,38 @@ class CPU extends Component {
       dcu.io.stage2.read := input(memRe)
       dcu.io.stage2.write := input(memWe)
       dcu.io.stage2.byteEnable := input(memBe)
-      dcu.io.stage2.paddr := input(memAddr)
+      dcu.io.stage2.paddr := input(dataMMURes).paddr
       dcu.io.stage2.extend := input(memEx)
-      dcu.io.stage2.uncache := input(me2Uncache)
+      dcu.io.stage2.uncache := !input(dataMMURes).cached
       dcu.io.stage2.wdata := input(rtValue)
 
       output(rfuData) := dcu.io.stage2.rdata
     }
 
-    //TODO 是不是有点啰嗦
-    produced(rfuData) := ((stored(rfuRdSrc) === RFU_RD_SRC.mu) ?
-      output(rfuData) | stored(rfuData))
+    produced(rfuData) := stored(memRe) ? output(rfuData) | stored(rfuData)
 
   }
 
   val ME1 = new Stage {
+    val assignSetTask = !RegNext(cp0.io.jumpPc.isDefined) & cp0.io.jumpPc.isDefined
+
     val dcuC = new StageComponent {
-      dcu.io.stage1.offset := input(memAddr)(0, dcacheConfig.offsetWidth bits)
-      dcu.io.stage1.index := input(memAddr)(dcacheConfig.offsetWidth, dcacheConfig.indexWidth bits)
+      dcu.io.stage1.paddr := input(dataMMURes).paddr
       dcu.io.stage1.keepRData := !ME2.is.empty & !ME2.will.input
       dcu.io.stage1.byteEnable := input(memBe)
     }
-    // MMU translate
-    mmu.io.dataVaddr := input(memAddr)
-    output(memAddr) := mmu.io.dataRes.paddr
-    output(me2Uncache) := !mmu.io.dataCached
 
     //因为写hi lo的指令以及写cp0本身不会触发异常
     //因此全部放到ME第一阶段完成
     val hluC = new StageComponent {
       hlu.hi_we := input(hluHiWe)
-      output(hluHiData) := ((input(hluHiSrc) === HLU_SRC.rs) ?
-        input(rsValue) | input(aluResultC).asBits)
+      output(hluHiData) := (input(hluHiSrc) === HLU_SRC.rs) ?
+        input(rsValue) | input(aluResultC).asBits
       hlu.new_hi := output(hluHiData)
 
       hlu.lo_we := input(hluLoWe)
-      output(hluLoData) := ((input(hluLoSrc) === HLU_SRC.rs) ?
-        input(rsValue) | input(aluResultD).asBits)
+      output(hluLoData) := (input(hluLoSrc) === HLU_SRC.rs) ?
+        input(rsValue) | input(aluResultD).asBits
       hlu.new_lo := output(hluLoData)
     }
 
@@ -204,14 +225,16 @@ class CPU extends Component {
     exceptionToRaise := None
     // TLB异常
     if (ConstantVal.USE_TLB) {
-      val refillException  = mmu.io.dataMapped & mmu.io.dataRes.miss
-      val invalidException = mmu.io.dataMapped & !mmu.io.dataRes.miss & !mmu.io.dataRes.valid
-      val modifiedException = mmu.io.dataMapped & input(memWe) &
-        !mmu.io.dataRes.miss & mmu.io.dataRes.valid & !mmu.io.dataRes.dirty
+      val refillException  = input(dataMMURes).mapped & input(dataMMURes).miss
+      val invalidException = input(dataMMURes).mapped & !input(dataMMURes).miss & !mmu.io.dataRes.valid
+      val modifiedException = input(dataMMURes).mapped & input(memWe) &
+        !input(dataMMURes).miss & input(dataMMURes).valid & !input(dataMMURes).dirty
       when(refillException | invalidException) {
         when(input(memRe))(exceptionToRaise := EXCEPTION.TLBL)
           .elsewhen(input(memWe))(exceptionToRaise := EXCEPTION.TLBS)
       }.elsewhen(modifiedException)(exceptionToRaise := EXCEPTION.Mod)
+
+      cp0.io.tlbBus.refillException := input(tlbRefillException) | refillException
     }
     // 访存地址不对齐异常（更优先）
     when(!dcu.io.stage1.addrValid) {
@@ -221,6 +244,58 @@ class CPU extends Component {
   }
 
   val EX = new Stage {
+    val writeBTB = new StageComponent {
+      output(jumpPC) := stored(jumpPC)
+      output(wantJump) := False
+
+      btb.io.w.addr := stored(pc)(BTB.ADDR_RANGE)
+      btb.io.w.dataLine := stored(btbDataLine)
+      btb.io.w.tagLine := stored(btbTagLine)
+
+      when(stored(jumpToRs)) {
+        output(jumpPC) := U(stored(rsValue))
+        output(wantJump) := ju.jump
+      } elsewhen stored(wantJump) {
+        output(jumpPC) := stored(pcPlus4) + 4
+
+        when(ju.jump) {
+          btb.io.w.p := stored(btbSetP)
+        } otherwise {
+          output(wantJump) := True
+
+          btb.io.w.en := True
+
+          btb.io.w.p := stored(btbClearP)
+        }
+
+        btb.io.w.pEn := True
+      } elsewhen ju.jump {
+        output(wantJump) := True
+
+        btb.io.w.en := True
+
+        btb.io.w.pEn := True
+        btb.io.w.p := stored(btbSetP)
+      }
+    }
+
+    val assignJumpTask = RegNext(will.input) & produced(wantJump)
+
+    val juC = new StageComponent {
+      ju.op := input(jumpCond)
+      ju.a := input(rsValue).asSInt
+      ju.b := input(rtValue).asSInt
+    }
+
+    val bdValue = RegInit(False)
+    when(will.output) {
+      bdValue := stored(jumpCond) =/= JU_OP.f
+    }
+    when(will.flush) {
+      bdValue := False
+    }
+    output(bd) := bdValue
+
     val aluC = new StageComponent {
       alu.io.input.op := input(aluOp)
       alu.io.input.a := input(aluASrc).mux(
@@ -257,6 +332,13 @@ class CPU extends Component {
       default        -> stored(rfuData)
     )
 
+    //EX阶段计算出地址后再去查TLB
+    val ME_Translate = new StageComponent {
+      // MMU translate
+      mmu.io.dataVaddr := aguC.output(memAddr)
+      output(dataMMURes) := mmu.io.dataRes
+    }
+
     //数据前传：解决load + 中间一条无关指令 + store的数据冲突
     when(ME1.stored(rfuWe) && ME1.stored(rfuAddr) === input(inst).rs) {
       produced(rsValue) := ME1.produced(rfuData)
@@ -277,7 +359,8 @@ class CPU extends Component {
         input(inst).rd === ME1.stored(inst).rd &
         input(inst).sel === ME1.stored(inst).sel
 
-      val mfc0_tlb_hazard = if (ConstantVal.USE_TLB) Bool else null
+      val mfc0_tlb_hazard = Utils.instantiateWhen(Bool, ConstantVal.USE_TLB)
+//      val mfc0_tlb_hazard = if (ConstantVal.USE_TLB) Bool else null
       if (ConstantVal.USE_TLB) {
         mfc0_tlb_hazard := !ME1.is.empty & input(cp0Re) &
           (
@@ -293,12 +376,45 @@ class CPU extends Component {
   }
 
   val ID = new Stage {
+    val preCalcBTB = new StageComponent {
+      output(jumpToRs) := du.io.ju_pc_src === JU_PC_SRC.rs
+      output(jumpPC) := du.io.ju_pc_src.mux(
+        JU_PC_SRC.offset -> U(S(stored(pcPlus4)) + S(du.io.inst.offset ## B"00")),
+        default          -> U(stored(pcPlus4)(31 downto 28) ## du.io.inst.index ## B"00")
+      )
+
+      when(stored(wantJump)) {
+        output(btbDataLine) := stored(btbDataLine)
+        output(btbTagLine) := btb.tagMem.write(
+          stored(btbTagLine),
+          stored(btbHitLine),
+          False ## stored(pc)(BTB.TAG_RANGE)
+        )
+        btb.getP(stored(btbP), stored(btbHitLine), True, output(btbSetP))
+      } otherwise {
+        val wea = btb.plru(stored(btbP))
+        output(btbDataLine) := btb.dataMem.write(
+          stored(btbDataLine),
+          wea,
+          B(output(jumpPC)(BTB.ADDR_RANGE))
+        )
+        output(btbTagLine) := btb.tagMem.write(
+          stored(btbTagLine),
+          wea,
+          True ## stored(pc)(BTB.TAG_RANGE)
+        )
+        btb.getP(stored(btbP), wea, True, output(btbSetP))
+      }
+      btb.getP(stored(btbP), stored(btbHitLine), False, output(btbClearP))
+    }
+
     val duC = new StageComponent {
       du.io.inst := input(inst)
 
       output(aluOp) := du.io.alu_op
       output(aluASrc) := du.io.alu_a_src
       output(aluBSrc) := du.io.alu_b_src
+      output(jumpCond) := du.io.ju_op
       output(memRe) := du.io.dcu_re
       output(memWe) := du.io.dcu_we
       output(memBe) := du.io.dcu_be
@@ -315,6 +431,7 @@ class CPU extends Component {
       output(useRs) := du.io.use_rs
       output(useRt) := du.io.use_rt
       output(eret) := du.io.eret
+
       if (ConstantVal.USE_TLB) {
         output(tlbr) := du.io.tlbr
         output(tlbw) := du.io.tlbw
@@ -330,36 +447,24 @@ class CPU extends Component {
       output(rtValue) := rfu.io.rb.data
     }
 
-//    val cp0Read = new StageComponent {
-//      cp0.io.read.addr.rd := input(inst).rd
-//      cp0.io.read.addr.sel := input(inst).sel
-//    output(rfuData) := cp0.io.read.data
-    //    }
+//一旦一条指令output，那么可以更新prevBranch，表示这条output的指令是否是branch
+//will.input表明下一周期会有一条新的指令过来，那么delayWillInput表明当前指令是新进来的指令
+//val prevBranch = RegInit(False)
+//    val delayWillInput = RegNext(will.input) init(False)
+//    val bdValue = Updating(Bool) init(False)
+//    when(will.output) {
+//      prevBranch := du.io.ju_op =/= JU_OP.f
+//    }
+//    when(delayWillInput) {
+//      bdValue.next := prevBranch
+//    }.otherwise {
+//      bdValue.next := bdValue.prev
+//    }
+//    when(will.flush) {
+//      prevBranch := False
+//    }
+//    output(bd) := bdValue.next
 
-    val juC = new StageComponent {
-      ju.op := du.io.ju_op
-      ju.a := produced(rsValue).asSInt
-      ju.b := produced(rtValue).asSInt
-      ju.pc_src := du.io.ju_pc_src
-      ju.pc := input(pc) + 4
-      ju.offset := input(inst).offset
-      ju.index := input(inst).index
-
-      when(ju.jump) {
-        output(jumpPc) := ju.jump_pc
-      } otherwise {
-        output(jumpPc) := None
-      }
-    }
-
-    val bdValue = RegInit(False)
-    when(will.output) {
-      bdValue := du.io.ju_op =/= JU_OP.f
-    }
-    when(will.flush) {
-      bdValue := False
-    }
-    output(bd) := bdValue
 
     when(EX.stored(rfuWe) && EX.stored(rfuAddr) === stored(inst).rs) {
       produced(rsValue) := EX.produced(rfuData)
@@ -381,10 +486,6 @@ class CPU extends Component {
       produced(rtValue) := WB.stored(rfuData)
     }
 
-//    produced(rfuData) := output(rfuRdSrc) mux (
-//      RFU_RD_SRC.cp0 -> cp0Read.output(rfuData),
-//      default        -> B(input(pc) + 8)
-//    )
     output(rfuData) := B(input(pc) + 8)
 
     val wantForwardFromEX =
@@ -396,44 +497,57 @@ class CPU extends Component {
     val wantForwardFromME2 =
       ME2.stored(rfuWe) && (ME2.stored(rfuAddr) === stored(inst).rs && produced(useRs) ||
         ME2.stored(rfuAddr) === stored(inst).rt && produced(useRt))
-//    val wantForwardFromWB =
-//      WB.stored(rfuWe) && (WB.stored(rfuAddr) === stored(inst).rs && produced(useRs) ||
-//        WB.stored(rfuAddr) === stored(inst).rt && produced(useRt))
-
-
-//    is.done := True
-//    when(wantForwardFromEX && (EX.stored(rfuRdSrc) === RFU_RD_SRC.mu | du.io.ju_op =/= JU_OP.f)) {
-//      is.done := False
-//    }.elsewhen(wantForwardFromME1 && ME1.stored(rfuRdSrc) === RFU_RD_SRC.mu) {
-//      is.done := False
-//    }.elsewhen(wantForwardFromME2 && ME2.stored(rfuRdSrc) === RFU_RD_SRC.mu && !ME2.is.done) {
-//      is.done := False
-//    }.elsewhen(wantForwardFromWB && WB.stored(rfuRdSrc) === RFU_RD_SRC.mu) {
-//      is.done := False
-//    }
 
     exceptionToRaise := du.io.exception
   }
 
   val IF2 = new Stage {
+    output(pcPlus4) := stored(pc) + 4
+
+    val decideJump = new StageComponent {
+      output(btbDataLine) := btb.io.r.dataLine
+      output(btbTagLine) := btb.io.r.tagLine
+      output(btbP) := btb.io.r.p
+
+      btb.getHitLineAndData(
+        btb.io.r.tagLine,
+        btb.io.r.dataLine,
+        stored(pc)(BTB.ADDR_RANGE),
+        output(btbHitLine),
+        output(btbData)
+      )
+
+      output(jumpPC) := U(output(btbData) ## BTB.ADDR_PADDING)
+      output(wantJump) := !is.empty & output(btbHitLine).orR
+    }
+
+    val assignJumpTask = RegNext(will.input) & produced(wantJump)
+
     val icuC = new StageComponent {
       io.icacheAXI <> icu.io.axi
       //ibus
       icu.io.ibus.stage2.paddr := input(ifPaddr)
-//      icu.io.ibus.stage2.en := prevException.isEmpty & firing
       icu.io.ibus.stage2.en := input(if2En)
-//      produced(inst) := input(if2En) ? icu.io.ibus.stage2.rdata | ConstantVal.INST_NOP
       output(inst) := icu.io.ibus.stage2.rdata
     }
   }
 
   val IF1 = new Stage {
+    val readBTB = new StageComponent {
+      btb.io.r.en := will.output
+      btb.io.r.addr := stored(pc)(BTB.ADDR_RANGE)
+    }
+
     val jumpTask =
-      Task(ID.is.done & ID.output(jumpPc).isDefined, ID.output(jumpPc).value, will.output)
-    val setTask = Task(ME1.is.done & cp0.io.jumpPc.isDefined, cp0.io.jumpPc.value, will.output)
+      Task(IF2.assignJumpTask, IF2.produced(jumpPC), will.output)
+    val jumpTask2 =
+      Task(EX.assignJumpTask, EX.produced(jumpPC), will.output)
+    val setTask = Task(ME1.assignSetTask, cp0.io.jumpPc.value, will.output)
     stored(pc) init ConstantVal.INIT_PC
     when(will.output) {
-      stored(pc) := setTask.has ? setTask.value | (jumpTask.has ? jumpTask.value | stored(pc) + 4)
+      stored(pc) := setTask.has ?
+        setTask.value |
+        (jumpTask2.has ? jumpTask2.value | (jumpTask.has ? jumpTask.value | stored(pc) + 4))
     }
 
     val icuC = new StageComponent {
@@ -447,7 +561,6 @@ class CPU extends Component {
       output(ifPaddr) := mmu.io.instRes.paddr
       output(if2En) := True
 
-//      icu.io.ibus.stage1.keepRData := IF2.valid & !IF2.sending & !IF2.wantsFlush
       icu.io.ibus.stage1.keepRData := !IF2.is.empty & !IF2.will.input
 
       // 异常
@@ -455,13 +568,14 @@ class CPU extends Component {
       exceptionToRaise := None
       // TLB异常
       if (ConstantVal.USE_TLB) {
-        val refillException  = mmu.io.instMapped & mmu.io.instRes.miss
-        val invalidException = mmu.io.instMapped & !mmu.io.instRes.miss & !mmu.io.instRes.valid
+        val refillException  = mmu.io.instRes.mapped & mmu.io.instRes.miss
+        val invalidException = mmu.io.instRes.mapped & !mmu.io.instRes.miss & !mmu.io.instRes.valid
         when(refillException | invalidException) {
           exceptionToRaise := EXCEPTION.TLBL
           output(instFetch) := True
           output(if2En) := False
         }
+        output(tlbRefillException) := refillException
       }
       // 访存地址不对齐异常（更优先）
       icu.io.exception.whenIsDefined(_ => {
@@ -473,7 +587,7 @@ class CPU extends Component {
   }
 
   cp0.io.instOnInt.valid := !EX.is.empty
-  cp0.io.instOnInt.bd := EX.stored(bd)
+  cp0.io.instOnInt.bd := EX.bdValue
   cp0.io.instOnInt.pc := EX.stored(pc)
   val stages = Seq(IF1, IF2, ID, EX, ME1, ME2, WB)
   for ((prev, next) <- (stages zip stages.tail).reverse) {
@@ -485,10 +599,9 @@ class CPU extends Component {
   IF2.can.flush := !icu.io.ibus.stage2.stall
 
   ID.is.done :=
-    !(ID.wantForwardFromEX && EX.stored(rfuRdSrc) === RFU_RD_SRC.mu ||
-      ID.wantForwardFromME1 && ME1.stored(rfuRdSrc) === RFU_RD_SRC.mu ||
-      ID.wantForwardFromME2 && ME2.stored(rfuRdSrc) === RFU_RD_SRC.mu && !ME2.is.done)
-//      ID.wantForwardFromWB && WB.stored(rfuRdSrc) === RFU_RD_SRC.mu)
+    !(ID.wantForwardFromEX & EX.stored(memRe) |
+      ID.wantForwardFromME1 & ME1.stored(memRe) |
+      ID.wantForwardFromME2 & ME2.stored(memRe) & !ME2.is.done)
 
   EX.is.done := !alu.io.stall
   EX.can.flush := !alu.io.stall
@@ -506,18 +619,52 @@ class CPU extends Component {
   ME2.can.flush := !dcu.io.stage2.stall
 
   // 异常清空流水线
-  when(cp0.io.jumpPc.isDefined && !ME1.to.flush) {
-    ME1.want.flush := True
+  when(ME1.assignSetTask) {
     IF1.want.flush := True
     IF2.want.flush := True
     ID.want.flush := True
     EX.want.flush := True
+    ME1.want.flush := True
   }
 
-  // 一旦检测到跳转就让给IF2的指令无效
-  when(ID.is.done & ID.output(jumpPc).isDefined) {
-    IF1.want.flush := True
+  when(EX.assignJumpTask) {
+    when(!ID.is.empty) {
+      IF2.want.flush := True
+    }
+    when(!(ID.is.empty & IF2.is.empty)) {
+      IF1.want.flush := True
+    }
   }
+  IF1.stored(pc).addAttribute("mark_debug", "true")
+  IF2.stored(ifPaddr).addAttribute("mark_debug", "true")
+  IF2.stored(pc).addAttribute("mark_debug", "true")
+  ME1.stored(pc).addAttribute("mark_debug", "true")
+  ME1.stored(dataMMURes).paddr.addAttribute("mark_debug", "true")
+  ME2.stored(pc).addAttribute("mark_debug", "true")
+//  cp0.interruptOnNextInst.addAttribute("mark_debug", "true")
+//  cp0.regs("Cause")("IP_HW").addAttribute("mark_debug", "true")
+  cp0.regs("Cause")("ExcCode").addAttribute("mark_debug", "true")
+//  cp0.regs("Status")("IM").addAttribute("mark_debug", "true")
+//
+//  dcu.io.stage2.read.addAttribute("mark_debug", "true")
+//  dcu.io.stage2.write.addAttribute("mark_debug", "true")
+//  dcu.io.stage2.stall.addAttribute("mark_debug", "true")
+//  dcu.dcache.dcacheFSM.stateReg.addAttribute("mark_debug", "true")
+//  dcu.io.stage2.uncache.addAttribute("mark_debug", "true")
+//
+//  io.uncacheAXI.aw.valid.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.aw.ready.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.aw.addr.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.aw.len.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.aw.size.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.aw.burst.addAttribute("mark_debug", "true")
+//
+//  io.uncacheAXI.w.ready.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.w.valid.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.w.data.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.w.strb.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.b.valid.addAttribute("mark_debug", "true")
+//  io.uncacheAXI.b.ready.addAttribute("mark_debug", "true")
 }
 
 object CPU {

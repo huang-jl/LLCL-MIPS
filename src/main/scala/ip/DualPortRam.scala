@@ -2,6 +2,7 @@ package ip
 
 import ip.RamPortDelayedPipelineImplicits._
 import ip.sim._
+import cpu.Utils
 import spinal.core._
 import spinal.lib._
 
@@ -15,9 +16,7 @@ case class BRamIPConfig(
     latency: Int = 1,
     writeModeA: WriteMode.Value = WriteMode.NoChange,
     writeModeB: WriteMode.Value = WriteMode.NoChange
-) {
-  def depth = size / dataWidth
-}
+) { def depth = size / dataWidth }
 
 class DualPortBRam(config: BRamIPConfig) extends SimulatedBlackBox {
   setDefinitionName("dual_port_bram")

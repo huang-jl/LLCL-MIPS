@@ -35,21 +35,22 @@ class DividerIP(dataWidth: Int = 32, detectZero: Boolean = false, name: String =
       val tdata        = out Bits (2 * alignedDataWidth bits)
       val tvalid       = out Bool
       val tuser        = Utils.instantiateWhen(out(Bool), detectZero)
+      def divideByZero = tuser
     }
   }
 
   noIoPrefix()
   mapClockDomain(clock = io.aclk)
 
-  val quotient = UInt(alignedDataWidth bits)
+  val quotient  = UInt(alignedDataWidth bits)
   val remainder = UInt(alignedDataWidth bits)
   io.dout.tdata := quotient ## remainder
 
   override def createSimJob() = {
     val pulled = new Area {
-      val valid = pullFromOutside(io.dout.tvalid)
-      val quotient = pullFromOutside(DividerIP.this.quotient)
-      val remainder = pullFromOutside(DividerIP.this.remainder)
+      val valid        = pullFromOutside(io.dout.tvalid)
+      val quotient     = pullFromOutside(DividerIP.this.quotient)
+      val remainder    = pullFromOutside(DividerIP.this.remainder)
       val divideByZero = if (detectZero) pullFromOutside(io.dout.tuser) else null
     }
 
