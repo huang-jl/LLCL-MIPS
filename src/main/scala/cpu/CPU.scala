@@ -91,15 +91,16 @@ class CPU extends Component {
   val rsValue    = Key(Bits(32 bits))
   val rtValue    = Key(Bits(32 bits))
 
-  val ifPaddr    = Key(UInt(32 bits))
-  val if2En      = Key(Bool) setEmptyValue False
+  val ifPaddr = Key(UInt(32 bits))
+  val if2En   = Key(Bool) setEmptyValue False
 
-  val dataMMURes  = Key(new MMUTranslationRes(ConstantVal.USE_TLB))  //EX阶段查询数据TLB
-  val tlbr        = Key(Bool)          //ID解码
-  val tlbw        = Key(Bool)          //ID解码
-  val tlbp        = Key(Bool)          //ID解码
-  val tlbIndexSrc = Key(TLBIndexSrc()) //ID解码
-  val instFetch   = Key(Bool)          //异常是否是取值时发生的
+  val dataMMURes         = Key(new MMUTranslationRes(ConstantVal.USE_TLB)) //EX阶段查询数据TLB
+  val tlbr               = Key(Bool)                                       //ID解码
+  val tlbw               = Key(Bool)                                       //ID解码
+  val tlbp               = Key(Bool)                                       //ID解码
+  val tlbIndexSrc        = Key(TLBIndexSrc())                              //ID解码
+  val instFetch          = Key(Bool)                                       //异常是否是取值时发生的
+  val tlbRefillException = Key(Bool)                                       //是否是TLB缺失异常（影响异常处理地址）
 
   if (ConstantVal.USE_TLB) {
     tlbw.setEmptyValue(False)
@@ -224,14 +225,17 @@ class CPU extends Component {
     exceptionToRaise := None
     // TLB异常
     if (ConstantVal.USE_TLB) {
-      val refillException  = input(dataMMURes).mapped & input(dataMMURes).miss
-      val invalidException = input(dataMMURes).mapped & !input(dataMMURes).miss & !mmu.io.dataRes.valid
+      val refillException = input(dataMMURes).mapped & input(dataMMURes).miss
+      val invalidException =
+        input(dataMMURes).mapped & !input(dataMMURes).miss & !mmu.io.dataRes.valid
       val modifiedException = input(dataMMURes).mapped & input(memWe) &
         !input(dataMMURes).miss & input(dataMMURes).valid & !input(dataMMURes).dirty
       when(refillException | invalidException) {
         when(input(memRe))(exceptionToRaise := EXCEPTION.TLBL)
           .elsewhen(input(memWe))(exceptionToRaise := EXCEPTION.TLBS)
       }.elsewhen(modifiedException)(exceptionToRaise := EXCEPTION.Mod)
+
+      cp0.io.tlbBus.refillException := input(tlbRefillException) | refillException
     }
     // 访存地址不对齐异常（更优先）
     when(!dcu.io.stage1.addrValid) {
@@ -337,7 +341,6 @@ class CPU extends Component {
       mmu.io.dataVaddr := aguC.output(memAddr)
       output(dataMMURes) := mmu.io.dataRes
     }
-
 
     //数据前传：解决load + 中间一条无关指令 + store的数据冲突
     when(ME1.stored(rfuWe) && ME1.stored(rfuAddr) === input(inst).rs) {
@@ -460,7 +463,6 @@ class CPU extends Component {
 //    }
 //    output(bd) := bdValue.next
 
-
     when(EX.stored(rfuWe) && EX.stored(rfuAddr) === stored(inst).rs) {
       produced(rsValue) := EX.produced(rfuData)
     } elsewhen (ME1.stored(rfuWe) && ME1.stored(rfuAddr) === stored(inst).rs) {
@@ -572,6 +574,7 @@ class CPU extends Component {
           output(instFetch) := True
           output(if2En) := False
         }
+        output(tlbRefillException) := refillException
       }
       // 访存地址不对齐异常（更优先）
       icu.io.exception.whenIsDefined(_ => {

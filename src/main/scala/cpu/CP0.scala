@@ -34,9 +34,12 @@ class TLBInterface extends Bundle with IMasterSlave {
   val tlbp       = Bool
   val probeIndex = Bits(32 bits)
 
+  /** following is used for tlb exception related logic */
+  val refillException = Bool
+
   override def asMaster(): Unit = {
     in(index, random, tlbwEntry)
-    out(tlbrEntry, tlbr, tlbp, probeIndex)
+    out(tlbrEntry, tlbr, tlbp, probeIndex, refillException)
   }
 }
 
@@ -298,12 +301,18 @@ object CP0 {
     describeRegister("Cause", 13, 0)
       .readOnlyField("BD", 31)
       .readOnlyField("TI", 30)
+      .field("IV", 23, false)
       .hardwiredField("IP_HW", 15 downto 10)
       .field("IP_SW", 9 downto 8)
       .readOnlyField("ExcCode", 6 downto 2)
 
     describeRegister("EPC", 14, 0)
       .field("EPC", 31 downto 0)
+
+    describeRegister("EBase", 15, 1)
+      .hardwiredField("31", 31, true)   //31位始终为1
+      .field("ExceptionBase", 29 downto 12, 0.toBinaryString(29 - 12 + 1))
+      .field("CPUNum", 9 downto 0, 1.toBinaryString(10))
 
     //TODO K0可能需要修改？现在的MMU实现kseg0因为是unmapped，因此会被cache
     describeRegister("Config0", 16, 0)
@@ -528,11 +537,8 @@ class CP0 extends Component {
   val epc = regs("EPC")("EPC")
   val exl = regs("Status")("EXL")
 
-  io.jumpPc := None
-
   // Exception
   io.exceptionInput.exception.whenIsDefined { exc =>
-    io.jumpPc := U"hBFC00380"
     when(!exl.asBool) {
       exl := True.asBits
       when(io.exceptionInput.bd) {
@@ -571,23 +577,16 @@ class CP0 extends Component {
     }
   }
 
-  // ERET
-  when(io.exceptionInput.eret) {
-    io.jumpPc := epc.asUInt
-    exl := False.asBits
-  }
-
   // Interrupt
   val interrupts          = (regs("Cause")("IP_HW") ## regs("Cause").next("IP_SW")) & regs("Status")("IM")
   val interruptOnNextInst = Updating(Bool) init False
   io.interruptOnNextInst := interruptOnNextInst.next
 
-  when(interrupts.orR && !exl.asBool) {
+  when(interrupts.orR && !exl.asBool & regs("Status")("IE").asBool) {
     interruptOnNextInst.next := True
   }
   when(interruptOnNextInst.prev && io.instOnInt.valid) {
     interruptOnNextInst.next := False
-    io.jumpPc := U"hBFC00380"
     exl := True.asBits
     when(io.instOnInt.bd) {
       epc := (io.instOnInt.pc - 4).asBits
@@ -596,6 +595,42 @@ class CP0 extends Component {
     }
     regs("Cause")("BD") := io.instOnInt.bd.asBits
     regs("Cause")("ExcCode") := EXCEPTION.Int.asBits.resized
+  }
+
+  // 计算发生异常和中断时的跳转地址
+  val jumpAddr = new Area {
+    io.jumpPc := None //默认不发生跳转
+    // TODO 实现Cache Error后需要增加Base的可能
+    val vectorBaseAddr: UInt = regs("Status")("Bev").asBool ? U"32'hBFC0_0200" |
+      U"2'b10" @@ regs("EBase")("ExceptionBase").asUInt @@ U"12'b0"
+    //当异常或中断发生时，默认是偏移180
+    val offset = U"10'h180"
+    io.exceptionInput.exception.whenIsDefined { exc =>
+      if(ConstantVal.USE_TLB) {
+        // TLB Refill并且Status.EXL为0时offset为0x0
+        when(Utils.equalAny(exc, EXCEPTION.TLBS, EXCEPTION.TLBL) & io.tlbBus.refillException & !exl.asBool) {
+          offset := U"10'h0"
+        }
+      }
+      io.jumpPc := vectorBaseAddr + offset
+    }
+
+    // 中断
+    when(interruptOnNextInst.prev && io.instOnInt.valid) {
+      // Cause.IV用来配置Interrupt Vector
+      // Cause.IV = 0时offset为默认的0x180
+      // Casue.IV = 1时offset为0x200
+      when(regs("Cause")("IV").asBool) {
+        offset := U"10'h200"
+      }
+      io.jumpPc := vectorBaseAddr + offset
+    }
+
+    // ERET
+    when(io.exceptionInput.eret) {
+      io.jumpPc := epc.asUInt
+      exl := False.asBits
+    }
   }
 }
 

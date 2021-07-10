@@ -30,11 +30,9 @@ object ConstantVal {
   val DcacheLineSize = 32  //一个cacheLine的大小，单位是bytes, 2的幂
   val DcacheWayNum = 2  //dcache中路数
   val DcacheSetsPerWay = 128  //影响Config1中的IS字段
-  val DcacheFifoDepth = 4 //DCache的FIFO深度
+  val DcacheFifoDepth = 2 //DCache的FIFO深度
 
   /** 时钟中断配置 */
   val TimeInterruptEnable = false
 
-  /** 静态预测配置：是否预测跳转 */
-  val AlwaysBranch = true
 }
