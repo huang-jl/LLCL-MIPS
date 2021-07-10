@@ -6,7 +6,7 @@ import spinal.lib.bus.amba4.axi.sim.AxiMemorySimConfig
 import java.io.File
 import scala.util.{Failure, Success}
 
-object PerfTestOneByOne {
+object PerfTest {
   def main(args: Array[String]): Unit = {
     val cpuClockPeriod = 10
     val sysClockPeriod = 10
@@ -37,17 +37,17 @@ object PerfTestOneByOne {
       sysClockPeriod = sysClockPeriod
     )
 
-    val results = for (test <- tests) yield {
-      println(s"Testing $test")
+    val instRamData = COEParse(
+      new File(s"official/perf_test/soft/perf_func/obj/allbench/axi_ram.coe")
+    ) match {
+      case Success(d) => d
+      case Failure(exception) =>
+        println(exception.getMessage)
+        throw exception
+    }
 
-      val instRamData = COEParse(
-        new File(s"official/perf_test/soft/perf_func/obj/$test/axi_ram.coe")
-      ) match {
-        case Success(d) => d
-        case Failure(exception) =>
-          println(exception.getMessage)
-          throw exception
-      }
+    val results = for ((test, index) <- tests.zipWithIndex) yield {
+      println("=" * 80)
 
       val simulator = Simulator(
         baseConfig.copy(initSections = Seq(Simulator.MemSection(0x1fc00000, instRamData)))
@@ -59,6 +59,12 @@ object PerfTestOneByOne {
         displayerConfig = Some(display.DisplayerConfig(throttlePeriod = Some(10000)))
       )
 
+      val testCase = index + 1
+      // 开关低 4 位为 ~testCase，高 4 位为 0
+      for (i <- 0 until 4) {
+        confRegs.switch.data(i) = (testCase & (1 << i)) == 0
+      }
+
       simulator
         .addPlugin(TimeoutPlugin(timeout = 20000000))
         .addPlugin(TerminatorPlugin(0xbfc00100L))
@@ -67,7 +73,7 @@ object PerfTestOneByOne {
         }
         .run(socCompiled, name = test)
 
-      (confRegs.led.value == 0xffff, confRegs.num.value)
+      (confRegs.led.value == 0xffff, confRegs.cr(1).value)
     }
 
     val gs132Counts = Seq(0x13cf7fa, 0x7bdd47e, 0x10ce6772, 0xaa1aa5c, 0x1fc00d8, 0x719615a,
@@ -87,22 +93,17 @@ object PerfTestOneByOne {
       }
     val formulaScore = math.pow(ratios.foldLeft(1.0) { _ * _ }, 1.0 / tests.length)
     val loopTimes    = 10
-    // 2 since SOC clock updates every cycle, while CPU clock updates every other cycle.
-    val estimatedScore = formulaScore / 2 * sysClockPeriod / cpuClockPeriod / loopTimes
+    val estimatedScore = formulaScore / loopTimes
 
     val passAll = results forall { _._1 }
 
-    // scalafmt: { maxColumn = 200 }
     println(if (passAll) "All tests passed!" else "Some test(s) failed!")
     println(f"Estimated score: ${estimatedScore}%3.3f")
     println(f"CPU clock period: ${cpuClockPeriod}%3dns")
     println(f"SOC clock period: ${sysClockPeriod}%3dns")
     println()
-    println("NOTE: This program performs perf_test one by one.")
-    println("NOTE: Certain problems exists within this method: ")
-    println("NOTE: 1. Each test is only run once under simulation. On board, each test is run 10 times. ")
-    println("NOTE: 2. Only CPU count is directly produced to confreg (SOC count result only goes through UART)")
-    println("NOTE: Thus the score above is estimated with regards to these effects. ")
-    // scalafmt: { maxColumn = 100 }
+    println("NOTE: Each test is only run once under simulation. On board, each test is run 10")
+    println("NOTE: times. The score shown above is already divided by 10 to estimate this")
+    println("NOTE: behaviour.")
   }
 }

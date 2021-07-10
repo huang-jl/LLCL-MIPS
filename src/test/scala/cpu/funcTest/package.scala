@@ -7,6 +7,8 @@ package object funcTest {
   val baseAddr = 0x1faf0000
 
   case class ConfRegs() {
+    val cr = (0 until 8) map { i => Register(baseAddr | 0x8000 | (4 * i)) }
+
     val switch    = Switch(baseAddr | 0xf020, Some(baseAddr | 0xf02c))
     val ioSimu    = IOSimu(baseAddr | 0xffec)
     val openTrace = OpenTrace(baseAddr | 0xfff8)
@@ -22,6 +24,10 @@ package object funcTest {
     val textUart = TextUART(baseAddr | 0xfff0)
 
     def addTo(simulator: Simulator, displayerConfig: Option[DisplayerConfig] = None) = {
+      for (reg <- cr) {
+        simulator.addPlugin(reg)
+      }
+
       simulator
         .addPlugin(switch)
         .addPlugin(ioSimu)
