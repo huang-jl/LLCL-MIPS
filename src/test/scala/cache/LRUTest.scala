@@ -1,5 +1,6 @@
 package cache
 
+import cache.LRUTest.access
 import lib.Updating
 import spinal.core._
 import spinal.core.sim._
@@ -12,14 +13,14 @@ class LRUTest(wayNum: Int = 8) extends Component {
     val update = in Bool
     val next   = out UInt (log2Up(wayNum) bits)
   }
-  val manager = LRUCalculator(wayNum)
-  val plru    = new PLRU(manager.statusLength)
-  plru.prev := plru.next
-  plru.next := plru.prev
-  when(io.update) {
-    manager.updateStatus(io.access, plru.next)
-  }
-  io.next := manager.leastRecentUsedIndex(plru.prev)
+  val manager = new LRUManegr(wayNum, 1)
+  val calculator = new LRUCalculator(wayNum)
+  manager.io.write.en := io.update
+  manager.io.write.access := io.access
+  manager.io.write.addr := 0
+
+  manager.io.read.addr := 0
+  io.next := calculator.leastRecentUsedIndex(manager.io.read.data)
 }
 
 object LRUTest {
@@ -64,7 +65,7 @@ object LRUTest {
             dut.clockDomain.deassertReset()
             dut.clockDomain.waitSampling()
             var status: Array[Array[Int]] = Array(Array(0), Array(0, 0), Array(0, 0, 0, 0))
-            for (iter <- 0 until 2000) {
+            for (iter <- 0 until 20000) {
               val num = rand.nextInt(way)
               access(num, status, width)
               dut.io.access #= num
