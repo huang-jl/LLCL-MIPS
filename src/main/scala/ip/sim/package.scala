@@ -46,13 +46,14 @@ package object sim {
     }
   }
 
-  /** 模拟有延迟的、自带流水线的模块
-    * 为方便，所有的读入输入操作被设计在时钟下沿，保证所有的延迟的写操作在之前完成。
+  /** 模拟可能会有延迟的、自带流水线的模块。
+    * 对于延迟 > 0 的情况，
+    *   所有的读入输入操作被设计在时钟下沿，保证所有的延迟的写操作在之前完成。
+    * 对于延迟 = 0 的情况，用 forkSensitive 模拟组合逻辑。
+    *   此时要求 everyTick 回调在输入不变时，不写入输出；其副作用可重复执行，不产生意外影响。
+    *   （这意味着 .randomize 需要受到限制）
     */
-  case class DelayedPipeline(latency: Int) {
-    // 延迟为 0 不适用此抽象，因为保持各值收敛较困难。
-    assert(latency > 0)
-
+  case class Pipeline(latency: Int) {
     private val idleJob       = mutable.ArrayBuffer[() => Unit]()
     private val resetJob      = mutable.ArrayBuffer[() => Unit]()
     private val everyTickJobs = mutable.ArrayBuffer[((=> Unit) => Unit) => Unit]()
@@ -73,7 +74,10 @@ package object sim {
       this
     }
 
-    def toJob: () => Unit = { () =>
+    def toJob: () => Unit =
+      if (latency > 0) toJobQueued else toJobSensitive
+
+    private def toJobQueued: () => Unit = { () =>
       var tick: Long     = 0
       var resetLastCycle = false
 
@@ -88,9 +92,9 @@ package object sim {
         if (clockDomain.isResetAsserted) {
           if (!resetLastCycle) {
             resetJob.foreach { _() }
+            resetLastCycle = true
           }
           pendingJobs.clear() // May need to be customizable
-          resetLastCycle = true
         }
 
         if (pendingJobs.isEmpty || pendingJobs.front._2 != tick) {
@@ -109,6 +113,30 @@ package object sim {
         }
 
         tick += 1
+      }
+    }
+
+    private def toJobSensitive: () => Unit = { () =>
+      var resetLastDeltaCycle = false
+      val pendingJobs         = mutable.ArrayBuffer[() => Unit]()
+
+      resetJob.foreach { _() }
+      idleJob.foreach { _() }
+
+      forkSensitive {
+        if (!clockDomain.isResetAsserted) {
+          def schedule(scheduled: => Unit) = pendingJobs += (() => scheduled)
+          everyTickJobs.foreach { _(schedule) }
+          if (pendingJobs.nonEmpty) {
+            pendingJobs.foreach { _() }
+            pendingJobs.clear()
+          } else {
+            idleJob.foreach { _() }
+          }
+        } else if (!resetLastDeltaCycle) {
+          resetJob.foreach { _() }
+          resetLastDeltaCycle = true
+        }
       }
     }
   }

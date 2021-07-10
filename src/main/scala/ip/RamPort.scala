@@ -15,8 +15,8 @@ class ReadOnlyRamPort(dataWidth: Int, addrWidth: Int) extends Bundle with IMaste
     out(en, addr)
   }
 
-  /** 仿真行为，参见 [[DelayedPipeline]] */
-  def handledBy(delayedPipeline: DelayedPipeline, storage: Array[BigInt]) = {
+  /** 仿真行为，参见 [[Pipeline]] */
+  def handledBy(delayedPipeline: Pipeline, storage: Array[BigInt]) = {
     val doutPulled = pullFromOutside(dout)
     delayedPipeline
       .whenReset {
@@ -26,7 +26,8 @@ class ReadOnlyRamPort(dataWidth: Int, addrWidth: Int) extends Bundle with IMaste
         if (en.toBoolean) {
           val addrValue = addr.toInt
           schedule {
-            doutPulled #= storage(addrValue)
+            if (doutPulled.toBigInt != storage(addrValue))
+              doutPulled #= storage(addrValue)
           }
         }
       }
@@ -63,8 +64,8 @@ class RamPort(dataWidth: Int, addrWidth: Int, writeMode: WriteMode.Value)
     out(we, din)
   }
 
-  /** 仿真行为，参见 [[DelayedPipeline]] */
-  override def handledBy(delayedPipeline: DelayedPipeline, storage: Array[BigInt]) = {
+  /** 仿真行为，参见 [[Pipeline]] */
+  override def handledBy(delayedPipeline: Pipeline, storage: Array[BigInt]) = {
     val doutPulled = pullFromOutside(dout)
 
     delayedPipeline
@@ -82,16 +83,19 @@ class RamPort(dataWidth: Int, addrWidth: Int, writeMode: WriteMode.Value)
 
               writeMode match {
                 case WriteMode.WriteFirst =>
-                  doutPulled #= dinValue
+                  if (doutPulled.toBigInt != dinValue)
+                    doutPulled #= dinValue
                 case WriteMode.ReadFirst =>
-                  doutPulled #= oldValue
+                  if (doutPulled.toBigInt != oldValue)
+                    doutPulled #= oldValue
                 case WriteMode.NoChange =>
                 // Nothing.
               }
             }
           } else {
             schedule {
-              doutPulled #= storage(addrValue)
+              if (doutPulled.toBigInt != storage(addrValue))
+                doutPulled #= storage(addrValue)
             }
           }
         }
@@ -105,9 +109,9 @@ object RamPort {
 }
 
 object RamPortDelayedPipelineImplicits {
-  implicit class DelayedPipelineHandlesPort(delayedPipeline: DelayedPipeline) {
+  implicit class DelayedPipelineHandlesPort(delayedPipeline: Pipeline) {
     // 对 port 多态
-    def handlePort(port: ReadOnlyRamPort, storage: Array[BigInt]): DelayedPipeline =
+    def handlePort(port: ReadOnlyRamPort, storage: Array[BigInt]): Pipeline =
       port.handledBy(delayedPipeline, storage)
   }
 }

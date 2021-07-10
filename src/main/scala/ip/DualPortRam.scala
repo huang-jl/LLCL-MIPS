@@ -54,7 +54,7 @@ class DualPortBRam(config: BRamIPConfig) extends SimulatedBlackBox {
   override def createSimJob() = {
     val storage = new Array[BigInt](config.size / config.dataWidth)
 
-    DelayedPipeline(config.latency)
+    Pipeline(config.latency)
       .whenReset {
         for (i <- storage.indices) {
           storage(i) = 0
@@ -104,7 +104,7 @@ class DualPortLutRam(dataWidth: Int = 32, size: Int = 4 * 1024 * 8, latency: Int
   override def createSimJob() = {
     val storage = new Array[BigInt](size / dataWidth)
 
-    DelayedPipeline(latency)
+    Pipeline(latency)
       .whenReset {
         for (i <- storage.indices) {
           storage(i) = 0

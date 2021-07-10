@@ -19,7 +19,7 @@ class SinglePortRamBase(dataWidth: Int, size: Int, latency: Int, writeMode: Writ
 
   override def createSimJob() = {
     val storage = new Array[BigInt](size / dataWidth)
-    DelayedPipeline(latency)
+    Pipeline(latency)
       .whenReset {
         for (i <- storage.indices) {
           storage(i) = 0

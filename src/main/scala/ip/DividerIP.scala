@@ -53,7 +53,7 @@ class DividerIP(dataWidth: Int = 32, detectZero: Boolean = false, name: String =
       val divideByZero = if (detectZero) pullFromOutside(io.dout.tuser) else null
     }
 
-    DelayedPipeline(20)
+    Pipeline(20)
       .whenIdle {
         pulled.valid #= false
         pulled.quotient.randomize()
