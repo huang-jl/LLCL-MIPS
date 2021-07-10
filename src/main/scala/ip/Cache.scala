@@ -124,7 +124,7 @@ class Cache(
   //
   def plru(p: Bits, i: Int = 1, v: Bool = True): Bits = {
     if (i < numWays) {
-      plru(p, i << 1, v & p(i - 1)) ## plru(p, i << 1 | 1, v & !p(i - 1))
+      plru(p, i << 1 | 1, v & !p(i - 1)) ## plru(p, i << 1, v & p(i - 1))
     } else {
       B(v)
     }

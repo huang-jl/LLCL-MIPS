@@ -55,7 +55,7 @@ class CPU extends Component {
   val btbDataLine = Key(Bits(BTB.NUM_WAYS * BTB.ADDR_WIDTH bits))
   val btbTagLine  = Key(Bits(BTB.NUM_WAYS * (1 + BTB.TAG_WIDTH) bits))
   val btbP        = Key(Bits(BTB.NUM_WAYS - 1 bits))
-  val btbHit      = Key(Bool())
+  val btbHit      = Key(Bool()) setEmptyValue False
   val btbSetP     = Key(Bits(BTB.NUM_WAYS - 1 bits))
 
   val isDJump  = Key(Bool()) setEmptyValue False
