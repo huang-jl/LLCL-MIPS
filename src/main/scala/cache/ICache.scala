@@ -1,7 +1,7 @@
 package cache
 
 import cpu.defs.ConstantVal
-import ip.{DualPortBram, DualPortLutram, BRamIPConfig}
+import ip.{SimpleDualPortBram, BRamIPConfig}
 import lib.Updating
 import spinal.core._
 import spinal.lib._
@@ -71,8 +71,8 @@ class ICache(config: CacheRamConfig) extends Component {
     val depth: Int       = 4 * 1024 * 8 / Block.getBitWidth(config.blockSize)
     val tagBitWidth: Int = Meta.getBitWidth(config.tagWidth)
     val tagRamConfig     = BRamIPConfig(tagBitWidth, depth * tagBitWidth)
-    val tags             = Array.fill(config.wayNum)(new DualPortBram(tagRamConfig))
-    val datas            = Array.fill(config.wayNum)(new DualPortBram(dataRamConfig))
+    val tags             = Array.fill(config.wayNum)(new SimpleDualPortBram(tagRamConfig))
+    val datas            = Array.fill(config.wayNum)(new SimpleDualPortBram(dataRamConfig))
   }
 
   val LRU = new Area {
@@ -138,13 +138,9 @@ class ICache(config: CacheRamConfig) extends Component {
   for (i <- 0 until config.wayNum) {
     cacheRam.tags(i).io.portB.en := !io.cpu.stage1.keepRData
     cacheRam.tags(i).io.portB.addr := io.cpu.stage1.index
-    cacheRam.tags(i).io.portB.we := False
-    cacheRam.tags(i).io.portB.din.assignDontCare()
 
     cacheRam.datas(i).io.portB.en := !io.cpu.stage1.keepRData
-    cacheRam.datas(i).io.portB.we := False
     cacheRam.datas(i).io.portB.addr := io.cpu.stage1.index
-    cacheRam.datas(i).io.portB.din.assignDontCare()
   }
   // 读ram 和 LRU
   val cacheTags  = Vec(Meta(config.tagWidth), config.wayNum)

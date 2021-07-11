@@ -52,6 +52,8 @@ class xpm_memory_sdpram(param: xpm_memory_sdpram_generic) extends BlackBox {
   }
 
   noIoPrefix
+  mapClockDomain(clock = io.clka)
+  mapClockDomain(clock = io.clkb, reset = io.rstb, resetActiveLevel = HIGH)
 }
 
 class xpm_memory_tdpram_generic extends Generic {

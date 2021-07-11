@@ -4,7 +4,7 @@ package cache
 //从fifo装载回cache
 //fifo判断命中也在stage1完成
 
-import ip.{BRamIPConfig, DualPortBram, DualPortLutram, LutRamIPConfig}
+import ip.{BRamIPConfig, SimpleDualPortBram, DualPortLutram, LutRamIPConfig}
 import cpu.defs.ConstantVal
 import lib.Updating
 import spinal.core._
@@ -121,7 +121,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     */
   val cacheRam = new Area {
     val tags             = Array.fill(config.wayNum)(new DualPortLutram(tagRamConfig))
-    val datas            = Array.fill(config.wayNum)(new DualPortBram(dataRamConfig))
+    val datas            = Array.fill(config.wayNum)(new SimpleDualPortBram(dataRamConfig))
   }
 
   /** **********************
@@ -158,9 +158,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     cacheRam.tags(i).io.portB.addr := stage1.index
 
     cacheRam.datas(i).io.portB.en := !io.cpu.stage1.keepRData
-    cacheRam.datas(i).io.portB.we := False
     cacheRam.datas(i).io.portB.addr := stage1.index
-    cacheRam.datas(i).io.portB.din.assignDontCare()
   }
 
   val cacheTags  = Vec(DMeta(config.tagWidth), config.wayNum)

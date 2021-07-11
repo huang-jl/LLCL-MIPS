@@ -14,8 +14,6 @@ class SDPRAM(numEntries: Int, numWays: Int, indexWidth: Int, entryWidth: Int) ex
   memGeneric.WRITE_DATA_WIDTH_A = numWays * entryWidth
   memGeneric.WRITE_MODE_B = "read_first"
   val mem = new xpm_memory_sdpram(memGeneric)
-  mem.mapClockDomain(clock = mem.io.clka)
-  mem.mapClockDomain(clock = mem.io.clkb)
 
   val io = new Bundle {
     val ena   = in Bool ()
