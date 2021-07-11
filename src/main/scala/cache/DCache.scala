@@ -152,7 +152,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     */
   //only drive portB for read
   //第一阶段组合逻辑读tag，打一拍读data
-//  val keepRData = RegNext(io.cpu.stage1.keepRData) init (False)
+  //所有需要给stage2使用的数据，仅在keepRData为False时更新
   for (i <- 0 until config.wayNum) {
     cacheRam.tags(i).io.portB.en := !io.cpu.stage1.keepRData
     cacheRam.tags(i).io.portB.addr := stage1.index
@@ -161,20 +161,19 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     cacheRam.datas(i).io.portB.addr := stage1.index
   }
 
-  val cacheTags  = Vec(DMeta(config.tagWidth), config.wayNum)
-  val cacheDatas = Vec(Block(config.blockSize), config.wayNum)
+  val cacheTags  = Vec(DMeta(config.tagWidth), config.wayNum)   //仅在stage1使用
+  val cacheDatas = Vec(Block(config.blockSize), config.wayNum)  //会在stage2使用
   for (i <- 0 until config.wayNum) {
     cacheTags(i).assignFromBits(cacheRam.tags(i).io.portB.dout)
     cacheDatas(i).assignFromBits(cacheRam.datas(i).io.portB.dout)
   }
 
-  // 同时根据tag判断是否命中，当不需要keepRData更新
-  // 注意这里tag是组合逻辑读，因此保持数据时使用io.cpu.stage1.keepRData，而不是打了一拍的keepRData
-  //
-  //值得一提的是，第二阶段不会用到cacheTags
+  // 根据tag判断是否命中，当不需要keepRData时才更新
   val hitPerWay: Bits = Reg(Bits(config.wayNum bits)) init (0) //cache每一路是否命中
   for (i <- 0 until config.wayNum) {
-    hitPerWay(i) := (cacheTags(i).tag === stage1.tag.asBits) & cacheTags(i).valid
+    when(!io.cpu.stage1.keepRData) {
+      hitPerWay(i) := (cacheTags(i).tag === stage1.tag.asBits) & cacheTags(i).valid
+    }
   }
 
   //选出可能替换的那一路的地址

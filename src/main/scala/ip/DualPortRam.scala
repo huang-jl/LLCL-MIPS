@@ -49,6 +49,7 @@ case class BRamIPConfig(
 /** @note A端口主要写，B端口主要读，内置从A向B的前传
   * @note A的读端口是默认的行为
   * @note 使用Bram默认其读端口延迟为1
+  *  @note 目前仅针对cache使用
   */
 class DualPortBram(config: BRamIPConfig) extends Component {
   val io = new Bundle {
@@ -113,6 +114,7 @@ case class LutRamIPConfig(
 /** @note A端口主要写，B端口主要读，已经内置跨端口写优先
   * @note 使用LRURam默认其读延迟为0
   * @note A的读端口是默认行为
+  *  @note 目前仅针对cache使用
   */
 class DualPortLutram(config: LutRamIPConfig) extends Component {
   val io = new Bundle {
@@ -139,9 +141,10 @@ class DualPortLutram(config: LutRamIPConfig) extends Component {
   io.portA.dout := mem.io.douta
 
   mem.io.enb := True
+  mem.io.addrb := io.portB.addr
 
-  val prevAddrb = RegNext(mem.io.addrb) init 0
-  mem.io.addrb := io.portB.en ? io.portB.addr | prevAddrb
+//  val prevAddrb = RegNext(mem.io.addrb) init 0
+//  mem.io.addrb := io.portB.en ? io.portB.addr | prevAddrb
 
   when(io.portA.we & io.portA.addr === io.portB.addr) {
     // 内置跨端口的写优先
@@ -153,6 +156,7 @@ class DualPortLutram(config: LutRamIPConfig) extends Component {
 
 /** @note A端口只写，B端口只读，已经内置前传
   * @note 使用SDP_RAM默认其读延迟为1
+  *  @note 目前仅针对cache使用
   */
 class SimpleDualPortBram(config: BRamIPConfig) extends Component {
   val io = new Bundle {
@@ -168,6 +172,7 @@ class SimpleDualPortBram(config: BRamIPConfig) extends Component {
   param.ADDR_WIDTH_B = log2Up(config.depth)
   param.READ_LATENCY_B = 1
   param.MEMORY_SIZE = config.size
+  param.MEMORY_PRIMITIVE = "block"
 
   val mem = new xpm_memory_sdpram(param)
   // A
