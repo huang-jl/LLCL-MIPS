@@ -20,15 +20,24 @@ object WriteBuffer {
   }
 }
 
+/**
+ * @note 第一个周期组合逻辑查询，第二个周期出数据或者给出写入数据
+ *       内置前传逻辑
+ * */
 class WriteBufferInterface(config: WriteBufferConfig) extends Bundle with IMasterSlave {
-  //要查询和写合并的信号
-  val write: Bool = Bool //是否把queryWData写入对应命中的cache中
-  val queryTag: Bits = Bits(config.tagWidth bits) //要查询的tag
-  val queryBE: Bits = Bits(config.beWidth bits) //要写入FIFO数据的byteEnable信号，长度为一个cache line的byte数量
-  val queryWData: Bits = Bits(config.dataWidth bits) //要写入FIFO对应的数据
-  val queryRData: Bits = Bits(config.dataWidth bits) //读出的FIFO数据
-  val readHit: Bool = Bool //查询读是否命中，组合逻辑查询
-  val writeHit: Bool = Bool //查询写是否命中，组合逻辑查询
+  val query = new Bundle {
+    val tag: Bits = Bits(config.tagWidth bits) //要查询的tag
+    val hit: Bool = Bool
+    val hitAddr: UInt = UInt(log2Up(config.depth) bits)  //命中FIFO的位置
+    val rdata: Bits = Bits(config.dataWidth bits) //读出的FIFO数据
+  }
+  val merge = new Bundle {
+    //要查询和写合并的信号
+    val write: Bool = Bool //是否把queryWData写入对应命中的cache中
+    val byteEnable: Bits = Bits(config.beWidth bits) //要写入FIFO数据的byteEnable信号，长度为一个cache line的byte数
+    val wdata: Bits = Bits(config.dataWidth bits) //要写入FIFO对应的数据
+    val waddr: UInt = UInt(log2Up(config.depth) bits)  //要写入的FIFO位置
+  }
   //要压入的数据
   val pushTag: Bits = Bits(config.tagWidth bits)
   val pushData: Bits = Bits(config.dataWidth bits)
@@ -42,8 +51,8 @@ class WriteBufferInterface(config: WriteBufferConfig) extends Bundle with IMaste
   val full: Bool = Bool
 
   override def asMaster(): Unit = {
-    in(queryRData, readHit, writeHit, popTag, popData, empty, full)
-    out(write, queryTag, queryBE, queryWData, pushTag, pushData, push, pop)
+    in(query.rdata, query.hit, query.hitAddr, popTag, popData, empty, full)
+    out(query.tag, merge.write, merge.byteEnable, merge.wdata, merge.waddr, pushTag, pushData, push, pop)
   }
 }
 
@@ -71,25 +80,31 @@ class WriteBuffer(config: WriteBufferConfig) extends Component {
     val tail = Counter(0 until config.depth)
     val cnt = Reg(UInt(config.counterWidth bits)) init (0)
   }
-  val queryReadHit = Bits(config.depth bits)
-  val queryWriteHit = Bits(config.depth bits)
+//  val queryReadHit = Bits(config.depth bits)
+//  val queryWriteHit = Bits(config.depth bits)
   /*
    * Default Value
    */
-  io.popTag := 0
-  io.popData := 0
-  io.queryRData := 0
+  io.popTag := fifo.tag(counter.head.value)
+  io.popData := fifo.data(counter.head.value)
+  //logic of query read
+  io.query.rdata := fifo.data(io.query.hitAddr)
+
+  io.empty := counter.cnt === 0
+  io.full := counter.cnt === config.depth
 
   /*
    * Logic
    */
-  io.empty := counter.cnt === 0
-  io.full := counter.cnt === config.depth
+  val hitPerWay = Bits(config.depth bits)
   for (i <- 0 until config.depth) {
-    queryReadHit(i) := (fifo.tag(i) === io.queryTag) & fifo.valid(i)
-    //如果当前第i个是head并且正在pop，那么写不命中
-    queryWriteHit(i) := (io.pop & counter.head.value === i) ? False | queryReadHit(i)
+//    queryReadHit(i) := (fifo.tag(i) === io.query.tag) & fifo.valid(i)
+//    queryWriteHit(i) := (io.pop & counter.head.value === i) ? False | queryReadHit(i)
+    //如果当前第i个是head并且正在pop，那么不命中，应该考虑去WB中寻找这个数据
+    hitPerWay(i) := (fifo.tag(i) === io.query.tag) & fifo.valid(i) & counter.head.value =/= i
   }
+  io.query.hit := hitPerWay.orR
+  io.query.hitAddr := OHToUInt(hitPerWay)
   //logic of push and pop
   when(io.push & !io.full) {
     fifo.tag(counter.tail.value) := io.pushTag
@@ -99,29 +114,46 @@ class WriteBuffer(config: WriteBufferConfig) extends Component {
     counter.cnt := counter.cnt + 1
   }
   when(io.pop & !io.empty) {
-    io.popTag := fifo.tag(counter.head.value)
-    io.popData := fifo.data(counter.head.value)
+//    io.popTag := fifo.tag(counter.head.value)
+//    io.popData := fifo.data(counter.head.value)
     fifo.valid(counter.head.value) := False //把对应的数据无效了
     counter.head.increment()
     counter.cnt := counter.cnt - 1
   }
   when(io.pop & io.push & !io.full & !io.empty)(counter.cnt := counter.cnt) //同一时间pop和push，计数器不变
 
+  //logic of write merge
+  val writeData = B(fifo.data(io.merge.waddr), config.dataWidth bits)
+  for(j <- 0 until config.beWidth) {
+    when(io.merge.byteEnable(j))(writeData(j << 3, 8 bits) := io.merge.wdata(j << 3, 8 bits))
+  }
+  // 1. 前传1 ： 从wdata到pop
+  //写的逻辑实际上是Cache第二个阶段发生的，这个时候可能对应位置正在被pop，这个时候需要把数据直接前传过去
+  when(io.pop & !io.empty & io.merge.write & counter.head.value === io.merge.waddr) {
+    io.popData := writeData
+  }.otherwise {
+    fifo.data(io.merge.waddr) := writeData
+  }
+  // 2. 前传2. 从wdata到rdata
+  when(io.merge.write & io.query.hitAddr === io.merge.waddr) {
+    io.query.rdata := writeData
+  }
+
   //logic of query read
-  io.readHit := queryReadHit.orR
-  for (i <- 0 until config.depth) {
-    when(queryReadHit(i))(io.queryRData := fifo.data(i))
-  }
+//  io.readHit := queryReadHit.orR
+//  for (i <- 0 until config.depth) {
+//    when(queryReadHit(i))(io.queryRData := fifo.data(i))
+//  }
   //logic of query write : write merge
-  io.writeHit := queryWriteHit.orR
-  for (i <- 0 until config.depth) {
-    val writeData = B(fifo.data(i), config.dataWidth bits)
-    //当byte enable置1时，writeData对应的byte为queryWData，否则为fifoData(i)
-    for (j <- 0 until config.beWidth) {
-      when(io.queryBE(j))(writeData(j * 8, 8 bits) := io.queryWData(j * 8, 8 bits))
-    }
-    when(io.write & queryWriteHit(i)) {
-      fifo.data(i) := writeData
-    }
-  }
+//  io.writeHit := queryWriteHit.orR
+//  for (i <- 0 until config.depth) {
+//    val writeData = B(fifo.data(i), config.dataWidth bits)
+//    //当byte enable置1时，writeData对应的byte为queryWData，否则为fifoData(i)
+//    for (j <- 0 until config.beWidth) {
+//      when(io.queryBE(j))(writeData(j * 8, 8 bits) := io.queryWData(j * 8, 8 bits))
+//    }
+//    when(io.write & queryWriteHit(i)) {
+//      fifo.data(i) := writeData
+//    }
+//  }
 }

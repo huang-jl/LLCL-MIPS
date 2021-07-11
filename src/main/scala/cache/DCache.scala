@@ -65,10 +65,23 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     val uncacheAXI = master(new Axi4(ConstantVal.AXI_BUS_CONFIG))
   }
 
+  val writeBufferConfig =
+    WriteBufferConfig(config.blockSize, config.tagWidth + config.indexWidth, fifoDepth)
+  val dataRamConfig    = BRamIPConfig(Block.getBitWidth(config.blockSize))
+  val ramDepth: Int       = dataRamConfig.depth
+  val tagBitWidth: Int = DMeta.getBitWidth(config.tagWidth)
+  val tagRamConfig     = LutRamIPConfig(tagBitWidth, ramDepth * tagBitWidth)
+
   // 解析第一阶段的物理地址
   val stage1 = new Area {
     val index = io.cpu.stage1.paddr(config.offsetWidth, config.indexWidth bits)
     val tag   = io.cpu.stage1.paddr(config.offsetWidth + config.indexWidth, config.tagWidth bits)
+    val fifo = new Area {
+      val queryTag = Bits(writeBufferConfig.tagWidth bits)
+      val hit = Reg(Bool) init False
+      val hitAddr = Reg(UInt(log2Up(writeBufferConfig.depth) bit)) init 0
+      val rdata = Reg(Bits(writeBufferConfig.dataWidth bits)) init 0
+    }
   }
 
   //解析Stage 2的物理地址
@@ -76,6 +89,12 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     val wordOffset = io.cpu.stage2.paddr(2, config.wordOffsetWidth bits)
     val index      = io.cpu.stage2.paddr(config.offsetWidth, config.indexWidth bits)
     val tag        = io.cpu.stage2.paddr(config.offsetWidth + config.indexWidth, config.tagWidth bits)
+    val fifo = new Area {
+      val wdata = Bits(writeBufferConfig.dataWidth bits)
+      val be = Bits(writeBufferConfig.beWidth bits)
+      val waddr = UInt(log2Up(writeBufferConfig.depth) bits)
+      val we = Bool
+    }
   }
 
   /** **********************
@@ -83,21 +102,24 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     * **********************
     */
   // write buffer需要记录cache的tag和index
-  val writeBufferConfig =
-    WriteBufferConfig(config.blockSize, config.tagWidth + config.indexWidth, fifoDepth)
   val writeBuffer = new WriteBuffer(writeBufferConfig)
-  val fifo        = new WriteBufferInterface(writeBufferConfig)
-  fifo <> writeBuffer.io
+  writeBuffer.io.query.tag := stage1.fifo.queryTag
+  when(!io.cpu.stage1.keepRData) {
+    // 寄存器在不需要保持时更新
+    stage1.fifo.hit := writeBuffer.io.query.hit
+    stage1.fifo.hitAddr := writeBuffer.io.query.hitAddr
+    stage1.fifo.rdata := writeBuffer.io.query.rdata
+  }
+  writeBuffer.io.merge.waddr := stage2.fifo.waddr
+  writeBuffer.io.merge.wdata := stage2.fifo.wdata
+  writeBuffer.io.merge.byteEnable := stage2.fifo.be
+  writeBuffer.io.merge.write := stage2.fifo.we
 
   /** **********************
     * CACHE RAM
     * **********************
     */
   val cacheRam = new Area {
-    val dataRamConfig    = BRamIPConfig(Block.getBitWidth(config.blockSize))
-    val depth: Int       = dataRamConfig.depth
-    val tagBitWidth: Int = DMeta.getBitWidth(config.tagWidth)
-    val tagRamConfig     = LutRamIPConfig(tagBitWidth, depth * tagBitWidth)
     val tags             = Array.fill(config.wayNum)(new DualPortLutram(tagRamConfig))
     val datas            = Array.fill(config.wayNum)(new DualPortBram(dataRamConfig))
   }
@@ -167,6 +189,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
       }
     }
   }
+  stage1.fifo.queryTag := stage1.tag ## stage1.index
 
   /** *********************************
     * ************ STAGE   2 **********
@@ -328,12 +351,12 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     val send = Counter(0 until config.wordSize) //写内存的计数器
   }
 
-  readMiss := !cache.hit & !fifo.readHit & cache.read    //读缺失
-  writeMiss := !cache.hit & !fifo.writeHit & cache.write //写缺失
+  readMiss := !cache.hit & !stage1.fifo.hit & cache.read    //读缺失
+  writeMiss := !cache.hit & !stage1.fifo.hit & cache.write //写缺失
 
   tagWE := 0
   dataWE := 0
-  fifo.pop := False
+  writeBuffer.io.pop := False
   io.cpu.stage2.stall := True
 
   //这个状态机不包括写内存
@@ -373,7 +396,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     // TODO 之后要把write buffer命中的写回cache也需要安排到这个周期，原因也是为了替换可能的脏行
     waitWb.whenIsActive {
       //当FIFO要push（也就是要替换脏行时）并且FIFO已经满了的时候，需要等待
-      when(!(fifo.push & fifo.full)) {
+      when(!(writeBuffer.io.push & writeBuffer.io.full)) {
         when(wb.hit)(goto(stateBoot))
           .otherwise(goto(waitAXIReady))
       }
@@ -413,11 +436,11 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     disableAutoStart()
 
     stateBoot.whenIsActive {
-      fifo.pop := True
-      when(!fifo.empty) {
-        wb.data.assignFromBits(fifo.popData)
-        wb.index := fifo.popTag(0, config.indexWidth bits).asUInt
-        wb.tag := fifo.popTag(config.indexWidth, config.tagWidth bits).asUInt
+      writeBuffer.io.pop := True
+      when(!writeBuffer.io.empty) {
+        wb.data.assignFromBits(writeBuffer.io.popData)
+        wb.index := writeBuffer.io.popTag(0, config.indexWidth bits).asUInt
+        wb.tag := writeBuffer.io.popTag(config.indexWidth, config.tagWidth bits).asUInt
         goto(waitAXIReady)
       }
     }
@@ -502,8 +525,9 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   cache.rdata := cache.hitLine.banks(stage2.wordOffset)
   when(readMiss) {
     cache.rdata := writeData(stage2.wordOffset << 5, 32 bits)
-  }.elsewhen(!cache.hit & fifo.readHit) {
-    cache.rdata := fifo.queryRData(stage2.wordOffset << 5, 32 bits)
+  }.elsewhen(!cache.hit & stage1.fifo.hit) {
+//    cache.rdata := fifo.queryRData(stage2.wordOffset << 5, 32 bits)
+    cache.rdata := stage1.fifo.rdata(stage2.wordOffset << 5, 32 bits)
   }.elsewhen(!cache.hit & wb.hit) {
     cache.rdata := wb.data.banks(stage2.wordOffset)
   }
@@ -513,18 +537,18 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   wb.writing := !wbFSM.isActive(wbFSM.stateBoot) //write buffer正在写回
 
   //Stage 2中和fifo相关的信号，fifo用来存放从cache中替换出去的行
-  fifo.push := dcacheFSM.isActive(dcacheFSM.waitWb) &
+  writeBuffer.io.push := dcacheFSM.isActive(dcacheFSM.waitWb) &
     pushTags(replace.wayIndex).valid & pushTags(replace.wayIndex).dirty
-  fifo.pushTag := pushTags(replace.wayIndex).tag ## stage2.index
-  fifo.pushData := cacheDatas(replace.wayIndex).asBits
+  writeBuffer.io.pushTag := pushTags(replace.wayIndex).tag ## stage2.index
+  writeBuffer.io.pushData := cacheDatas(replace.wayIndex).asBits
 
-  fifo.queryTag := stage2.tag ## stage2.index
-  fifo.queryWData := 0
-  fifo.queryWData(stage2.wordOffset << 5, 32 bits) := cache.wdata //byteOffset << 3对应cpu.addr的bit偏移
-  fifo.queryBE := 0
-  fifo.queryBE(stage2.wordOffset << 2, 4 bits) := io.cpu.stage2.byteEnable
-  fifo.write := cache.write & !io.cpu.stage2.stall //fifo内部会检查是否写命中
-  //  fifo.write := io.cpu.write & !io.cpu.stall & fifo.writeHit
+  stage2.fifo.wdata := 0
+  stage2.fifo.wdata(stage2.wordOffset << 5, 32 bits) := cache.wdata //byteOffset << 3对应cpu.addr的bit偏移
+  stage2.fifo.be := 0
+  stage2.fifo.be(stage2.wordOffset << 2, 4 bits) := io.cpu.stage2.byteEnable
+  stage2.fifo.we := cache.write & !io.cpu.stage2.stall & stage1.fifo.hit
+  stage2.fifo.waddr := stage1.fifo.hitAddr
+
 
   //写入dcache ram的信号
   writeMeta.dirty := False
