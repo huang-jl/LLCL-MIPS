@@ -21,6 +21,7 @@ module dual_port_bram #
    output wire [DATA_WIDTH - 1:0]    douta,
    output wire [DATA_WIDTH - 1:0]    doutb
 );
+
    // xpm_memory_tdpram: True Dual Port RAM
    // Xilinx Parameterized Macro, version 2019.2
 

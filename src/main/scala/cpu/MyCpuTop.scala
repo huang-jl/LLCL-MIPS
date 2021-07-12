@@ -60,7 +60,7 @@ class MyCPUTop extends Component {
     wb.rf.wdata := cpu.WB.input(cpu.rfuData).pull
     wb.rf.wnum := cpu.WB.input(cpu.rfuAddr).pull
     wb.pc := cpu.WB.input(cpu.pc).pull
-  }
+  }.setName("")
 
   noIoPrefix()
 

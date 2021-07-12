@@ -81,8 +81,8 @@ class ALU extends Component {
 
     val stall: Bool = useDivider & !outputTask.has
 
-    quotient := outputTask.value(32, 32 bits)
-    remainder := outputTask.value(0, 32 bits)
+    quotient := outputTask.value(32, 32 bits).asUInt
+    remainder := outputTask.value(0, 32 bits).asUInt
   }
 
   val multiply = new Area {

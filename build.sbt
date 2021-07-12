@@ -11,7 +11,8 @@ lazy val root = (project in file("."))
     libraryDependencies ++= Seq(
       "com.github.spinalhdl" %% "spinalhdl-core" % spinalVersion,
       "com.github.spinalhdl" %% "spinalhdl-lib" % spinalVersion,
-      compilerPlugin("com.github.spinalhdl" %% "spinalhdl-idsl-plugin" % spinalVersion)
+      compilerPlugin("com.github.spinalhdl" %% "spinalhdl-idsl-plugin" % spinalVersion),
+      "com.typesafe" % "config" % "1.4.1"
     ),
     fork := true
   )

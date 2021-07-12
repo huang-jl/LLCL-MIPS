@@ -2,14 +2,12 @@ package cpu.defs
 
 import spinal.core._
 
-class config {}
-
 object config {
   val ADDR_WIDTH = 32
   val INST_WIDTH = 32
   val BYTE_WIDTH = 8
 
-  val BTB = new config {
+  object BTB {
     val NUM_ENTRIES = 4096
     val NUM_WAYS    = 4
 
