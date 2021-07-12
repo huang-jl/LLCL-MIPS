@@ -5,7 +5,7 @@ import defs.{ConstantVal, Mips32Inst}
 import cache.CacheRamConfig
 import lib.{Key, Task}
 import tlb.{MMU, MMUTranslationRes}
-import cpu.defs.config._
+import cpu.defs.Config._
 import ip._
 import spinal.core._
 import spinal.lib.{cpu => _, _}

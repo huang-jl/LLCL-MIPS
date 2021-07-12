@@ -27,20 +27,51 @@ class DualPortBram(config: BRamIPConfig) extends Component {
   val io = new Bundle {
     val clk = in Bool
     val rst = in Bool
-    val portA = slave(RamPort(config.dataWidth, log2Up(config.depth)))
-    val portB = slave(RamPort(config.dataWidth, log2Up(config.depth)))
+    val portA = slave(RamPort(config.dataWidth, log2Up(config.depth), config.writeModeA))
+    val portB = slave(RamPort(config.dataWidth, log2Up(config.depth), config.writeModeB))
   }
-  mapClockDomain(clock = io.clk, reset = io.rst, resetActiveLevel = HIGH)
-  noIoPrefix()
-  addPrePopTask { () => {
-    for (bt <- io.flatten) {
-      val name = bt.getName()
-      if (name.startsWith("portA")) bt.setName(name.substring(name.indexOf('_') + 1) + 'a')
-      if (name.startsWith("portB")) bt.setName(name.substring(name.indexOf('_') + 1) + 'b')
-    }
+  val param = new xpm_memory_tdpram_generic
+  param.WRITE_DATA_WIDTH_A = config.dataWidth
+  param.WRITE_DATA_WIDTH_B = config.dataWidth
+  param.READ_DATA_WIDTH_A = config.dataWidth
+  param.READ_DATA_WIDTH_B = config.dataWidth
+  param.BYTE_WRITE_WIDTH_A = config.dataWidth
+  param.BYTE_WRITE_WIDTH_B = config.dataWidth
+  param.ADDR_WIDTH_A = log2Up(config.depth)
+  param.ADDR_WIDTH_B = log2Up(config.depth)
+  param.READ_LATENCY_A = 1
+  param.READ_LATENCY_B = 1
+  param.MEMORY_SIZE = config.size
+  param.WRITE_MODE_A = config.writeModeA.toString
+  param.WRITE_MODE_B = config.writeModeB.toString
+
+  val mem = new xpm_memory_tdpram(param)
+  mem.io.ena := io.portA.en
+  mem.io.dina := io.portA.din
+  mem.io.addra := io.portA.addr
+  mem.io.wea := io.portA.we.asBits
+  io.portA.dout := mem.io.douta
+
+  mem.io.enb := True
+  mem.io.dinb := io.portB.din
+  mem.io.web := io.portB.we.asBits
+
+  // Cache第一阶段会使用portB读；第二阶段会使用portA写
+  // 下面是进行前传需要的寄存器
+  val prevWriteA = RegNext(io.portA.we) init False
+  val prevAddrA  = RegNext(io.portA.addr) init 0
+  val prevWDataA = RegNext(io.portA.din) init 0
+  // 当前周期读出的dout对应的地址
+  val currAddrB = RegNext(mem.io.addrb) init 0
+
+  mem.io.addrb := io.portB.en ? io.portB.addr | currAddrB
+
+  when(prevWriteA & prevAddrA === currAddrB) {
+    // 需要进行前传
+    io.portB.dout := prevWDataA
+  }.otherwise {
+    io.portB.dout := mem.io.doutb
   }
-  }
-  addRTLPath("./rtl/dual_port_ram.v")
 }
 
 /** @param dataWidth 数据宽度，单位是bit
@@ -63,8 +94,8 @@ class DualPortLutram(config: LutRamIPConfig) extends Component {
     val clk = in Bool
     val rst = in Bool
     // TODO: Is it no change?
-    val portA = slave(RamPort(dataWidth, log2Up(size / dataWidth)))
-    val portB = slave(RamPort(dataWidth, log2Up(size / dataWidth), readOnly = true))
+    val portA = slave(RamPort(config.dataWidth, log2Up(config.depth), WriteMode.NoChange))
+    val portB = slave(ReadOnlyRamPort(config.dataWidth, log2Up(config.depth)))
   }
 
   val param = new xpm_memory_dpdistram_generic
@@ -105,8 +136,8 @@ class DualPortLutram(config: LutRamIPConfig) extends Component {
   */
 class SimpleDualPortBram(config: BRamIPConfig) extends Component {
   val io = new Bundle {
-    val portA = slave(RamPort(config.dataWidth, log2Up(config.depth), writeOnly = true))
-    val portB = slave(RamPort(config.dataWidth, log2Up(config.depth), readOnly = true))
+    val portA = slave(WriteOnlyRamPort(config.dataWidth, log2Up(config.depth)))
+    val portB = slave(ReadOnlyRamPort(config.dataWidth, log2Up(config.depth)))
   }
 
   val param = new xpm_memory_sdpram_generic

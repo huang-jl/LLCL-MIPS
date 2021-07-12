@@ -1,6 +1,6 @@
 package cpu
 
-import cpu.defs.config._
+import cpu.defs.Config._
 import spinal.core._
 
 class BPU extends Component {

@@ -56,6 +56,13 @@ class ICache(config: CacheRamConfig) extends Component {
       new Axi4(ConstantVal.AXI_BUS_CONFIG)
     )
   }
+  //解析Stage 2的物理地址
+  val stage2 = new Area {
+    val wordOffset: UInt = io.cpu.stage2.paddr(2, config.wordOffsetWidth bits)
+    val index: UInt      = io.cpu.stage2.paddr(config.offsetWidth, config.indexWidth bits)
+    val tag: Bits =
+      io.cpu.stage2.paddr(config.offsetWidth + config.indexWidth, config.tagWidth bits).asBits
+  }
 
   val cacheRam = new Area {
     val dataRamConfig    = BRamIPConfig(Block.getBitWidth(config.blockSize))

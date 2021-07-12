@@ -50,6 +50,38 @@ object WriteMode extends Enumeration {
   val NoChange = Value("no_change")
 }
 
+class WriteOnlyRamPort(dataWidth: Int, addrWidth: Int) extends Bundle with IMasterSlave {
+  val en   = Bool.simPublic()
+  val we   = Bool.simPublic() //write enable
+  val addr = UInt(addrWidth bits).simPublic()
+  val din  = Bits(dataWidth bits).simPublic()
+
+  override def asMaster(): Unit = {
+    out(en, we, addr, din)
+  }
+
+  /** 仿真行为，参见 [[Pipeline]] */
+  def handledBy(delayedPipeline: Pipeline, storage: Array[BigInt]) = {
+    delayedPipeline
+      .everyTick { schedule =>
+        if (en.toBoolean) {
+          val addrValue = addr.toInt
+          if (we.toBoolean) {
+            val dinValue = din.toBigInt
+            schedule {
+              val oldValue = storage(addrValue)
+              storage(addrValue) = dinValue
+            }
+          }
+        }
+      }
+  }
+}
+
+object WriteOnlyRamPort {
+  def apply(dataWidth: Int, addrWidth: Int) = new WriteOnlyRamPort(dataWidth, addrWidth)
+}
+
 /** @param dataWidth 数据宽度，单位是bit
   * @param addrWidth ram地址宽度
   * @param writeMode 控制写入成功时 dout 返回值
