@@ -5,15 +5,18 @@ update_compile_order -fileset sources_1
 # Check jobs number
 if {[info exists env(JOBS_NUMBER)]} {
     set jobs_number $env(JOBS_NUMBER)
-    puts "JOBS NUMBER is $jobs_number"
 } else {
     set jobs_number 2
 }
-
+puts "JOBS NUMBER is $jobs_number"
 
 # Add our rtl
-add_files -norecurse ./mycpu_top.v
-add_files -norecurse ./mergeRTL.v
+if { [file exists "./mycpu_top.v"] == 1} {
+    add_files -norecurse ./mycpu_top.v
+}
+if { [file exists "./mergeRTL.v"] == 1} {
+    add_files -norecurse ./mergeRTL.v
+}
 
 # Add our ips
 set ip_paths [glob ./rtl/*/*.xci]
@@ -36,6 +39,14 @@ if {[info exists env(AXI_RAM_COE_FILE)]} {
     export_ip_user_files -of_objects [get_files $axi_ram_ip_dir/axi_ram.xci] -no_script -sync -force -quiet
 }
 
+# Set PLL frequency for cpu_clk
+if {([info exists env(PLL_FREQ)])} {
+    set pll_freq $env(PLL_FREQ)
+} else {
+    set pll_freq 50
+}
+puts "PLL frequency is $pll_freq"
+set_property -dict [list CONFIG.CLKOUT1_REQUESTED_OUT_FREQ {$pll_freq}] [get_ips clk_pll]
 
 update_compile_order -fileset sources_1
 

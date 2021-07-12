@@ -101,6 +101,7 @@ build_func_ip:
   script:
     - export JOBS_NUMBER=18
     - export AXI_RAM_COE_FILE="official/func_test/soft/func/obj/inst_ram.coe"
+    - export PLL_FREQ=$(echo $CI_COMMIT_MESSAGE | grep -Po "(?<=\[build)(.*?)([0-9])+(?=M)" | grep -Eo "[0-9]+")
     - ${VIVADO} -mode tcl -source scripts/generate_ip.tcl ${FUNC_TEST_WORK_DIR}/${XPR_PATH}
 
 build_perf_ip:
@@ -115,6 +116,7 @@ build_perf_ip:
   script:
     - export JOBS_NUMBER=18
     - export AXI_RAM_COE_FILE="official/perf_test/soft/perf_func/obj/allbench/axi_ram.coe"
+    - export PLL_FREQ=$(echo $CI_COMMIT_MESSAGE | grep -Po "(?<=\[build)(.*?)([0-9])+(?=M)" | grep -Eo "[0-9]+")
     - ${VIVADO} -mode tcl -source scripts/generate_ip.tcl ${PERF_TEST_WORK_DIR}/${XPR_PATH}
 
 
