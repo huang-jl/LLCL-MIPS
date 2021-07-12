@@ -97,7 +97,7 @@ build_func_ip:
     PROJECT_NAME: "mycpu"
     XPR_PATH: "run_vivado/mycpu_prj1/${PROJECT_NAME}.xpr"
   rules:
-    - if: '$CI_COMMIT_MESSAGE =~ /\[build\]/i'
+    - if: '$CI_COMMIT_MESSAGE =~ /\[build/i'
   script:
     - export JOBS_NUMBER=18
     - export AXI_RAM_COE_FILE="official/func_test/soft/func/obj/inst_ram.coe"
@@ -112,7 +112,7 @@ build_perf_ip:
     PROJECT_NAME: "mycpu"
     XPR_PATH: "run_vivado/mycpu_prj1/${PROJECT_NAME}.xpr"
   rules:
-    - if: '$CI_COMMIT_MESSAGE =~ /\[build\]/i'
+    - if: '$CI_COMMIT_MESSAGE =~ /\[build/i'
   script:
     - export JOBS_NUMBER=18
     - export AXI_RAM_COE_FILE="official/perf_test/soft/perf_func/obj/allbench/axi_ram.coe"
@@ -128,7 +128,7 @@ generate_func_bit_stream:
     PROJECT_NAME: "mycpu"
     XPR_PATH: "run_vivado/mycpu_prj1/${PROJECT_NAME}.xpr"
   rules:
-    - if: '$CI_COMMIT_MESSAGE =~ /\[build\]/i'
+    - if: '$CI_COMMIT_MESSAGE =~ /\[build/i'
   script:
     - export JOBS_NUMBER=18
     - ${VIVADO} -mode tcl -source scripts/generate_bitstream.tcl ${FUNC_TEST_WORK_DIR}/${XPR_PATH}
@@ -146,7 +146,7 @@ generate_perf_bit_stream:
     PROJECT_NAME: "mycpu"
     XPR_PATH: "run_vivado/mycpu_prj1/${PROJECT_NAME}.xpr"
   rules:
-    - if: '$CI_COMMIT_MESSAGE =~ /\[build\]/i'
+    - if: '$CI_COMMIT_MESSAGE =~ /\[build/i'
   script:
     - export JOBS_NUMBER=18
     - ${VIVADO} -mode tcl -source scripts/generate_bitstream.tcl ${PERF_TEST_WORK_DIR}/${XPR_PATH}
