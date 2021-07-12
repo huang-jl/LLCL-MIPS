@@ -1,6 +1,7 @@
 package cpu.defs
 
 import spinal.core._
+import scala.language.postfixOps
 
 class Config {}
 

@@ -25,8 +25,8 @@ case class BRamIPConfig(
   */
 class DualPortBram(config: BRamIPConfig) extends Component {
   val io = new Bundle {
-    val clk = in Bool
-    val rst = in Bool
+    val clk   = in Bool ()
+    val rst   = in Bool ()
     val portA = slave(RamPort(config.dataWidth, log2Up(config.depth), config.writeModeA))
     val portB = slave(RamPort(config.dataWidth, log2Up(config.depth), config.writeModeB))
   }
@@ -91,8 +91,8 @@ case class LutRamIPConfig(
   */
 class DualPortLutram(config: LutRamIPConfig) extends Component {
   val io = new Bundle {
-    val clk = in Bool
-    val rst = in Bool
+    val clk = in Bool ()
+    val rst = in Bool ()
     // TODO: Is it no change?
     val portA = slave(RamPort(config.dataWidth, log2Up(config.depth), WriteMode.NoChange))
     val portB = slave(ReadOnlyRamPort(config.dataWidth, log2Up(config.depth)))
@@ -201,8 +201,8 @@ class SimpleDualPortBram(config: BRamIPConfig) extends Component {
 //  }
 //
 //  val io = new Bundle {
-//    val clk   = in Bool
-//    val rst   = in Bool
+//    val clk   = in Bool ()
+//    val rst   = in Bool ()
 //    val portA = slave(RamPort(config.dataWidth, log2Up(config.depth), config.writeModeA))
 //    val portB = slave(RamPort(config.dataWidth, log2Up(config.depth), config.writeModeB))
 //  }
@@ -250,8 +250,8 @@ class SimpleDualPortBram(config: BRamIPConfig) extends Component {
 //  }
 //
 //  val io = new Bundle {
-//    val clk = in Bool
-//    val rst = in Bool
+//    val clk = in Bool ()
+//    val rst = in Bool ()
 //    // TODO: Is it no change?
 //    val portA = slave(RamPort(dataWidth, log2Up(size / dataWidth), WriteMode.NoChange))
 //    val portB = slave(ReadOnlyRamPort(dataWidth, log2Up(size / dataWidth)))

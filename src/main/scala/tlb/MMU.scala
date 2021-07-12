@@ -3,6 +3,7 @@ package tlb
 import cpu.Utils
 import spinal.core._
 import spinal.lib._
+import scala.language.postfixOps
 
 //TODO: 如果取指不经过cache怎么办
 //TODO: CP0的某些寄存器如果是特殊值，可以让kesg0变成Uncached

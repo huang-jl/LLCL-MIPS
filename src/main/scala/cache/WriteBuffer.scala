@@ -2,6 +2,7 @@ package cache
 
 import spinal.core._
 import spinal.lib._
+import scala.language.postfixOps
 
 //depth: Fifo的大小
 case class WriteBufferConfig(blockSize: Int, tagWidth: Int, depth: Int = 16) {

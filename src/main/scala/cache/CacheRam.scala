@@ -1,6 +1,7 @@
 package cache
 
 import spinal.core._
+import scala.language.postfixOps
 
 /** @param blockSize 数据块的大小, bytes
   * @param wayNum    路个数

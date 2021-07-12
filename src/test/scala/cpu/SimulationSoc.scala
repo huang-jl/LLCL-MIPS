@@ -10,9 +10,9 @@ import spinal.lib.bus.amba4.axi._
 /** 对 MyCPUTop 的简单封装，使得其适用于仿真 */
 class SimulationSoc extends Component with JobCollector {
   val io = new Bundle {
-    val sysClock = in Bool
-    val cpuClock = in Bool
-    val reset    = in Bool
+    val sysClock = in Bool ()
+    val cpuClock = in Bool ()
+    val reset    = in Bool ()
 
     val externalInterrupt = in Bits (6 bits)
 

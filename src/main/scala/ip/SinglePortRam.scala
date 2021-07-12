@@ -8,8 +8,8 @@ import spinal.lib._
 class SinglePortRamBase(dataWidth: Int, size: Int, latency: Int, writeMode: WriteMode.Value)
     extends SimulatedBlackBox {
   val io = new Bundle {
-    val clk  = in Bool
-    val rst  = in Bool
+    val clk  = in Bool ()
+    val rst  = in Bool ()
     val port = slave(RamPort(dataWidth, log2Up(size / dataWidth), writeMode)).setName("")
   }
 

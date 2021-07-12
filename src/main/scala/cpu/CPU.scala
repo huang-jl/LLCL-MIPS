@@ -10,6 +10,7 @@ import ip._
 import spinal.core._
 import spinal.lib.{cpu => _, _}
 import spinal.lib.bus.amba4.axi._
+import scala.language.postfixOps
 
 class CPU extends Component {
   val io = new Bundle {

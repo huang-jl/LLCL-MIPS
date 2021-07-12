@@ -3,6 +3,8 @@ package cpu
 import spinal.core._
 import Utils.{signExtend, zeroExtend}
 
+import scala.language.postfixOps
+
 // 帮助ME阶段进行地址检查和byteEnable转换
 class DCU1 extends Component {
   val io = new Bundle {
@@ -12,7 +14,7 @@ class DCU1 extends Component {
     }
     val output = new Bundle {
       val byteEnable = out Bits(4 bits) //stage1
-      val addrValid  = out Bool         //stage1
+      val addrValid  = out Bool()         //stage1
     }
   }
 

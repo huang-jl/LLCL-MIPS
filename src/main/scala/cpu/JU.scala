@@ -1,6 +1,7 @@
 package cpu
 
 import spinal.core._
+import scala.language.postfixOps
 
 object JU_OP extends SpinalEnum {
   val lz, gez, f, t, e, noe, lez, gz = newElement()
@@ -10,8 +11,7 @@ object JU_PC_SRC extends SpinalEnum {
   val rs, offset, index = newElement()
 }
 
-/** @note 加入分支预测后，JU的功能是在EX阶段判断是否发生跳转
-  */
+/** @note 加入分支预测后，JU的功能是在EX阶段判断是否发生跳转 */
 class JU extends Component {
 
   // in

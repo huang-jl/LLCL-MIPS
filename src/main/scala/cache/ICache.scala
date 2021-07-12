@@ -2,11 +2,11 @@ package cache
 
 import cpu.defs.ConstantVal
 import ip.{SimpleDualPortBram, BRamIPConfig}
-import lib.Updating
 import spinal.core._
 import spinal.lib._
 import spinal.lib.fsm._
 import spinal.lib.bus.amba4.axi._
+import scala.language.postfixOps
 
 class CPUICacheInterface(config: CacheRamConfig) extends Bundle with IMasterSlave {
   val stage1 = new Bundle {

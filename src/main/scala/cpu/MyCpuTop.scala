@@ -6,6 +6,7 @@ import ip.CrossBarIP
 import spinal.core._
 import spinal.lib.{cpu => _, _}
 import spinal.lib.bus.amba4.axi._
+import scala.language.postfixOps
 
 case class DebugInterface() extends Bundle {
   val wb = new Bundle {
@@ -24,8 +25,8 @@ class MyCPUTop extends Component {
   val io = new Bundle {
     val ext_int = in Bits (6 bits)
 
-    val aclk    = in Bool
-    val aresetn = in Bool
+    val aclk    = in Bool ()
+    val aresetn = in Bool ()
 
     val axi = master(Axi4(ConstantVal.AXI_BUS_CONFIG))
 

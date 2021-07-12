@@ -10,10 +10,10 @@ import scala.util.Random
 class LRUTest(wayNum: Int = 8) extends Component {
   val io = new Bundle {
     val access = in UInt (log2Up(wayNum) bits)
-    val update = in Bool
+    val update = in Bool ()
     val next   = out UInt (log2Up(wayNum) bits)
   }
-  val manager = new LRUManegr(wayNum, 1)
+  val manager    = new LRUManegr(wayNum, 1)
   val calculator = new LRUCalculator(wayNum)
   manager.io.write.en := io.update
   manager.io.write.access := io.access

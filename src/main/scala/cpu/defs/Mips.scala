@@ -2,6 +2,7 @@ package cpu.defs
 
 import cpu.Utils._
 import spinal.core._
+import scala.language.postfixOps
 
 object Fields {
   val rs     = 25 downto 21

@@ -1,19 +1,20 @@
 package cpu
 
 import spinal.core._
+import scala.language.postfixOps
 
 object HLU_SRC extends SpinalEnum {
   val rs, alu = newElement()
 }
 
 class HLU extends Component {
-  val hi_we = in Bool
+  val hi_we  = in Bool ()
   val new_hi = in Bits (32 bits)
-  val hi_v = out(RegNextWhen(new_hi, hi_we) init 0)
+  val hi_v   = out(RegNextWhen(new_hi, hi_we) init 0)
 
-  val lo_we = in Bool
+  val lo_we  = in Bool ()
   val new_lo = in Bits (32 bits)
-  val lo_v = out(RegNextWhen(new_lo, lo_we) init 0)
+  val lo_v   = out(RegNextWhen(new_lo, lo_we) init 0)
 }
 
 object HLU {

@@ -1,9 +1,9 @@
-ThisBuild / scalaVersion     := "2.11.12"
+ThisBuild / scalaVersion     := "2.13.1"
 ThisBuild / version          := "1.0.0"
 ThisBuild / organization     := ""
 ThisBuild / transitiveClassifiers := Seq(Artifact.SourceClassifier)
 
-val spinalVersion = "1.5.0"
+val spinalVersion = "1.6.0"
 
 lazy val root = (project in file("."))
   .settings(
@@ -16,5 +16,3 @@ lazy val root = (project in file("."))
     ),
     fork := true
   )
-
-

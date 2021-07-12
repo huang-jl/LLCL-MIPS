@@ -2,6 +2,7 @@ package cpu
 
 import spinal.core._
 import spinal.lib._
+import scala.language.postfixOps
 
 object RFU_RD_SRC extends SpinalEnum {
   val pc, alu, hi, lo, mu, cp0 = newElement()

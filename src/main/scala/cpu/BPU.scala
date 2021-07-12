@@ -2,6 +2,7 @@ package cpu
 
 import cpu.defs.Config._
 import spinal.core._
+import scala.language.postfixOps
 
 class BPU extends Component {
   val bht = Mem(Bits(BHT.DATA_WIDTH bits), BHT.NUM_ENTRIES) randBoot

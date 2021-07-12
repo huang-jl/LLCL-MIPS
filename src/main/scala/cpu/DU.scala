@@ -4,8 +4,9 @@ import defs.InstructionSpec._
 import defs.Mips32Inst
 import defs.Mips32InstImplicits._
 import defs.ConstantVal
-import lib.{Key, Optional, Decoder, NotConsidered}
+import lib.{Decoder, Key, NotConsidered, Optional}
 import spinal.core._
+import scala.language.postfixOps
 
 class DU extends Component {
   /// 解码指令
@@ -19,31 +20,31 @@ class DU extends Component {
     val alu_a_src = out(ALU_A_SRC)
     val alu_b_src = out(ALU_B_SRC)
 
-    val cp0_re = out Bool
-    val cp0_we = out Bool
+    val cp0_re = out Bool()
+    val cp0_we = out Bool()
 
-    val dcu_re = out Bool
-    val dcu_we = out Bool
+    val dcu_re = out Bool()
+    val dcu_we = out Bool()
     val dcu_be = out UInt (2 bits)
     val mu_ex  = out(MU_EX)
 
-    val hlu_hi_we  = out Bool
+    val hlu_hi_we  = out Bool()
     val hlu_hi_src = out(HLU_SRC)
-    val hlu_lo_we  = out Bool
+    val hlu_lo_we  = out Bool()
     val hlu_lo_src = out(HLU_SRC)
 
-    val rfu_we     = out Bool
+    val rfu_we     = out Bool()
     val rfu_rd     = out UInt (5 bits)
     val rfu_rd_src = out(RFU_RD_SRC)
 
     val ju_op     = out(JU_OP)
     val ju_pc_src = out(JU_PC_SRC)
 
-    val use_rs = out Bool
-    val use_rt = out Bool
+    val use_rs = out Bool()
+    val use_rt = out Bool()
 
     val exception = out(Optional(EXCEPTION()))
-    val eret      = out Bool
+    val eret      = out Bool()
 
     //tlb相关
     //读tlb到CP0
@@ -60,7 +61,7 @@ class DU extends Component {
     val invalidateDCache = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
     val invalidateICache = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
 
-    val fuck = out Bool //例如特权指令，拉高后让后面的指令都不发射
+    val fuck = out Bool() //例如特权指令，拉高后让后面的指令都不发射
   }
 
   // wires
