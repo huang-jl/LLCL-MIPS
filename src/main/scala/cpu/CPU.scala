@@ -2,7 +2,7 @@ package cpu
 
 import defs.Mips32InstImplicits._
 import defs.{ConstantVal, Mips32Inst}
-import cache.CacheRamConfig
+import cache.{CacheRamConfig, DCache, ICache, CPUDCacheInterface, CPUICacheInterface}
 import lib.{Key, Task}
 import tlb.{MMU, MMUTranslationRes}
 import cpu.defs.Config._
@@ -18,15 +18,27 @@ class CPU extends Component {
     val dcacheAXI         = master(Axi4(ConstantVal.AXI_BUS_CONFIG))
     val uncacheAXI        = master(Axi4(ConstantVal.AXI_BUS_CONFIG))
   }
+
   val icacheConfig =
     CacheRamConfig(blockSize = ConstantVal.IcacheLineSize, wayNum = ConstantVal.IcacheWayNum)
   val dcacheConfig =
     CacheRamConfig(blockSize = ConstantVal.DcacheLineSize, wayNum = ConstantVal.DcacheWayNum)
-  val icu = new ICU(icacheConfig)
+  val icache = new ICache(icacheConfig)
+  val dcache = new DCache(dcacheConfig, ConstantVal.DcacheFifoDepth)
+  val ibus = new CPUICacheInterface(icacheConfig)
+  val dbus = new CPUDCacheInterface(dcacheConfig)
+  icache.io.axi <> io.icacheAXI
+  icache.io.cpu <> ibus
+  dcache.io.axi <> io.dcacheAXI
+  dcache.io.uncacheAXI <> io.uncacheAXI
+  dcache.io.cpu <> dbus
+
+  val icu = new ICU
   val du  = new DU
   val ju  = new JU
   val alu = new ALU
-  val dcu = new DCU(dcacheConfig, fifoDepth = ConstantVal.DcacheFifoDepth)
+  val dcu1 = new DCU1
+  val dcu2 = new DCU2
   val hlu = new HLU
   val rfu = new RFU
   val cp0 = new CP0
@@ -78,6 +90,7 @@ class CPU extends Component {
   val memWe      = Key(Bool) setEmptyValue False
   val memBe      = Key(UInt(2 bits))
   val memEx      = Key(MU_EX())
+  val byteEnable = Key(Bits(4 bits))  //访存时的byteEnable
   val memAddr    = Key(UInt(32 bits))
   val hluHiWe    = Key(Bool) setEmptyValue False
   val hluHiSrc   = Key(HLU_SRC())
@@ -107,8 +120,10 @@ class CPU extends Component {
   val instFetch          = Key(Bool)                                       //异常是否是取值时发生的
   val tlbRefillException = Key(Bool)                                       //是否是TLB缺失异常（影响异常处理地址）
 
-  val icacheInvalidate   = Key(Bool) setEmptyValue False
-  val dcacheInvalidate   = Key(Bool) setEmptyValue False
+  val invalidateICache   = Key(Bool) setEmptyValue False
+  val invalidateDCache   = Key(Bool) setEmptyValue False
+
+  val fuck               = Key(Bool) setEmptyValue False  //类似特权级的指令，会暂停整个流水线
 
   if (ConstantVal.USE_TLB) {
     tlbw.setEmptyValue(False)
@@ -142,23 +157,30 @@ class CPU extends Component {
     }
 
     input(pc)
+    input(fuck)
   }
 
   val ME2 = new Stage {
-    val dcuC = new StageComponent {
-      io.dcacheAXI <> dcu.io.axi
-      io.uncacheAXI <> dcu.io.uncacheAXI
-      //dbus
-      dcu.io.stage2.read := input(memRe)
-      dcu.io.stage2.write := input(memWe)
-      dcu.io.stage2.byteEnable := input(memBe)
-      dcu.io.stage2.paddr := input(dataMMURes).paddr
-      dcu.io.stage2.extend := input(memEx)
-      dcu.io.stage2.uncache := !input(dataMMURes).cached
-      dcu.io.stage2.wdata := input(rtValue)
+    val dcu2C = new StageComponent {
+      dcu2.io.input.byteEnable := input(byteEnable)
+      dcu2.io.input.extend := input(memEx)
+      dcu2.io.input.wdata := input(rtValue)
+      dcu2.io.input.rdata := dbus.stage2.rdata
 
-      output(rfuData) := dcu.io.stage2.rdata
+      dbus.stage2.read := input(memRe)
+      dbus.stage2.write := input(memWe)
+      dbus.stage2.paddr := input(dataMMURes).paddr
+      dbus.stage2.byteEnable := input(byteEnable)
+      dbus.stage2.wdata := dcu2.io.output.wdata
+      dbus.stage2.uncache := !input(dataMMURes).cached
+
+      output(rfuData) := dcu2.io.output.rdata
     }
+
+    // 在这个阶段清理cache
+    ibus.invalidate.en := input(invalidateICache)
+    ibus.invalidate.addr := input(dataMMURes).paddr
+    dbus.invalidate.en := input(invalidateDCache)
 
     produced(rfuData) := stored(memRe) ? output(rfuData) | stored(rfuData)
 
@@ -167,10 +189,13 @@ class CPU extends Component {
   val ME1 = new Stage {
     val assignSetTask = !RegNext(cp0.io.jumpPc.isDefined) & cp0.io.jumpPc.isDefined
 
-    val dcuC = new StageComponent {
-      dcu.io.stage1.paddr := input(dataMMURes).paddr
-      dcu.io.stage1.keepRData := !ME2.is.empty & !ME2.will.input
-      dcu.io.stage1.byteEnable := input(memBe)
+    val dcu1C = new StageComponent {
+      dcu1.io.input.paddr := input(dataMMURes).paddr
+      dcu1.io.input.byteEnable := input(memBe)
+      output(byteEnable) := dcu1.io.output.byteEnable
+
+      dbus.stage1.keepRData := !ME2.is.empty & !ME2.will.input
+      dbus.stage1.paddr := input(dataMMURes).paddr
     }
 
     //因为写hi lo的指令以及写cp0本身不会触发异常
@@ -234,7 +259,7 @@ class CPU extends Component {
     // TLB异常
     if (ConstantVal.USE_TLB) {
       val refillException  = input(dataMMURes).mapped & input(dataMMURes).miss
-      val invalidException = input(dataMMURes).mapped & !input(dataMMURes).miss & !mmu.io.dataRes.valid
+      val invalidException = input(dataMMURes).mapped & !input(dataMMURes).miss & !input(dataMMURes).valid
       val modifiedException = input(dataMMURes).mapped & input(memWe) &
         !input(dataMMURes).miss & input(dataMMURes).valid & !input(dataMMURes).dirty
       when(refillException | invalidException) {
@@ -242,10 +267,13 @@ class CPU extends Component {
           .elsewhen(input(memWe))(exceptionToRaise := EXCEPTION.TLBS)
       }.elsewhen(modifiedException)(exceptionToRaise := EXCEPTION.Mod)
 
-      cp0.io.tlbBus.refillException := input(tlbRefillException) | refillException
+      // 当memRe或memWe时才会由本阶段触发refillException
+      cp0.io.tlbBus.refillException := input(tlbRefillException) |
+        (refillException & (input(memRe) | input(memWe)))
     }
     // 访存地址不对齐异常（更优先）
-    when(!dcu.io.stage1.addrValid) {
+    // Cache指令不允许引起地址异常的错误
+    when(!dcu1.io.output.addrValid & !input(invalidateDCache) & !input(invalidateICache)) {
       when(input(memRe))(exceptionToRaise := EXCEPTION.AdEL)
         .elsewhen(input(memWe))(exceptionToRaise := EXCEPTION.AdES)
     }
@@ -364,18 +392,6 @@ class CPU extends Component {
       val mfc0_mtc0_hazard: Bool = !ME1.is.empty & input(cp0Re) & ME1.stored(cp0We) &
         input(inst).rd === ME1.stored(inst).rd &
         input(inst).sel === ME1.stored(inst).sel
-
-      val mfc0_tlb_hazard = Utils.instantiateWhen(Bool, ConstantVal.USE_TLB)
-//      val mfc0_tlb_hazard = if (ConstantVal.USE_TLB) Bool else null
-      if (ConstantVal.USE_TLB) {
-        mfc0_tlb_hazard := !ME1.is.empty & input(cp0Re) &
-          (
-            (ME1.stored(tlbp) & input(inst).rd === 0 & input(inst).sel === 0) |
-              (ME1.stored(tlbr) & Utils.equalAny(input(inst).rd, U(2), U(3), U(5), U(10)) & input(
-                inst
-              ).sel === 0)
-          )
-      }
     }
 
     exceptionToRaise := alu.io.exception
@@ -426,12 +442,20 @@ class CPU extends Component {
       output(useRs) := du.io.use_rs
       output(useRt) := du.io.use_rt
       output(eret) := du.io.eret
+      output(fuck) := du.io.fuck
 
       if (ConstantVal.USE_TLB) {
         output(tlbr) := du.io.tlbr
         output(tlbw) := du.io.tlbw
         output(tlbp) := du.io.tlbp
         output(tlbIndexSrc) := du.io.tlbIndexSrc
+      }
+      if(ConstantVal.FINAL_MODE) {
+        output(invalidateICache) := du.io.invalidateICache
+        output(invalidateDCache) := du.io.invalidateDCache
+      }else{
+        output(invalidateICache) := False
+        output(invalidateDCache) := False
       }
     }
 
@@ -524,11 +548,10 @@ class CPU extends Component {
     val assignJumpTask = RegNext(will.input) & produced(wantJump)
 
     val icuC = new StageComponent {
-      io.icacheAXI <> icu.io.axi
       //ibus
-      icu.io.ibus.stage2.paddr := input(ifPaddr)
-      icu.io.ibus.stage2.en := input(if2En)
-      output(inst) := icu.io.ibus.stage2.rdata
+      ibus.stage2.paddr := input(ifPaddr)
+      ibus.stage2.en := input(if2En)
+      output(inst) := ibus.stage2.rdata
     }
   }
 
@@ -564,16 +587,15 @@ class CPU extends Component {
 
     val icuC = new StageComponent {
       //ibus
-      icu.io.offset := input(pc)(0, icacheConfig.offsetWidth bits)
-      icu.io.ibus.stage1.read := True
-      icu.io.ibus.stage1.index := input(pc)(icacheConfig.offsetWidth, icacheConfig.indexWidth bits)
+      icu.io.offset := input(pc)(0, 2 bits)
+      ibus.stage1.read := True
+      ibus.stage1.index := input(pc)(icacheConfig.offsetWidth, icacheConfig.indexWidth bits)
+      ibus.stage1.keepRData := !IF2.is.empty & !IF2.will.input
 
       // MMU Translate
       mmu.io.instVaddr := input(pc)
       output(ifPaddr) := mmu.io.instRes.paddr
       output(if2En) := True
-
-      icu.io.ibus.stage1.keepRData := !IF2.is.empty & !IF2.will.input
 
       // 异常
       output(instFetch) := False //默认取指没有产生异常
@@ -590,11 +612,11 @@ class CPU extends Component {
         output(tlbRefillException) := refillException
       }
       // 访存地址不对齐异常（更优先）
-      icu.io.exception.whenIsDefined(_ => {
-        exceptionToRaise := icu.io.exception
+      when(!icu.io.addrValid) {
+        exceptionToRaise := EXCEPTION.AdEL
         output(instFetch) := True
         output(if2En) := False
-      })
+      }
     }
   }
 
@@ -607,8 +629,8 @@ class CPU extends Component {
   }
 
   IF1.prevException := None
-  IF2.is.done := !icu.io.ibus.stage2.stall
-  IF2.can.flush := !icu.io.ibus.stage2.stall
+  IF2.is.done := !ibus.stage2.stall
+  IF2.can.flush := !ibus.stage2.stall
 
   ID.is.done :=
     !(ID.wantForwardFromEX & EX.stored(memRe) |
@@ -621,14 +643,9 @@ class CPU extends Component {
   when(EX.cp0_RAW_hazard.mfc0_mtc0_hazard) {
     EX.is.done := False
   }
-  if (ConstantVal.USE_TLB) {
-    when(EX.cp0_RAW_hazard.mfc0_tlb_hazard) {
-      EX.is.done := False
-    }
-  }
 
-  ME2.is.done := !dcu.io.stage2.stall
-  ME2.can.flush := !dcu.io.stage2.stall
+  ME2.is.done := !dbus.stage2.stall
+  ME2.can.flush := !dbus.stage2.stall
 
   // 异常清空流水线
   when(ME1.assignSetTask) {
@@ -646,6 +663,11 @@ class CPU extends Component {
     when(!(ID.is.empty & IF2.is.empty)) {
       IF1.want.flush := True
     }
+  }
+  // 当遇到特殊指令的时候，会让后面的指令全部不要流水
+  when(ID.produced(fuck) | EX.produced(fuck) | ME1.produced(fuck) | ME2.produced(fuck)) {
+    IF2.is.done := False
+    IF1.is.done := False
   }
   IF1.stored(pc).addAttribute("mark_debug", "true")
   IF2.stored(ifPaddr).addAttribute("mark_debug", "true")

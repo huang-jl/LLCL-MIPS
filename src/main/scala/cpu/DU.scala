@@ -57,8 +57,10 @@ class DU extends Component {
       Utils.instantiateWhen(out(TLBIndexSrc()), ConstantVal.USE_TLB)
 
     // 仅在开启FINAL_MODE后使用的
-    val dcacheInvalidate = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
-    val icacheInvalidate = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
+    val invalidateDCache = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
+    val invalidateICache = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
+
+    val fuck = out Bool //例如特权指令，拉高后让后面的指令都不发射
   }
 
   // wires
@@ -98,7 +100,9 @@ class DU extends Component {
 
   val tlbr, tlbw, tlbp = Key(Bool)
   val tlbIndexSrc      = Key(TLBIndexSrc())
-  val invalidateCache  = Key(Bool)
+  val invalidateICache = Key(Bool)
+  val invalidateDCache = Key(Bool)
+  val fuck             = Key(Bool)
 
   val decoder = new Decoder(32 bits, enableNotConsidered = true) {
     //下面是默认值，避免出现Latch
@@ -127,7 +131,9 @@ class DU extends Component {
     default(tlbw) to False
     default(tlbp) to False
     default(tlbIndexSrc) to TLBIndexSrc.Index
-    default(invalidateCache) to False
+    default(invalidateICache) to False
+    default(invalidateDCache) to False
+    default(fuck) to False
 
     // Arithmetics
     val saShifts = Map(
@@ -349,23 +355,40 @@ class DU extends Component {
     if (ConstantVal.USE_TLB) {
       on(TLBR) {
         set(tlbr) to True
+        set(fuck) to True
       }
       on(TLBWI) {
         set(tlbw) to True
         set(tlbIndexSrc) to TLBIndexSrc.Index
+        set(fuck) to True
       }
       on(TLBWR) {
         set(tlbw) to True
         set(tlbIndexSrc) to TLBIndexSrc.Random
+        set(fuck) to True
       }
       on(TLBP) {
         set(tlbp) to True
+        set(fuck) to True
       }
     }
 
-    if(ConstantVal.FINAL_MODE) {
-      on(CACHE) {
-        set(invalidateCache) to True
+    if (ConstantVal.FINAL_MODE) {
+      on(ICacheIndexInvalidate) {
+        set(invalidateICache) to True
+        set(fuck) to True
+      }
+      on(ICacheHitInvalidate) {
+        set(invalidateICache) to True
+        set(fuck) to True
+      }
+      on(DCacheIndexInvalidate) {
+        set(invalidateDCache) to True
+        set(fuck) to True
+      }
+      on(DCacheHitInvalidate) {
+        set(invalidateDCache) to True
+        set(fuck) to True
       }
     }
   }
@@ -410,6 +433,7 @@ class DU extends Component {
     io.exception := decoder.output(exception)
   }
   io.eret := decoder.output(eret)
+  io.fuck := decoder.output(fuck)
 
   if (ConstantVal.USE_TLB) {
     io.tlbr := decoder.output(tlbr)
@@ -418,9 +442,9 @@ class DU extends Component {
     io.tlbIndexSrc := decoder.output(tlbIndexSrc)
   }
 
-  if(ConstantVal.FINAL_MODE) {
-    io.icacheInvalidate := decoder.output(invalidateCache) & Utils.equalAny(inst.cacheOp, B"5'b00000", B"10000")
-    io.dcacheInvalidate := decoder.output(invalidateCache) & Utils.equalAny(inst.cacheOp, B"5'b00001", B"10101")
+  if (ConstantVal.FINAL_MODE) {
+    io.invalidateICache := decoder.output(invalidateICache)
+    io.invalidateDCache := decoder.output(invalidateDCache)
   }
 }
 

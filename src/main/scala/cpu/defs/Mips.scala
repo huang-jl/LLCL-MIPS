@@ -128,6 +128,11 @@ object InstructionSpec {
     if (fillZeros) spec.force(24 downto 6, "0" * 19) else spec
   }
 
+  private def CACHE(cacheOp:String) =
+    InstructionSpec()
+      .force(Fields.op, "101111")
+      .force(Fields.cacheOp, cacheOp)
+
   val ADD   = special(fn = "100000")
   val ADDI  = IType(op = "001000")
   val ADDU  = special(fn = "100001")
@@ -208,5 +213,8 @@ object InstructionSpec {
   val TLBWR = cop0co(fn = "000110") //writte tlb entry indexed by Random CP0 Reg
 
   // Used only when ConstantVal.FINAL_MODE = true
-  val CACHE = IType(op = "101111")
+  val ICacheIndexInvalidate = CACHE("00000")
+  val ICacheHitInvalidate = CACHE("10000")
+  val DCacheIndexInvalidate = CACHE("00001")
+  val DCacheHitInvalidate = CACHE("10101")
 }

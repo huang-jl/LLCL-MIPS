@@ -25,23 +25,14 @@ class CPUICacheInterface(config: CacheRamConfig) extends Bundle with IMasterSlav
     val stall = Bool
   }
 
-  override def asMaster(): Unit = {
-    out(stage1.read, stage1.index, stage1.keepRData, stage2.paddr, stage2.en)
-    //    in(stage2.rdata, stage2.stall, stage1.cacheTags, stage1.cacheDatas, stage1.replaceIndex)
-    in(stage2.rdata, stage2.stall)
+  val invalidate = new Bundle {
+    val en   = Bool
+    val addr = UInt(32 bits)
   }
 
-  def <<(that: CPUICacheInterface): Unit = that >> this
-
-  def >>(that: CPUICacheInterface): Unit = {
-    //this is master
-    that.stage1 := this.stage1
-    that.stage2.paddr := this.stage2.paddr
-    that.stage2.en := this.stage2.en
-    //    this.stage1.cacheTags := that.stage1.cacheTags
-    //    this.stage1.cacheDatas := that.stage1.cacheDatas
-    this.stage2.rdata := that.stage2.rdata
-    this.stage2.stall := that.stage2.stall
+  override def asMaster(): Unit = {
+    out(stage1.read, stage1.index, stage1.keepRData, stage2.paddr, stage2.en, invalidate)
+    in(stage2.rdata, stage2.stall)
   }
 }
 
@@ -50,6 +41,15 @@ class CPUICacheInterface(config: CacheRamConfig) extends Bundle with IMasterSlav
   *       第二级若命中则更新cache并且返回数据；否则暂停流水线进行访存
   */
 class ICache(config: CacheRamConfig) extends Component {
+  private implicit class ParseAddr(addr: UInt) {
+    assert(addr.getBitsWidth == 32)
+    def index: UInt = addr(config.offsetWidth, config.indexWidth bits)
+
+    def cacheTag: Bits = addr(config.offsetWidth + config.indexWidth, config.tagWidth bits).asBits
+
+    def wordOffset: UInt = addr(2, config.wordOffsetWidth bits)
+  }
+
   val io = new Bundle {
     val cpu = slave(new CPUICacheInterface(config))
     val axi = master(
@@ -58,10 +58,9 @@ class ICache(config: CacheRamConfig) extends Component {
   }
   //解析Stage 2的物理地址
   val stage2 = new Area {
-    val wordOffset: UInt = io.cpu.stage2.paddr(2, config.wordOffsetWidth bits)
-    val index: UInt      = io.cpu.stage2.paddr(config.offsetWidth, config.indexWidth bits)
-    val tag: Bits =
-      io.cpu.stage2.paddr(config.offsetWidth + config.indexWidth, config.tagWidth bits).asBits
+    val wordOffset: UInt = io.cpu.stage2.paddr.wordOffset
+    val index: UInt      = io.cpu.stage2.paddr.index
+    val tag: Bits = io.cpu.stage2.paddr.cacheTag
   }
 
   val cacheRam = new Area {
@@ -85,7 +84,7 @@ class ICache(config: CacheRamConfig) extends Component {
     ) init 0
     // LRU写端口
     val access = U(0, log2Up(config.wayNum) bits)
-    val we    = False //默认为False
+    val we     = False //默认为False
     mem.io.write.access := access
     mem.io.write.en := we
     mem.io.write.addr := stage2.index
@@ -245,10 +244,17 @@ class ICache(config: CacheRamConfig) extends Component {
 
   //写回cache ram的数据
   writeMeta.tag := stage2.tag
-  writeMeta.valid := True
+  writeMeta.valid := !io.cpu.invalidate.en
   writeData := recvBlock
   when(icacheFSM.isActive(icacheFSM.readMem)) {
     writeData.banks(config.wordSize - 1) := io.axi.r.data
+  }
+  //如果是invalidate指令，那么直接刷掉那一行（只需要刷tag）
+  when(io.cpu.invalidate.en) {
+    for (i <- 0 until config.wayNum) {
+      tagWe(i) := True
+      cacheRam.tags(i).io.portA.addr := io.cpu.invalidate.addr.index
+    }
   }
   //如果没有enable，那么直接返回NOP
   when(!io.cpu.stage2.en)(io.cpu.stage2.rdata := ConstantVal.INST_NOP.asBits)
