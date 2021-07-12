@@ -60,7 +60,7 @@ case class Simulator(config: Simulator.Config) {
   private def getPluginSeq[T <: Plugin: ClassTag]: Seq[T] = {
     val clazz = classTag[T].runtimeClass.asInstanceOf[Class[T]]
 
-    plugins.filter(p => clazz.isAssignableFrom(p.getClass)).map(_.asInstanceOf[T])
+    plugins.filter(p => clazz.isAssignableFrom(p.getClass)).map(_.asInstanceOf[T]).toSeq
   }
 
   /** 获取某种特定类型的插件，仅在恰有一个插件满足条件时成功 */

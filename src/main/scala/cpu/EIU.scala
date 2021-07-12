@@ -16,24 +16,24 @@ object EIU_RD_SEL extends SpinalEnum {
 }
 
 object EXCEPTION extends SpinalEnum {
-  val Int,    // Interrupt
-  AdEL, AdES, // Address Error
-  RI,         // Instruction Validity Exceptions
-  Sys, Bp, Ov, // Execution Exception
+  val Int,        // Interrupt
+  AdEL, AdES,     // Address Error
+  RI,             // Instruction Validity Exceptions
+  Sys, Bp, Ov,    // Execution Exception
   TLBL, TLBS, Mod // TLBException
   = newElement()
 
   defaultEncoding = SpinalEnumEncoding("ExcCode")(
-    Int   -> 0x00,
-    Mod   -> 0x01,
-    TLBL  -> 0x02,
-    TLBS  -> 0x03,
-    AdEL  -> 0x04,
-    AdES  -> 0x05,
-    RI    -> 0x0a,
-    Sys   -> 0x08,
-    Bp    -> 0x09,
-    Ov    -> 0x0c
+    Int  -> 0x00,
+    Mod  -> 0x01,
+    TLBL -> 0x02,
+    TLBS -> 0x03,
+    AdEL -> 0x04,
+    AdES -> 0x05,
+    RI   -> 0x0a,
+    Sys  -> 0x08,
+    Bp   -> 0x09,
+    Ov   -> 0x0c
   )
 }
 
@@ -42,7 +42,7 @@ class EIU extends Component {
   val E = in Bits (EXCEPTION.elements.size bits)
 
   val w = new Bundle {
-    val e        = in Bool
+    val e        = in Bool ()
     val rd_sel   = in(EIU_RD_SEL)
     val rd_sel_v = in Bits (32 bits)
   }
@@ -54,7 +54,7 @@ class EIU extends Component {
 
   val pcu = new Bundle {
     val pc      = in UInt (32 bits)
-    val in_slot = in Bool
+    val in_slot = in Bool ()
 
     val new_pc = out UInt (32 bits)
   }

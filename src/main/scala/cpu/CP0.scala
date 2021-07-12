@@ -16,8 +16,7 @@ object TLBIndexSrc extends SpinalEnum {
   val Index, Random = newElement()
 }
 
-/** 从CP0中读和TLB相关值的接口
-  */
+/** 从CP0中读和TLB相关值的接口 */
 class TLBInterface extends Bundle with IMasterSlave {
   val TLBIndexWidth: Int = log2Up(ConstantVal.TLBEntryNum)
 
@@ -130,8 +129,8 @@ object CP0 {
     //    setWeakName(description.name)
     setName(description.name)
 
-    val field = Map(
-      (for (field <- description.fields) yield (field.name -> {
+    val field = Map.from(
+      for (field <- description.fields) yield (field.name -> {
         val length = field.range.length
         if (field.fieldType == Field.Type.Hardwired) {
           val bits = Bits(length bits).setCompositeName(this, field.name)
@@ -150,11 +149,11 @@ object CP0 {
           }
           bits
         }
-      })): _*
+      })
     )
 
-    val next = Map(
-      (for (field <- description.fields) yield (field.name -> {
+    val next = Map.from(
+      for (field <- description.fields) yield (field.name -> {
         val length = field.range.length
         if (field.fieldType == Field.Type.Hardwired) {
           this.field(field.name)
@@ -165,7 +164,7 @@ object CP0 {
           this.field(field.name) := bits
           bits.allowOverride
         }
-      })): _*
+      })
     )
 
     val value = {
@@ -310,7 +309,7 @@ object CP0 {
       .field("EPC", 31 downto 0)
 
     describeRegister("EBase", 15, 1)
-      .hardwiredField("31", 31, true)   //31位始终为1
+      .hardwiredField("31", 31, true) //31位始终为1
       .field("ExceptionBase", 29 downto 12, 0.toBinaryString(29 - 12 + 1))
       .field("CPUNum", 9 downto 0, 1.toBinaryString(10))
 
@@ -322,21 +321,29 @@ object CP0 {
 
     //TODO 实现了CP2需要加入C2域，实现了FPU需要加入FPU域
     describeRegister("Config1", 16, 1)
-      .hardwiredField("MMUSize", 30 downto 25,
-        ConstantVal.TLBEntryNum.toBinaryString(6))
-      .hardwiredField("IS", 24 downto 22,
-        (log2Up(ConstantVal.IcacheSetsPerWay) - 6).toBinaryString(3))
-      .hardwiredField("IL", 21 downto 19,
-        (log2Up(ConstantVal.IcacheLineSize) - 1).toBinaryString(3))
-      .hardwiredField("IA", 18 downto 16,
-        (ConstantVal.IcacheWayNum - 1).toBinaryString(3))
-      .hardwiredField("DS", 15 downto 13,
-        (log2Up(ConstantVal.DcacheSetsPerWay) - 6).toBinaryString(3))
-      .hardwiredField("DL", 12 downto 10,
-        (log2Up(ConstantVal.DcacheLineSize) - 1).toBinaryString(3))
-      .hardwiredField("DA", 9 downto 7,
-        (ConstantVal.DcacheWayNum - 1).toBinaryString(3))
-
+      .hardwiredField("MMUSize", 30 downto 25, ConstantVal.TLBEntryNum.toBinaryString(6))
+      .hardwiredField(
+        "IS",
+        24 downto 22,
+        (log2Up(ConstantVal.IcacheSetsPerWay) - 6).toBinaryString(3)
+      )
+      .hardwiredField(
+        "IL",
+        21 downto 19,
+        (log2Up(ConstantVal.IcacheLineSize) - 1).toBinaryString(3)
+      )
+      .hardwiredField("IA", 18 downto 16, (ConstantVal.IcacheWayNum - 1).toBinaryString(3))
+      .hardwiredField(
+        "DS",
+        15 downto 13,
+        (log2Up(ConstantVal.DcacheSetsPerWay) - 6).toBinaryString(3)
+      )
+      .hardwiredField(
+        "DL",
+        12 downto 10,
+        (log2Up(ConstantVal.DcacheLineSize) - 1).toBinaryString(3)
+      )
+      .hardwiredField("DA", 9 downto 7, (ConstantVal.DcacheWayNum - 1).toBinaryString(3))
 
     //CP0 Reg for TLB-based MMU
     if (ConstantVal.USE_TLB) {
@@ -377,8 +384,11 @@ object CP0 {
       //TODO Implemented Random
       //Random Range : [Wired, TLBEntryNum - 1]
       describeRegister("Random", number = 1, sel = 0)
-        .readOnlyField("Random", 0 until TLBIndexWidth,
-          (ConstantVal.TLBEntryNum - 1).toBinaryString(TLBIndexWidth))
+        .readOnlyField(
+          "Random",
+          0 until TLBIndexWidth,
+          (ConstantVal.TLBEntryNum - 1).toBinaryString(TLBIndexWidth)
+        )
 
       describeRegister("Wired", number = 6, sel = 0)
         .field("Wired", 0 until TLBIndexWidth, "0" * TLBIndexWidth)
@@ -417,7 +427,6 @@ class CP0 extends Component {
     val softwareWrite = slave Flow (Write())
     val read          = slave(Read())
 
-
     val tlbBus = Utils.instantiateWhen(slave(new TLBInterface), ConstantVal.USE_TLB)
 //    val tlbBus = if (ConstantVal.USE_TLB) slave(new TLBInterface) else null //tlbBus
 
@@ -425,11 +434,11 @@ class CP0 extends Component {
     val exceptionInput    = in(ExceptionInput())
     val jumpPc            = out(Optional(UInt(32 bits)))
 
-    val interruptOnNextInst = out Bool
+    val interruptOnNextInst = out Bool ()
 
     val instOnInt = new Bundle {
-      val valid = in Bool
-      val bd    = in Bool
+      val valid = in Bool ()
+      val bd    = in Bool ()
       val pc    = in UInt (32 bits)
     }
   }
@@ -549,7 +558,16 @@ class CP0 extends Component {
       regs("Cause")("BD") := io.exceptionInput.bd.asBits
       regs("Cause")("ExcCode") := exc.asBits.resized
 
-      when(Utils.equalAny(exc, EXCEPTION.AdES, EXCEPTION.AdEL, EXCEPTION.TLBL, EXCEPTION.TLBS, EXCEPTION.Mod)) {
+      when(
+        Utils.equalAny(
+          exc,
+          EXCEPTION.AdES,
+          EXCEPTION.AdEL,
+          EXCEPTION.TLBL,
+          EXCEPTION.TLBS,
+          EXCEPTION.Mod
+        )
+      ) {
         regs("BadVAddr")("BadVAddr") := (io.exceptionInput.instFetch
           ? io.exceptionInput.pc
           | io.exceptionInput.memAddr).asBits
@@ -606,9 +624,12 @@ class CP0 extends Component {
     //当异常或中断发生时，默认是偏移180
     val offset = U"10'h180"
     io.exceptionInput.exception.whenIsDefined { exc =>
-      if(ConstantVal.USE_TLB) {
+      if (ConstantVal.USE_TLB) {
         // TLB Refill并且Status.EXL为0时offset为0x0
-        when(Utils.equalAny(exc, EXCEPTION.TLBS, EXCEPTION.TLBL) & io.tlbBus.refillException & !exl.asBool) {
+        when(
+          Utils
+            .equalAny(exc, EXCEPTION.TLBS, EXCEPTION.TLBL) & io.tlbBus.refillException & !exl.asBool
+        ) {
           offset := U"10'h0"
         }
       }

@@ -8,14 +8,13 @@ import scala.language.existentials
 
 object NotConsidered extends Key(Bool)
 
-class Decoder(inputWidth: BitCount, enableNotConsidered: Boolean = false)
-    extends Component {
+class Decoder(inputWidth: BitCount, enableNotConsidered: Boolean = false) extends Component {
   private val keys     = mutable.Set[Key[_ <: Data]]()
   private val defaults = mutable.Map[Key[_ <: Data], () => Data]()
   private val encodings =
     mutable.Map[MaskedLiteral, mutable.Map[Key[_ <: Data], () => Data]]()
 
-  val input  = in Bits(inputWidth)
+  val input  = in Bits (inputWidth)
   val output = out(Record(keys.toSeq))
 
   case class default[T <: Data](key: Key[T]) {
@@ -50,7 +49,7 @@ class Decoder(inputWidth: BitCount, enableNotConsidered: Boolean = false)
       body
       currentOn = None
     }
-    
+
     if (enableNotConsidered) {
       apply {
         set(NotConsidered) to False
@@ -87,9 +86,9 @@ class Decoder(inputWidth: BitCount, enableNotConsidered: Boolean = false)
 
     val outputVector = B(0, outputWidth bits)
 
-    val outputSegments: Map[Key[_ <: Data], Bits] = Map(
-      (for (i <- keys.indices)
-        yield (keys(i) -> outputVector(offsets(i) until offsets(i + 1)))): _*
+    val outputSegments: Map[Key[_ <: Data], Bits] = Map.from(
+      for (i <- keys.indices)
+        yield (keys(i) -> outputVector(offsets(i) until offsets(i + 1)))
     )
 
     for (key <- keys) {

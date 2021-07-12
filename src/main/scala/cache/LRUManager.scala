@@ -8,17 +8,17 @@ object LRUManegr {
 //    SpinalVerilog(new LRUManegr(8))
     SpinalVerilog(new Component {
       val io = new Bundle {
-        val x = in Bool
+        val x = in Bool ()
         val y = out Bits (10 bits)
       }
-      val temp = Vec(Reg(Bits(1 bits)) init(0), 10)
+      val temp = Vec(Reg(Bits(1 bits)) init (0), 10)
       io.y := temp.asBits
     })
   }
 }
 
 class PLRU(bitLength: Int) extends Bundle {
-  val prev = Vec(Reg(Bool) init(False), bitLength)
+  val prev = Vec(Reg(Bool) init (False), bitLength)
   val next = Vec(Bool, bitLength)
 }
 
@@ -41,24 +41,24 @@ object LRUCalculator {
 case class LRUCalculator(wayNum: Int) {
   assert(wayNum == 2 || wayNum == 4 || wayNum == 8)
 
-  private def way2(status:Bits): UInt = {
+  private def way2(status: Bits): UInt = {
     assert(status.getBitsWidth == 1)
     (!status(0)).asUInt
   }
 
-  private def way4(status:Bits): UInt = {
+  private def way4(status: Bits): UInt = {
     assert(status.getBitsWidth == 3)
     status(0) ? way2(status(1).asBits).resize(2) |
       U"1'b1" @@ way2(status(2).asBits)
   }
 
-  private def way8(status:Bits): UInt = {
+  private def way8(status: Bits): UInt = {
     assert(status.getBitsWidth == 7)
     status(0) ? way4(status(3 downto 1)).resize(3) |
       U"1'b1" @@ way4(status(6 downto 4))
   }
 
-  def leastRecentUsedIndex(status:Bits): UInt = {
+  def leastRecentUsedIndex(status: Bits): UInt = {
     assert(status.getBitsWidth == LRUCalculator.statusLength(wayNum))
 
     wayNum match {
@@ -68,7 +68,7 @@ case class LRUCalculator(wayNum: Int) {
     }
   }
 
-  private def updateWay2(access: Bits, status:Bits): Bits = {
+  private def updateWay2(access: Bits, status: Bits): Bits = {
     assert(access.getBitsWidth == 1 && status.getBitsWidth == 1)
 //    status(0) := access(0)
     access(0).asBits
@@ -91,7 +91,7 @@ case class LRUCalculator(wayNum: Int) {
     res
   }
 
-  private def updateWay8(access: Bits, status:Bits): Bits = {
+  private def updateWay8(access: Bits, status: Bits): Bits = {
     assert(access.getBitsWidth == 3 && status.getBitsWidth == 7)
     val res = Bits(7 bits)
     when(access(2)) {
@@ -118,7 +118,7 @@ case class LRUCalculator(wayNum: Int) {
 //    }
   }
 
-  def updateStatus(access: UInt, status:Bits): Bits = {
+  def updateStatus(access: UInt, status: Bits): Bits = {
     assert(status.getBitsWidth == LRUCalculator.statusLength(wayNum))
     wayNum match {
       case 2 => updateWay2(access.asBits, status)
@@ -131,26 +131,25 @@ case class LRUCalculator(wayNum: Int) {
 //记录LRU需要的数据，cache采用的是Tree-based pseudo-LRU algorithm
 //0表示上一半最近被使用
 //1表示下一半最近被使用
-/**
- * @wayNum 路数
- * @setSize 有多少项
- * @note 每一项对应一个cache的set，一个端口读，一个端口写，并且内置数据前传
- * */
+/** @wayNum 路数
+  * @setSize 有多少项
+  * @note 每一项对应一个cache的set，一个端口读，一个端口写，并且内置数据前传
+  */
 class LRUManegr(wayNum: Int, setSize: Int) extends Component {
   val width: Int = LRUCalculator.statusLength(wayNum)
   val calculator = new LRUCalculator(wayNum)
   val io = new Bundle {
     val read = new Bundle {
-      val addr = in UInt(log2Up(setSize) bits)
-      val data = out Bits(width bits)
+      val addr = in UInt (log2Up(setSize) bits)
+      val data = out Bits (width bits)
     }
     val write = new Bundle {
-      val addr = in UInt(log2Up(setSize) bits)
-      val access = in UInt(log2Up(wayNum) bits)   // 最近访问的编号
-      val en = in Bool    //写使能
+      val addr   = in UInt (log2Up(setSize) bits)
+      val access = in UInt (log2Up(wayNum) bits) // 最近访问的编号
+      val en     = in Bool ()                    //写使能
     }
   }
-  val data = Vec(Reg(Bits(width bits)) init 0, setSize)
+  val data  = Vec(Reg(Bits(width bits)) init 0, setSize)
   val wdata = calculator.updateStatus(io.write.access, data(io.write.addr))
   when(io.write.en & io.write.addr === io.read.addr) {
     io.read.data := wdata

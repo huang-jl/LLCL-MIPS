@@ -95,11 +95,11 @@ class xpm_memory_tdpram(param: xpm_memory_tdpram_generic) extends BlackBox {
   val io = new Bundle {
     // 1-bit output: Status signal to indicate double bit error occurrence
     // on the data output of port A.
-    val dbiterra = out Bool
+    val dbiterra = out Bool ()
 
     // 1-bit output: Status signal to indicate double bit error occurrence
     // on the data output of port Aval
-    val dbiterrb = out Bool
+    val dbiterrb = out Bool ()
 
     // READ_DATA_WIDTH_A-bit output: Data output for port A read operationsval
     val douta = out Bits (generic.READ_DATA_WIDTH_A bits)
@@ -107,11 +107,11 @@ class xpm_memory_tdpram(param: xpm_memory_tdpram_generic) extends BlackBox {
     val doutb = out Bits (generic.READ_DATA_WIDTH_B bits)
     // 1-bit output: Status signal to indicate single bit error occurrence
     // on the data output of port Aval
-    val sbiterra = out Bool
+    val sbiterra = out Bool ()
 
     // 1-bit output: Status signal to indicate single bit error occurrence
     // on the data output of port Bval
-    val sbiterrb = out Bool
+    val sbiterrb = out Bool ()
 
     // ADDR_WIDTH_A-bit input: Address for port A write and read operationsval
     val addra = in UInt (generic.ADDR_WIDTH_A bits) default 0
@@ -240,11 +240,11 @@ class xpm_memory_dpdistram(param: xpm_memory_dpdistram_generic) extends BlackBox
     val addrb = in UInt (generic.ADDR_WIDTH_B bits) default 0
     // 1-bit input: Clock signal for port Aval  Also clocks port B when parameter CLOCKING_MODE
     // is "common_clock"val
-    val clka = in Bool
+    val clka = in Bool ()
 
     // 1-bit input: Clock signal for port B when parameter CLOCKING_MODE is
     // "independent_clock"val  Unused when parameter CLOCKING_MODE is "common_clock"val
-    val clkb = in Bool
+    val clkb = in Bool ()
 
     // WRITE_DATA_WIDTH_A-bit input: Data input for port A write operationsval
     val dina = in Bits (generic.WRITE_DATA_WIDTH_A bits) default 0

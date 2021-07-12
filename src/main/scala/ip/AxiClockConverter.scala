@@ -10,12 +10,12 @@ class AxiClockConverter extends BlackBox {
   setDefinitionName("axi_clock_converter")
 
   val io = new Bundle {
-    val s_axi_aclk    = in Bool
-    val s_axi_aresetn = in Bool
+    val s_axi_aclk    = in Bool ()
+    val s_axi_aresetn = in Bool ()
     val s_axi         = slave(Axi4(ConstantVal.AXI_BUS_CONFIG))
 
-    val m_axi_aclk    = in Bool
-    val m_axi_aresetn = in Bool
+    val m_axi_aclk    = in Bool ()
+    val m_axi_aresetn = in Bool ()
     val m_axi         = master(Axi4(ConstantVal.AXI_BUS_CONFIG))
   }
 

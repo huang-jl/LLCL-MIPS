@@ -12,26 +12,26 @@ import lib.Optional
 class DCU(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   val io = new Bundle {
     val stage1 = new Bundle {
-      val paddr = in UInt(32 bits)
-      val keepRData = in Bool
-      val byteEnable = in UInt(2 bits)  //stage1用来检测地址异常
+      val paddr      = in UInt (32 bits)
+      val keepRData  = in Bool ()
+      val byteEnable = in UInt (2 bits) //stage1用来检测地址异常
 
-      val addrValid = out Bool  //stage1输出，表明地址是否合法
+      val addrValid = out Bool () //stage1输出，表明地址是否合法
     }
     val stage2 = new Bundle {
-      val read = in Bool
-      val write = in Bool
-      val uncache = in Bool
-      val paddr = in UInt(32 bits)
-      val byteEnable = in UInt(2 bits)
-      val wdata = in Bits(32 bits)  //stage2输入，表示要写入的数据
-      val extend = in(MU_EX())  //stage2输入，用来符号扩展或0扩展
+      val read       = in Bool ()
+      val write      = in Bool ()
+      val uncache    = in Bool ()
+      val paddr      = in UInt (32 bits)
+      val byteEnable = in UInt (2 bits)
+      val wdata      = in Bits (32 bits) //stage2输入，表示要写入的数据
+      val extend     = in(MU_EX())       //stage2输入，用来符号扩展或0扩展
 
-      val rdata = out Bits(32 bits)
-      val stall = out Bool
+      val rdata = out Bits (32 bits)
+      val stall = out Bool ()
     }
 
-    val axi = master(new Axi4(ConstantVal.AXI_BUS_CONFIG))
+    val axi        = master(new Axi4(ConstantVal.AXI_BUS_CONFIG))
     val uncacheAXI = master(new Axi4(ConstantVal.AXI_BUS_CONFIG))
   }
 
@@ -42,7 +42,7 @@ class DCU(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   //TODO 可以考虑直接拿过来就是对应的be?
   val wdata = B(0, 32 bits)
 
-  val signExt = Bits(32 bits)
+  val signExt   = Bits(32 bits)
   val unsignExt = Bits(32 bits)
   //used by stage1
   switch(io.stage1.byteEnable) {
@@ -63,26 +63,26 @@ class DCU(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   //used by stage2
   val byteOffset = io.stage2.paddr(0, 2 bits)
   switch(io.stage2.byteEnable) {
-    is(0){
+    is(0) {
       dcache.io.cpu.stage2.byteEnable := (B"1'b1" << byteOffset).resize(4)
       wdata(byteOffset << 3, 8 bits) := io.stage2.wdata(0, 8 bits)
       signExt := signExtend(dcache.io.cpu.stage2.rdata(byteOffset << 3, 8 bits))
       unsignExt := zeroExtend(dcache.io.cpu.stage2.rdata(byteOffset << 3, 8 bits))
     }
-    is(1){
+    is(1) {
       dcache.io.cpu.stage2.byteEnable := (B"2'b11" << byteOffset).resize(4)
       wdata(byteOffset << 3, 16 bits) := io.stage2.wdata(0, 16 bits)
       signExt := signExtend(dcache.io.cpu.stage2.rdata(byteOffset << 3, 16 bits))
       unsignExt := zeroExtend(dcache.io.cpu.stage2.rdata(byteOffset << 3, 16 bits))
     }
-    is(3){
+    is(3) {
       dcache.io.cpu.stage2.byteEnable := B"4'b1111"
       wdata := io.stage2.wdata
       signExt := dcache.io.cpu.stage2.rdata
       unsignExt := dcache.io.cpu.stage2.rdata
     }
     default {
-      dcache.io.cpu.stage2.byteEnable:= B"4'b1111"
+      dcache.io.cpu.stage2.byteEnable := B"4'b1111"
       signExt := dcache.io.cpu.stage2.rdata
       unsignExt := dcache.io.cpu.stage2.rdata
     }

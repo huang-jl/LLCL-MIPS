@@ -17,23 +17,23 @@ class DividerIP(dataWidth: Int = 32, detectZero: Boolean = false, name: String =
   val alignedDataWidth = ((dataWidth + 7) / 8) * 8
 
   val io = new Bundle {
-    val aclk = in Bool
+    val aclk = in Bool ()
 
     /** 被除数 */
     val dividend = new Bundle {
       setName("s_axis_dividend")
       val tdata  = in UInt (alignedDataWidth bits)
-      val tvalid = in Bool
+      val tvalid = in Bool ()
     }.simPublic()
     val divisor = new Bundle {
       setName("s_axis_divisor")
       val tdata  = in UInt (alignedDataWidth bits)
-      val tvalid = in Bool
+      val tvalid = in Bool ()
     }.simPublic()
     val dout = new Bundle {
       setName("m_axis_dout")
       val tdata        = out Bits (2 * alignedDataWidth bits)
-      val tvalid       = out Bool
+      val tvalid       = out Bool ()
       val tuser        = Utils.instantiateWhen(out(Bool), detectZero)
       def divideByZero = tuser
     }

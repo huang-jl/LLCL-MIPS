@@ -19,31 +19,31 @@ class DU extends Component {
     val alu_a_src = out(ALU_A_SRC)
     val alu_b_src = out(ALU_B_SRC)
 
-    val cp0_re = out Bool
-    val cp0_we = out Bool
+    val cp0_re = out Bool ()
+    val cp0_we = out Bool ()
 
-    val dcu_re = out Bool
-    val dcu_we = out Bool
+    val dcu_re = out Bool ()
+    val dcu_we = out Bool ()
     val dcu_be = out UInt (2 bits)
     val mu_ex  = out(MU_EX)
 
-    val hlu_hi_we  = out Bool
+    val hlu_hi_we  = out Bool ()
     val hlu_hi_src = out(HLU_SRC)
-    val hlu_lo_we  = out Bool
+    val hlu_lo_we  = out Bool ()
     val hlu_lo_src = out(HLU_SRC)
 
-    val rfu_we     = out Bool
+    val rfu_we     = out Bool ()
     val rfu_rd     = out UInt (5 bits)
     val rfu_rd_src = out(RFU_RD_SRC)
 
     val ju_op     = out(JU_OP)
     val ju_pc_src = out(JU_PC_SRC)
 
-    val use_rs = out Bool
-    val use_rt = out Bool
+    val use_rs = out Bool ()
+    val use_rt = out Bool ()
 
     val exception = out(Optional(EXCEPTION()))
-    val eret      = out Bool
+    val eret      = out Bool ()
 
     //tlb相关
     //读tlb到CP0
@@ -363,7 +363,7 @@ class DU extends Component {
       }
     }
 
-    if(ConstantVal.FINAL_MODE) {
+    if (ConstantVal.FINAL_MODE) {
       on(CACHE) {
         set(invalidateCache) to True
       }
@@ -418,9 +418,11 @@ class DU extends Component {
     io.tlbIndexSrc := decoder.output(tlbIndexSrc)
   }
 
-  if(ConstantVal.FINAL_MODE) {
-    io.icacheInvalidate := decoder.output(invalidateCache) & Utils.equalAny(inst.cacheOp, B"5'b00000", B"10000")
-    io.dcacheInvalidate := decoder.output(invalidateCache) & Utils.equalAny(inst.cacheOp, B"5'b00001", B"10101")
+  if (ConstantVal.FINAL_MODE) {
+    io.icacheInvalidate := decoder
+      .output(invalidateCache) & Utils.equalAny(inst.cacheOp, B"5'b00000", B"10000")
+    io.dcacheInvalidate := decoder
+      .output(invalidateCache) & Utils.equalAny(inst.cacheOp, B"5'b00001", B"10101")
   }
 }
 
@@ -428,5 +430,4 @@ object DU {
   def main(args: Array[String]): Unit = {
     SpinalVerilog(new DU)
   }
-
 }

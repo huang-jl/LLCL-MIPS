@@ -37,7 +37,7 @@ class TLBTranslationRes extends Bundle {
     assert(hit.getBitsWidth == ConstantVal.TLBEntryNum)
     this.miss := !hit.orR
 //    this.index := OHToUInt(hit)
-    val hitEntry = MuxOH(hit, for(i <- 0 until ConstantVal.TLBEntryNum) yield entry(i))
+    val hitEntry = MuxOH(hit, for (i <- 0 until ConstantVal.TLBEntryNum) yield entry(i))
     when(evenOddBit) {
       //evenOddBit为1，选择pfn1
       this.paddr(12, 20 bits) := hitEntry.pfn1(0, 20 bits).asUInt
@@ -78,7 +78,7 @@ class TLB extends Component {
     //TLB指令相关的内容，包括tlbp, tlbr, tlbwi, tlbwr
     val index = in UInt (TLBConfig.tlbIndexWidth bits) //可能是Index，也可能是Random
     val wdata = in(new TLBEntry)                       //需要把要写入的TLB内容提前填充成一个Entry项
-    val write = in Bool                                //是否把wdata写入TLB中
+    val write = in Bool ()                             //是否把wdata写入TLB中
     val rdata = out(new TLBEntry)
 
     //针对tlbp的

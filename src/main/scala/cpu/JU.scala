@@ -10,8 +10,7 @@ object JU_PC_SRC extends SpinalEnum {
   val rs, offset, index = newElement()
 }
 
-/** @note 加入分支预测后，JU的功能是在EX阶段判断是否发生跳转
-  */
+/** @note 加入分支预测后，JU的功能是在EX阶段判断是否发生跳转 */
 class JU extends Component {
 
   // in
