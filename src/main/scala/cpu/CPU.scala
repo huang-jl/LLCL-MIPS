@@ -26,24 +26,24 @@ class CPU extends Component {
     CacheRamConfig(blockSize = ConstantVal.DcacheLineSize, wayNum = ConstantVal.DcacheWayNum)
   val icache = new ICache(icacheConfig)
   val dcache = new DCache(dcacheConfig, ConstantVal.DcacheFifoDepth)
-  val ibus = new CPUICacheInterface(icacheConfig)
-  val dbus = new CPUDCacheInterface(dcacheConfig)
+  val ibus   = new CPUICacheInterface(icacheConfig)
+  val dbus   = new CPUDCacheInterface(dcacheConfig)
   icache.io.axi <> io.icacheAXI
   icache.io.cpu <> ibus
   dcache.io.axi <> io.dcacheAXI
   dcache.io.uncacheAXI <> io.uncacheAXI
   dcache.io.cpu <> dbus
 
-  val icu = new ICU
-  val du  = new DU
-  val ju  = new JU
-  val alu = new ALU
+  val icu  = new ICU
+  val du   = new DU
+  val ju   = new JU
+  val alu  = new ALU
   val dcu1 = new DCU1
   val dcu2 = new DCU2
-  val hlu = new HLU
-  val rfu = new RFU
-  val cp0 = new CP0
-  val mmu = new MMU(useTLB = ConstantVal.USE_TLB)
+  val hlu  = new HLU
+  val rfu  = new RFU
+  val cp0  = new CP0
+  val mmu  = new MMU(useTLB = ConstantVal.FINAL_MODE)
 
   val btb = new Cache(
     BTB.NUM_ENTRIES,
@@ -82,6 +82,7 @@ class CPU extends Component {
   val bd         = Key(Bool)
   val inst       = Key(Mips32Inst()) setEmptyValue ConstantVal.INST_NOP
   val eret       = Key(Bool) setEmptyValue False
+  val isTrap     = Key(Bool) setEmptyValue False
   val aluOp      = Key(ALU_OP()) setEmptyValue ALU_OP.sll()
   val aluASrc    = Key(ALU_A_SRC())
   val aluBSrc    = Key(ALU_B_SRC())
@@ -91,7 +92,7 @@ class CPU extends Component {
   val memWe      = Key(Bool) setEmptyValue False
   val memBe      = Key(UInt(2 bits))
   val memEx      = Key(MU_EX())
-  val byteEnable = Key(Bits(4 bits))  //访存时的byteEnable
+  val byteEnable = Key(Bits(4 bits)) //访存时的byteEnable
   val memAddr    = Key(UInt(32 bits))
   val hluHiWe    = Key(Bool) setEmptyValue False
   val hluHiSrc   = Key(HLU_SRC())
@@ -110,10 +111,10 @@ class CPU extends Component {
   val rsValue    = Key(Bits(32 bits))
   val rtValue    = Key(Bits(32 bits))
 
-  val ifPaddr    = Key(UInt(32 bits))
-  val if2En      = Key(Bool) setEmptyValue False
+  val ifPaddr = Key(UInt(32 bits))
+  val if2En   = Key(Bool) setEmptyValue False
 
-  val dataMMURes         = Key(new MMUTranslationRes(ConstantVal.USE_TLB)) //EX阶段查询数据TLB
+  val dataMMURes         = Key(new MMUTranslationRes(ConstantVal.FINAL_MODE)) //EX阶段查询数据TLB
   val tlbr               = Key(Bool)                                       //ID解码
   val tlbw               = Key(Bool)                                       //ID解码
   val tlbp               = Key(Bool)                                       //ID解码
@@ -121,12 +122,12 @@ class CPU extends Component {
   val instFetch          = Key(Bool)                                       //异常是否是取值时发生的
   val tlbRefillException = Key(Bool)                                       //是否是TLB缺失异常（影响异常处理地址）
 
-  val invalidateICache   = Key(Bool) setEmptyValue False
-  val invalidateDCache   = Key(Bool) setEmptyValue False
+  val invalidateICache = Key(Bool) setEmptyValue False
+  val invalidateDCache = Key(Bool) setEmptyValue False
 
-  val fuck               = Key(Bool) setEmptyValue False  //类似特权级的指令，会暂停整个流水线
+  val fuck = Key(Bool) setEmptyValue False //类似特权级的指令，会暂停整个流水线
 
-  if (ConstantVal.USE_TLB) {
+  if (ConstantVal.FINAL_MODE) {
     tlbw.setEmptyValue(False)
     tlbp.setEmptyValue(False)
     tlbr.setEmptyValue(False)
@@ -135,7 +136,7 @@ class CPU extends Component {
   //MMU input signal
   //目前MMU和CP0直接相连，MMU拿到的CP0寄存器值都是实时的
   //CP0拿到的MMU的rdata和probeIndex也都是实时的
-  if (!ConstantVal.USE_TLB) {
+  if (!ConstantVal.FINAL_MODE) {
     mmu.io.asid.assignDontCare()
   } else {
     mmu.io.asid := cp0.io.tlbBus.tlbwEntry.asid
@@ -240,7 +241,7 @@ class CPU extends Component {
 
     //TLB相关：写MMU和写CP0的逻辑信号
     val cp0TLB = new StageComponent {
-      if (ConstantVal.USE_TLB) {
+      if (ConstantVal.FINAL_MODE) {
         //used for TLBR
         cp0.io.tlbBus.tlbr := input(tlbr)
         //used for tlbp
@@ -248,7 +249,7 @@ class CPU extends Component {
       }
     }
     val MMU = new StageComponent {
-      if (ConstantVal.USE_TLB) {
+      if (ConstantVal.FINAL_MODE) {
         mmu.io.write := input(tlbw)
         when(input(tlbw) & input(tlbIndexSrc) === TLBIndexSrc.Random) {
           mmu.io.index := cp0.io.tlbBus.random //如果是写tlbwr那么用random
@@ -257,10 +258,17 @@ class CPU extends Component {
     }
     // 异常
     exceptionToRaise := None
+    // Trap异常，当aluResultC的第0位为1时发生
+    if(ConstantVal.FINAL_MODE) {
+      when (input(isTrap) && input(aluResultC)(0)) {
+        exceptionToRaise := EXCEPTION.Tr
+      }
+    }
     // TLB异常
-    if (ConstantVal.USE_TLB) {
-      val refillException  = input(dataMMURes).mapped & input(dataMMURes).miss
-      val invalidException = input(dataMMURes).mapped & !input(dataMMURes).miss & !input(dataMMURes).valid
+    if (ConstantVal.FINAL_MODE) {
+      val refillException = input(dataMMURes).mapped & input(dataMMURes).miss
+      val invalidException =
+        input(dataMMURes).mapped & !input(dataMMURes).miss & !input(dataMMURes).valid
       val modifiedException = input(dataMMURes).mapped & input(memWe) &
         !input(dataMMURes).miss & input(dataMMURes).valid & !input(dataMMURes).dirty
       when(refillException | invalidException) {
@@ -445,16 +453,17 @@ class CPU extends Component {
       output(eret) := du.io.eret
       output(fuck) := du.io.fuck
 
-      if (ConstantVal.USE_TLB) {
+      if (ConstantVal.FINAL_MODE) {
         output(tlbr) := du.io.tlbr
         output(tlbw) := du.io.tlbw
         output(tlbp) := du.io.tlbp
         output(tlbIndexSrc) := du.io.tlbIndexSrc
       }
-      if(ConstantVal.FINAL_MODE) {
+      if (ConstantVal.FINAL_MODE) {
+        produced(isTrap) := du.io.is_trap
         output(invalidateICache) := du.io.invalidateICache
         output(invalidateDCache) := du.io.invalidateDCache
-      }else{
+      } else {
         output(invalidateICache) := False
         output(invalidateDCache) := False
       }
@@ -484,7 +493,6 @@ class CPU extends Component {
 //      prevBranch := False
 //    }
 //    output(bd) := bdValue.next
-
 
     when(EX.stored(rfuWe) && EX.stored(rfuAddr) === stored(inst).rs) {
       produced(rsValue) := EX.produced(rfuData)
@@ -602,7 +610,7 @@ class CPU extends Component {
       output(instFetch) := False //默认取指没有产生异常
       exceptionToRaise := None
       // TLB异常
-      if (ConstantVal.USE_TLB) {
+      if (ConstantVal.FINAL_MODE) {
         val refillException  = mmu.io.instRes.mapped & mmu.io.instRes.miss
         val invalidException = mmu.io.instRes.mapped & !mmu.io.instRes.miss & !mmu.io.instRes.valid
         when(refillException | invalidException) {

@@ -5,8 +5,8 @@ import defs.Mips32Inst
 import defs.Mips32InstImplicits._
 import defs.ConstantVal
 import lib.{Decoder, Key, NotConsidered, Optional}
-import scala.language.postfixOps
 import spinal.core.{SYNC => _, _}
+import scala.language.postfixOps
 
 class DU extends Component {
   /// 解码指令
@@ -48,14 +48,14 @@ class DU extends Component {
 
     //tlb相关
     //读tlb到CP0
-    val tlbr = Utils.instantiateWhen(out(Bool), ConstantVal.USE_TLB)
+    val tlbr = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
     //CP0写到tlb
-    val tlbw = Utils.instantiateWhen(out(Bool), ConstantVal.USE_TLB)
+    val tlbw = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
     //probe tlb
-    val tlbp = Utils.instantiateWhen(out(Bool), ConstantVal.USE_TLB)
+    val tlbp = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
     //tlbw index src
     val tlbIndexSrc =
-      Utils.instantiateWhen(out(TLBIndexSrc()), ConstantVal.USE_TLB)
+      Utils.instantiateWhen(out(TLBIndexSrc()), ConstantVal.FINAL_MODE)
 
     // 仅在开启FINAL_MODE后使用的
     val invalidateDCache = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
@@ -211,6 +211,7 @@ class DU extends Component {
         set(aluASrc) to ALU_A_SRC.rs
         set(rfuRd) to RFU_RD.rd
         set(rfuRdSrc) to RFU_RD_SRC.alu
+        set(aluOp) to op
       }
     }
 
@@ -325,7 +326,6 @@ class DU extends Component {
       set(eret) to True
     }
 
-
     // Load & Store
     val loads = Map(
       LB  -> (MU_EX.s, U"00"),
@@ -370,8 +370,8 @@ class DU extends Component {
       set(rfuRdSrc) to RFU_RD_SRC.cp0
     }
 
-    //TLB
-    if (ConstantVal.USE_TLB) {
+    if (ConstantVal.FINAL_MODE) {
+      //TLB
       on(TLBR) {
         set(tlbr) to True
         set(fuck) to True
@@ -390,9 +390,7 @@ class DU extends Component {
         set(tlbp) to True
         set(fuck) to True
       }
-    }
-
-    if (ConstantVal.FINAL_MODE) {
+      //Trap
       val traps = Seq(
         (TEQ, TEQI, ALU_OP.seq),
         (TNE, TNEI, ALU_OP.sne),
@@ -418,29 +416,27 @@ class DU extends Component {
           set(isTrap) to True
         }
       }
-      on(ICacheIndexInvalidate) {
-        set(invalidateICache) to True
-        set(fuck) to True
+      //CACHE
+      val caches = Seq(
+        (ICacheIndexInvalidate, DCacheIndexInvalidate),
+        (ICacheHitInvalidate, DCacheHitInvalidate)
+      )
+      for((icacheInv, dcacheInv) <- caches) {
+        on(icacheInv) {
+          set(invalidateICache) to True
+          set(fuck) to True
+        }
+        on(dcacheInv){
+          set(invalidateDCache) to True
+          set(fuck) to True
+        }
       }
-      on(ICacheHitInvalidate) {
-        set(invalidateICache) to True
-        set(fuck) to True
-      }
-      on(DCacheIndexInvalidate) {
-        set(invalidateDCache) to True
-        set(fuck) to True
-      }
-      on(DCacheHitInvalidate) {
-        set(invalidateDCache) to True
-        set(fuck) to True
-      }
-    }
-
-    // Instruction that does nothing
-    val useless = Set(SYNC, WAIT)
-    for (inst <- useless) {
-      on(inst) {
-        // Do nothing. Prevents Reserved Instruction exception.
+      // Instruction that does nothing
+      val useless = Set(SYNC, WAIT)
+      for (inst <- useless) {
+        on(inst) {
+          // Do nothing. Prevents Reserved Instruction exception.
+        }
       }
     }
   }
@@ -487,14 +483,11 @@ class DU extends Component {
   io.eret := decoder.output(eret)
   io.fuck := decoder.output(fuck)
 
-  if (ConstantVal.USE_TLB) {
+  if (ConstantVal.FINAL_MODE) {
     io.tlbr := decoder.output(tlbr)
     io.tlbw := decoder.output(tlbw)
     io.tlbp := decoder.output(tlbp)
     io.tlbIndexSrc := decoder.output(tlbIndexSrc)
-  }
-
-  if (ConstantVal.FINAL_MODE) {
     io.invalidateICache := decoder.output(invalidateICache)
     io.invalidateDCache := decoder.output(invalidateDCache)
     io.is_trap := decoder.output(isTrap)

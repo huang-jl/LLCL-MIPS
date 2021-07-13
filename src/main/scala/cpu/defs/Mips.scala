@@ -150,9 +150,6 @@ object InstructionSpec {
   val MULTU = special(fn = "011001").forceZero(Fields.rd)
   val MUL   = special2(fn = "000010")
 
-  val CLO = special2(fn = "100001")
-  val CLZ = special2(fn = "100000")
-
   val AND  = special(fn = "100100")
   val ANDI = IType(op = "001100")
   val LUI  = IType(op = "001111").forceZero(Fields.rs)
@@ -212,12 +209,16 @@ object InstructionSpec {
   val MFC0 = cop0(rs = "00000")
   val MTC0 = cop0(rs = "00100")
 
+
+  // Used only when ConstantVal.FINAL_MODE = true
   val TLBP  = cop0co(fn = "001000") //probe tlb for matching entry
   val TLBR  = cop0co(fn = "000001") //read indexed tlb entry
   val TLBWI = cop0co(fn = "000010") //write tlb entry indexed by Index CP0 Reg
   val TLBWR = cop0co(fn = "000110") //write tlb entry indexed by Random CP0 Reg
 
-  // Used only when ConstantVal.FINAL_MODE = true
+  val CLO = special2(fn = "100001")
+  val CLZ = special2(fn = "100000")
+
   val TEQ  = special(fn = "110100", sa = "-----")
   val TNE  = special(fn = "110110", sa = "-----")
   val TGE  = special(fn = "110000", sa = "-----")

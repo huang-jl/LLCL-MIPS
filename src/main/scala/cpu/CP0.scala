@@ -347,7 +347,7 @@ object CP0 {
       .hardwiredField("DA", 9 downto 7, (ConstantVal.DcacheWayNum - 1).toBinaryString(3))
 
     //CP0 Reg for TLB-based MMU
-    if (ConstantVal.USE_TLB) {
+    if (ConstantVal.FINAL_MODE) {
       val TLBIndexWidth: Int = log2Up(ConstantVal.TLBEntryNum)
       describeRegister("EntryLo0", number = 2, sel = 0)
         //31 downto (PABITS - 6) is hardwire to 0
@@ -428,8 +428,8 @@ class CP0 extends Component {
     val softwareWrite = slave Flow (Write())
     val read          = slave(Read())
 
-    val tlbBus = Utils.instantiateWhen(slave(new TLBInterface), ConstantVal.USE_TLB)
-//    val tlbBus = if (ConstantVal.USE_TLB) slave(new TLBInterface) else null //tlbBus
+    val tlbBus = Utils.instantiateWhen(slave(new TLBInterface), ConstantVal.FINAL_MODE)
+//    val tlbBus = if (ConstantVal.FINAL_MODE) slave(new TLBInterface) else null //tlbBus
 
     val externalInterrupt = in Bits (6 bits)
     val exceptionInput    = in(ExceptionInput())
@@ -462,7 +462,7 @@ class CP0 extends Component {
   }
 
   // TLB related logic and register
-  if (ConstantVal.USE_TLB) {
+  if (ConstantVal.FINAL_MODE) {
     val TLBRelated = new Area {
       val entryHi  = regs("EntryHi")
       val entryLo0 = regs("EntryLo0")
@@ -574,7 +574,7 @@ class CP0 extends Component {
           | io.exceptionInput.memAddr).asBits
 
       }
-      if (ConstantVal.USE_TLB) {
+      if (ConstantVal.FINAL_MODE) {
         when(Utils.equalAny(exc, EXCEPTION.TLBS, EXCEPTION.TLBL, EXCEPTION.Mod)) {
           regs("EntryHi")("VPN2") := (io.exceptionInput.instFetch
             ? io.exceptionInput.pc
@@ -625,7 +625,7 @@ class CP0 extends Component {
     //当异常或中断发生时，默认是偏移180
     val offset = U"10'h180"
     io.exceptionInput.exception.whenIsDefined { exc =>
-      if (ConstantVal.USE_TLB) {
+      if (ConstantVal.FINAL_MODE) {
         // TLB Refill并且Status.EXL为0时offset为0x0
         when(
           Utils

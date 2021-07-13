@@ -1,13 +1,17 @@
 package cpu
 
-import lib.Optional
+import lib.{Optional, Task}
 import ip.DividerIP
+import cpu.defs.ConstantVal
 import spinal.core._
 import spinal.lib.fsm._
+import spinal.lib._
+import scala.collection.mutable
+import scala.language.postfixOps
 
 object ALU_OP extends SpinalEnum {
-  val add, addu, sub, subu, and, or, xor, nor, sll, lu, srl, sra, mult, multu,
-      div, divu, seq, sne, slt, sltu, sge, sgeu, clo, clz, mul = newElement()
+  val add, addu, sub, subu, and, or, xor, nor, sll, lu, srl, sra, mult, multu, div, divu, seq, sne,
+      slt, sltu, sge, sgeu, clo, clz, mul = newElement()
 }
 
 object ALU_A_SRC extends SpinalEnum {
@@ -108,7 +112,8 @@ class ALU extends Component {
   }
   io.stall := divide.stall | (multiply.multiply & multiply.stall)
 
-  d := 0
+  c.assignDontCare()
+  d.assignDontCare()
   io.exception := None
 
   switch(io.input.op) {
@@ -187,13 +192,6 @@ class ALU extends Component {
     is(sltu) {
       c := (a < b).asUInt(32 bits)
     }
-    is(sge) {
-      c := (S(a) >= S(b)).asUInt(32 bits)
-    }
-    is(sgeu) {
-      c := (a >= b).asUInt(32 bits)
-    }
-
     def cloImpl(a: BitVector, nameProvider: Nameable) =
       new Composite(nameProvider) {
         val layers = mutable.ArrayBuffer[Vec[Bits]](
@@ -216,11 +214,27 @@ class ALU extends Component {
         }
         val result = layers.last(0).asUInt.resize(32 bits)
       }.result
-    is(clo) {
-      c := cloImpl(a, clo)
-    }
-    is(clz) {
-      c := cloImpl(~a, clz)
+    if (ConstantVal.FINAL_MODE) {
+      is(clo) {
+//        c := cloImpl(a, clo)
+        c := ALU.clo(a)
+      }
+      is(clz) {
+//        c := cloImpl(~a, clz)
+        c := ALU.clz(a)
+      }
+      is(seq) {
+        c := (a === b).asUInt(32 bits)
+      }
+      is(sne) {
+        c := (a =/= b).asUInt(32 bits)
+      }
+      is(sge) {
+        c := (S(a) >= S(b)).asUInt(32 bits)
+      }
+      is(sgeu) {
+        c := (a >= b).asUInt(32 bits)
+      }
     }
   }
 }
@@ -228,5 +242,23 @@ class ALU extends Component {
 object ALU {
   def main(args: Array[String]): Unit = {
     SpinalVerilog(new ALU).printPruned()
+  }
+
+  // 先Mask得到只有最左边1保留的值
+  // 然后将其视为One-Hot找到最左侧的1的位置
+  // 最后用31去减
+  // 如果value为0那么直接是32
+  def clz(value:UInt):UInt = {
+    assert(value.getBitsWidth == 32)
+    val res = U(32)
+    val onlyLeftMostBitSet:UInt = OHMasking.last(value)
+    when(value =/= 0) {
+      res := (31 - OHToUInt(onlyLeftMostBitSet)).resize(6)
+    }
+    res.resize(32)
+  }
+
+  def clo(value:UInt):UInt = {
+    clz(~value)
   }
 }

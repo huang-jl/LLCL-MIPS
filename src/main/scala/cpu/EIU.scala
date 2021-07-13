@@ -20,7 +20,7 @@ object EXCEPTION extends SpinalEnum {
   val Int,        // Interrupt
   AdEL, AdES,     // Address Error
   RI,             // Instruction Validity Exceptions
-  Sys, Bp, Ov, Tr // Execution Exception
+  Sys, Bp, Ov, Tr, // Execution Exception
   TLBL, TLBS, Mod // TLBException
   = newElement()
 

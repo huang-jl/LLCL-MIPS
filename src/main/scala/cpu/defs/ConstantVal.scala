@@ -19,7 +19,8 @@ object ConstantVal {
   /** TLB相关配置 */
   val PABITS = 32 //至少应该大于等于32，表示支持的物理地址宽度
   val TLBEntryNum = 32  //TLB表项的个数, 2的幂
-  val USE_TLB = true //是否开启真正的TLB
+  /** TLB现在的开关和FINAL_MODE一样 */
+  // val FINAL_MODE = true
 
   /** Cache配置 */
   val IcacheLineSize = 32  //一个cacheLine的大小，单位是bytes, 2的幂
@@ -36,6 +37,6 @@ object ConstantVal {
   val TimeInterruptEnable = false
 
   /** 是否开启全部指令，关闭的时候基本仅覆盖初赛的指令；
-   * 不能控制TLB相关的指令和逻辑 */
+   * 包括TLB相关的指令和逻辑 */
   val FINAL_MODE = true
 }
