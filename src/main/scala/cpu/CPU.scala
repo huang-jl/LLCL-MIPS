@@ -61,10 +61,10 @@ class CPU extends Component {
   bpu.io.w.bhtEn.clear
   bpu.io.w.phtEn.clear
 
-  val bhtI = Key(UInt(BHT.INDEX_WIDTH bits))
-  val bhtV = Key(Bits(BHT.DATA_WIDTH bits))
-  val phtI = Key(UInt(PHT.INDEX_WIDTH bits))
-  val phtV = Key(UInt(2 bits))
+  val bhtI  = Key(UInt(BHT.INDEX_WIDTH bits))
+  val bhtV  = Key(Bits(BHT.DATA_WIDTH bits))
+  val phtI  = Key(UInt(PHT.INDEX_WIDTH bits))
+  val phtV  = Key(UInt(2 bits))
 
   val btbDataLine = Key(Bits(BTB.NUM_WAYS * BTB.ADDR_WIDTH bits))
   val btbTagLine  = Key(Bits(BTB.NUM_WAYS * (1 + BTB.TAG_WIDTH) bits))
@@ -494,6 +494,7 @@ class CPU extends Component {
 //    }
 //    output(bd) := bdValue.next
 
+
     when(EX.stored(rfuWe) && EX.stored(rfuAddr) === stored(inst).rs) {
       produced(rsValue) := EX.produced(rfuData)
     } elsewhen (ME1.stored(rfuWe) && ME1.stored(rfuAddr) === stored(inst).rs) {
@@ -532,6 +533,11 @@ class CPU extends Component {
   val IF2 = new Stage {
     output(pcPlus4) := stored(pc) + 4
 
+    val readPHT = new StageComponent {
+      bpu.io.r.phtI := stored(phtI)
+      output(phtV) := bpu.io.r.phtV
+    }
+
     val decideJump = new StageComponent {
       output(btbDataLine) := btb.io.r.dataLine
       output(btbTagLine) := btb.io.r.tagLine
@@ -551,7 +557,7 @@ class CPU extends Component {
       output(btbHit) := btbHitLine.orR
 
       output(jumpPC) := U(btbData ## BTB.ADDR_PADDING)
-      output(wantJump) := stored(phtV)(1) & output(btbHit)
+      output(wantJump) := produced(phtV)(1) & output(btbHit)
     }
 
     val assignJumpTask = RegNext(will.input) & produced(wantJump)
@@ -571,10 +577,7 @@ class CPU extends Component {
       output(bhtV) := bpu.io.r.bhtV
     }
 
-    val readPHT = new StageComponent {
-      output(phtI) := U(produced(bhtV), PHT.INDEX_WIDTH bits) ^ stored(pc)(PHT.INDEX_RANGE)
-      bpu.io.r.phtI := output(phtI)
-      output(phtV) := bpu.io.r.phtV
+      output(phtI) := U(output(bhtV), PHT.INDEX_WIDTH bits) ^ stored(pc)(PHT.INDEX_RANGE)
     }
 
     val readBTB = new StageComponent {
