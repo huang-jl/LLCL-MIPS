@@ -26,24 +26,24 @@ class CPU extends Component {
     CacheRamConfig(blockSize = ConstantVal.DcacheLineSize, wayNum = ConstantVal.DcacheWayNum)
   val icache = new ICache(icacheConfig)
   val dcache = new DCache(dcacheConfig, ConstantVal.DcacheFifoDepth)
-  val ibus = new CPUICacheInterface(icacheConfig)
-  val dbus = new CPUDCacheInterface(dcacheConfig)
+  val ibus   = new CPUICacheInterface(icacheConfig)
+  val dbus   = new CPUDCacheInterface(dcacheConfig)
   icache.io.axi <> io.icacheAXI
   icache.io.cpu <> ibus
   dcache.io.axi <> io.dcacheAXI
   dcache.io.uncacheAXI <> io.uncacheAXI
   dcache.io.cpu <> dbus
 
-  val icu = new ICU
-  val du  = new DU
-  val ju  = new JU
-  val alu = new ALU
+  val icu  = new ICU
+  val du   = new DU
+  val ju   = new JU
+  val alu  = new ALU
   val dcu1 = new DCU1
   val dcu2 = new DCU2
-  val hlu = new HLU
-  val rfu = new RFU
-  val cp0 = new CP0
-  val mmu = new MMU(useTLB = ConstantVal.USE_TLB)
+  val hlu  = new HLU
+  val rfu  = new RFU
+  val cp0  = new CP0
+  val mmu  = new MMU(useTLB = ConstantVal.USE_TLB)
 
   val btb = new Cache(
     BTB.NUM_ENTRIES,
@@ -61,10 +61,11 @@ class CPU extends Component {
   bpu.io.w.bhtEn.clear
   bpu.io.w.phtEn.clear
 
-  val bhtI = Key(UInt(BHT.INDEX_WIDTH bits))
-  val bhtV = Key(Bits(BHT.DATA_WIDTH bits))
-  val phtI = Key(UInt(PHT.INDEX_WIDTH bits))
-  val phtV = Key(UInt(2 bits))
+  val bhtI  = Key(UInt(BHT.INDEX_WIDTH bits))
+  val bhtV  = Key(Bits(BHT.DATA_WIDTH bits))
+  val phtI  = Key(UInt(PHT.INDEX_WIDTH bits))
+  val phtI_ = Key(UInt(PHT.INDEX_WIDTH bits))
+  val phtV  = Key(UInt(2 bits))
 
   val btbDataLine = Key(Bits(BTB.NUM_WAYS * BTB.ADDR_WIDTH bits))
   val btbTagLine  = Key(Bits(BTB.NUM_WAYS * (1 + BTB.TAG_WIDTH) bits))
@@ -91,7 +92,7 @@ class CPU extends Component {
   val memWe      = Key(Bool) setEmptyValue False
   val memBe      = Key(UInt(2 bits))
   val memEx      = Key(MU_EX())
-  val byteEnable = Key(Bits(4 bits))  //访存时的byteEnable
+  val byteEnable = Key(Bits(4 bits)) //访存时的byteEnable
   val memAddr    = Key(UInt(32 bits))
   val hluHiWe    = Key(Bool) setEmptyValue False
   val hluHiSrc   = Key(HLU_SRC())
@@ -110,8 +111,8 @@ class CPU extends Component {
   val rsValue    = Key(Bits(32 bits))
   val rtValue    = Key(Bits(32 bits))
 
-  val ifPaddr    = Key(UInt(32 bits))
-  val if2En      = Key(Bool) setEmptyValue False
+  val ifPaddr = Key(UInt(32 bits))
+  val if2En   = Key(Bool) setEmptyValue False
 
   val dataMMURes         = Key(new MMUTranslationRes(ConstantVal.USE_TLB)) //EX阶段查询数据TLB
   val tlbr               = Key(Bool)                                       //ID解码
@@ -121,10 +122,10 @@ class CPU extends Component {
   val instFetch          = Key(Bool)                                       //异常是否是取值时发生的
   val tlbRefillException = Key(Bool)                                       //是否是TLB缺失异常（影响异常处理地址）
 
-  val invalidateICache   = Key(Bool) setEmptyValue False
-  val invalidateDCache   = Key(Bool) setEmptyValue False
+  val invalidateICache = Key(Bool) setEmptyValue False
+  val invalidateDCache = Key(Bool) setEmptyValue False
 
-  val fuck               = Key(Bool) setEmptyValue False  //类似特权级的指令，会暂停整个流水线
+  val fuck = Key(Bool) setEmptyValue False //类似特权级的指令，会暂停整个流水线
 
   if (ConstantVal.USE_TLB) {
     tlbw.setEmptyValue(False)
@@ -259,8 +260,9 @@ class CPU extends Component {
     exceptionToRaise := None
     // TLB异常
     if (ConstantVal.USE_TLB) {
-      val refillException  = input(dataMMURes).mapped & input(dataMMURes).miss
-      val invalidException = input(dataMMURes).mapped & !input(dataMMURes).miss & !input(dataMMURes).valid
+      val refillException = input(dataMMURes).mapped & input(dataMMURes).miss
+      val invalidException =
+        input(dataMMURes).mapped & !input(dataMMURes).miss & !input(dataMMURes).valid
       val modifiedException = input(dataMMURes).mapped & input(memWe) &
         !input(dataMMURes).miss & input(dataMMURes).valid & !input(dataMMURes).dirty
       when(refillException | invalidException) {
@@ -451,10 +453,10 @@ class CPU extends Component {
         output(tlbp) := du.io.tlbp
         output(tlbIndexSrc) := du.io.tlbIndexSrc
       }
-      if(ConstantVal.FINAL_MODE) {
+      if (ConstantVal.FINAL_MODE) {
         output(invalidateICache) := du.io.invalidateICache
         output(invalidateDCache) := du.io.invalidateDCache
-      }else{
+      } else {
         output(invalidateICache) := False
         output(invalidateDCache) := False
       }
@@ -484,7 +486,6 @@ class CPU extends Component {
 //      prevBranch := False
 //    }
 //    output(bd) := bdValue.next
-
 
     when(EX.stored(rfuWe) && EX.stored(rfuAddr) === stored(inst).rs) {
       produced(rsValue) := EX.produced(rfuData)
@@ -525,9 +526,7 @@ class CPU extends Component {
     output(pcPlus4) := stored(pc) + 4
 
     val readPHT = new StageComponent {
-      output(bhtV) := (bpu.io.w.bhtEn & stored(bhtI) === bpu.io.w.bhtI) ? bpu.io.w.bhtV | stored(bhtV)
-      output(phtI) := U(output(bhtV), PHT.INDEX_WIDTH bits) ^ stored(pc)(PHT.INDEX_RANGE)
-      bpu.io.r.phtI := output(phtI)
+      bpu.io.r.phtI := stored(phtI)
       output(phtV) := bpu.io.r.phtV
     }
 
@@ -568,6 +567,8 @@ class CPU extends Component {
       output(bhtI) := stored(pc)(BHT.BASE_RANGE) ^ stored(pc)(BHT.INDEX_RANGE)
       bpu.io.r.bhtI := output(bhtI)
       output(bhtV) := bpu.io.r.bhtV
+
+      output(phtI) := U(output(bhtV), PHT.INDEX_WIDTH bits) ^ stored(pc)(PHT.INDEX_RANGE)
     }
 
     val readBTB = new StageComponent {

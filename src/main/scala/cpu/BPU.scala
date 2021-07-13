@@ -29,8 +29,9 @@ class BPU extends Component {
 
   io.r.bhtV := (io.w.bhtEn & io.w.bhtI === io.r.bhtI) ?
     io.w.bhtV | bht.readAsync(io.r.bhtI, writeFirst)
-  io.r.phtV := (io.w.phtEn & io.w.phtI === io.r.phtI) ?
-    io.w.phtV | pht.readAsync(io.r.phtI, writeFirst)
+//  io.r.phtV := (io.w.phtEn & io.w.phtI === io.r.phtI) ?
+//    io.w.phtV | pht.readAsync(io.r.phtI, writeFirst)
+  io.r.phtV := pht.readAsync(io.r.phtI, writeFirst)
   bht.write(io.w.bhtI, io.w.bhtV, io.w.bhtEn)
   pht.write(io.w.phtI, io.w.phtV, io.w.phtEn)
 }
