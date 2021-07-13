@@ -524,6 +524,13 @@ class CPU extends Component {
   val IF2 = new Stage {
     output(pcPlus4) := stored(pc) + 4
 
+    val readPHT = new StageComponent {
+      output(bhtV) := (bpu.io.w.bhtEn & stored(bhtI) === bpu.io.w.bhtI) ? bpu.io.w.bhtV | stored(bhtV)
+      output(phtI) := U(output(bhtV), PHT.INDEX_WIDTH bits) ^ stored(pc)(PHT.INDEX_RANGE)
+      bpu.io.r.phtI := output(phtI)
+      output(phtV) := bpu.io.r.phtV
+    }
+
     val decideJump = new StageComponent {
       output(btbDataLine) := btb.io.r.dataLine
       output(btbTagLine) := btb.io.r.tagLine
@@ -543,7 +550,7 @@ class CPU extends Component {
       output(btbHit) := btbHitLine.orR
 
       output(jumpPC) := U(btbData ## BTB.ADDR_PADDING)
-      output(wantJump) := stored(phtV)(1) & output(btbHit)
+      output(wantJump) := produced(phtV)(1) & output(btbHit)
     }
 
     val assignJumpTask = RegNext(will.input) & produced(wantJump)
@@ -561,12 +568,6 @@ class CPU extends Component {
       output(bhtI) := stored(pc)(BHT.BASE_RANGE) ^ stored(pc)(BHT.INDEX_RANGE)
       bpu.io.r.bhtI := output(bhtI)
       output(bhtV) := bpu.io.r.bhtV
-    }
-
-    val readPHT = new StageComponent {
-      output(phtI) := U(produced(bhtV), PHT.INDEX_WIDTH bits) ^ stored(pc)(PHT.INDEX_RANGE)
-      bpu.io.r.phtI := output(phtI)
-      output(phtV) := bpu.io.r.phtV
     }
 
     val readBTB = new StageComponent {
