@@ -1,7 +1,7 @@
 package cpu
 
 import spinal.core._
-import defs.ConstantVal._
+import scala.language.postfixOps
 
 object JU_OP extends SpinalEnum {
   val lz, gez, f, t, e, noe, lez, gz = newElement()
@@ -11,40 +11,26 @@ object JU_PC_SRC extends SpinalEnum {
   val rs, offset, index = newElement()
 }
 
+/** @note 加入分支预测后，JU的功能是在EX阶段判断是否发生跳转 */
 class JU extends Component {
-  /// 处理跳转
 
   // in
   val op = in(JU_OP)
-  val pc_src = in(JU_PC_SRC)
-  val a = in SInt (32 bits)
-  val b = in SInt (32 bits)
-
-  val pc = in UInt (32 bits)
-  val offset = in SInt (16 bits)
-  val index = in UInt (26 bits)
+  val a  = in SInt (32 bits)
+  val b  = in SInt (32 bits)
 
   // out
-  val jump = out Bool
-  val jump_pc = out UInt (32 bits)
-
-  //
-  import JU_OP._
+  val jump = out Bool ()
 
   jump := op.mux(
-    lz -> (a < 0),
-    gez -> (a >= 0),
-    f -> False,
-    t -> True,
-    lez -> (a <= 0),
-    gz -> (a > 0),
-    noe -> (a =/= b),
-    e -> (a === b)
-  )
-  jump_pc := pc_src.mux(
-    JU_PC_SRC.rs -> U(a),
-    JU_PC_SRC.offset -> U(S(pc) + S(offset ## B"00")),
-    default -> U(pc(31 downto 28) ## index ## B"00")
+    JU_OP.lz  -> (a < 0),
+    JU_OP.gez -> (a >= 0),
+    JU_OP.f   -> False,
+    JU_OP.t   -> True,
+    JU_OP.lez -> (a <= 0),
+    JU_OP.gz  -> (a > 0),
+    JU_OP.noe -> (a =/= b),
+    JU_OP.e   -> (a === b)
   )
 }
 

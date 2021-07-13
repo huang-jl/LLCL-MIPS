@@ -4,7 +4,8 @@ import defs.InstructionSpec._
 import defs.Mips32Inst
 import defs.Mips32InstImplicits._
 import defs.ConstantVal
-import lib.{Key, Optional, Decoder, NotConsidered}
+import lib.{Decoder, Key, NotConsidered, Optional}
+import scala.language.postfixOps
 import spinal.core.{SYNC => _, _}
 
 class DU extends Component {
@@ -19,32 +20,31 @@ class DU extends Component {
     val alu_a_src = out(ALU_A_SRC)
     val alu_b_src = out(ALU_B_SRC)
 
-    val cp0_re = out Bool
-    val cp0_we = out Bool
+    val cp0_re = out Bool()
+    val cp0_we = out Bool()
 
-    val dcu_re = out Bool
-    val dcu_we = out Bool
+    val dcu_re = out Bool()
+    val dcu_we = out Bool()
     val dcu_be = out UInt (2 bits)
     val mu_ex  = out(MU_EX)
 
-    val hlu_hi_we  = out Bool
+    val hlu_hi_we  = out Bool()
     val hlu_hi_src = out(HLU_SRC)
-    val hlu_lo_we  = out Bool
+    val hlu_lo_we  = out Bool()
     val hlu_lo_src = out(HLU_SRC)
 
-    val rfu_we     = out Bool
+    val rfu_we     = out Bool()
     val rfu_rd     = out UInt (5 bits)
     val rfu_rd_src = out(RFU_RD_SRC)
 
     val ju_op     = out(JU_OP)
     val ju_pc_src = out(JU_PC_SRC)
 
-    val use_rs = out Bool
-    val use_rt = out Bool
+    val use_rs = out Bool()
+    val use_rt = out Bool()
 
     val exception = out(Optional(EXCEPTION()))
-    val eret      = out Bool
-    val is_trap   = out Bool
+    val eret      = out Bool()
 
     //tlb相关
     //读tlb到CP0
@@ -56,6 +56,13 @@ class DU extends Component {
     //tlbw index src
     val tlbIndexSrc =
       Utils.instantiateWhen(out(TLBIndexSrc()), ConstantVal.USE_TLB)
+
+    // 仅在开启FINAL_MODE后使用的
+    val invalidateDCache = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
+    val invalidateICache = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
+    val is_trap   = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
+
+    val fuck = out Bool() //例如特权指令，拉高后让后面的指令都不发射
   }
 
   // wires
@@ -92,10 +99,13 @@ class DU extends Component {
 
   val exception = Key(Optional(EXCEPTION()))
   val eret      = Key(Bool)
-  val isTrap    = Key(Bool)
 
   val tlbr, tlbw, tlbp = Key(Bool)
   val tlbIndexSrc      = Key(TLBIndexSrc())
+  val invalidateICache = Key(Bool)
+  val invalidateDCache = Key(Bool)
+  val isTrap    = Key(Bool)
+  val fuck             = Key(Bool)
 
   val decoder = new Decoder(32 bits, enableNotConsidered = true) {
     //下面是默认值，避免出现Latch
@@ -120,11 +130,14 @@ class DU extends Component {
     default(useRt) to False
     default(exception) to Optional.noneOf(EXCEPTION())
     default(eret) to False
-    default(isTrap) to False
     default(tlbr) to False
     default(tlbw) to False
     default(tlbp) to False
     default(tlbIndexSrc) to TLBIndexSrc.Index
+    default(invalidateICache) to False
+    default(invalidateDCache) to False
+    default(fuck) to False
+    default(isTrap) to False
 
     // Arithmetics
     val saShifts = Map(
@@ -145,7 +158,7 @@ class DU extends Component {
       SUBU -> ALU_OP.subu,
       SLT  -> ALU_OP.slt,
       SLTU -> ALU_OP.sltu,
-      MUL  -> ALU_OP.mult
+      MUL  -> ALU_OP.mul
     ) ++ Map(
       AND -> ALU_OP.and,
       NOR -> ALU_OP.nor,
@@ -159,6 +172,8 @@ class DU extends Component {
 
     for ((inst, op) <- RTypeArithmetics) {
       on(inst) {
+        set(rfuRd) to RFU_RD.rd
+        set(rfuRdSrc) to RFU_RD_SRC.alu
         set(aluBSrc) to ALU_B_SRC.rt
         set(aluOp) to op
         set(useRt) to True
@@ -181,11 +196,6 @@ class DU extends Component {
           set(hluHiSrc) to HLU_SRC.alu
           set(hluLoWe) to True
           set(hluLoSrc) to HLU_SRC.alu
-        }
-      } else {
-        on(inst) {
-          set(rfuRd) to RFU_RD.rd
-          set(rfuRdSrc) to RFU_RD_SRC.alu
         }
       }
     }
@@ -253,8 +263,10 @@ class DU extends Component {
         set(juPcSrc) to JU_PC_SRC.offset
       }
 
-      if (rtBranches contains inst) on(inst) {
-        set(useRt) to True
+      if (rtBranches contains inst) {
+        on(inst) {
+          set(useRt) to True
+        }
       }
     }
 
@@ -313,31 +325,6 @@ class DU extends Component {
       set(eret) to True
     }
 
-    val traps = Seq(
-      (TEQ, TEQI, ALU_OP.seq),
-      (TNE, TNEI, ALU_OP.sne),
-      (TGE, TGEI, ALU_OP.sge),
-      (TGEU, TGEIU, ALU_OP.sgeu),
-      (TLT, TLTI, ALU_OP.slt),
-      (TLTU, TLTIU, ALU_OP.sltu)
-    )
-    for ((rTypeInst, iTypeInst, op) <- traps) {
-      on(rTypeInst) {
-        set(useRs) to True
-        set(useRt) to True
-        set(aluOp) to op
-        set(aluASrc) to ALU_A_SRC.rs
-        set(aluBSrc) to ALU_B_SRC.rt
-        set(isTrap) to True
-      }
-      on(iTypeInst) {
-        set(useRs) to True
-        set(aluOp) to op
-        set(aluASrc) to ALU_A_SRC.rs
-        set(aluBSrc) to ALU_B_SRC.imm
-        set(isTrap) to True
-      }
-    }
 
     // Load & Store
     val loads = Map(
@@ -387,17 +374,65 @@ class DU extends Component {
     if (ConstantVal.USE_TLB) {
       on(TLBR) {
         set(tlbr) to True
+        set(fuck) to True
       }
       on(TLBWI) {
         set(tlbw) to True
         set(tlbIndexSrc) to TLBIndexSrc.Index
+        set(fuck) to True
       }
       on(TLBWR) {
         set(tlbw) to True
         set(tlbIndexSrc) to TLBIndexSrc.Random
+        set(fuck) to True
       }
       on(TLBP) {
         set(tlbp) to True
+        set(fuck) to True
+      }
+    }
+
+    if (ConstantVal.FINAL_MODE) {
+      val traps = Seq(
+        (TEQ, TEQI, ALU_OP.seq),
+        (TNE, TNEI, ALU_OP.sne),
+        (TGE, TGEI, ALU_OP.sge),
+        (TGEU, TGEIU, ALU_OP.sgeu),
+        (TLT, TLTI, ALU_OP.slt),
+        (TLTU, TLTIU, ALU_OP.sltu)
+      )
+      for ((rTypeInst, iTypeInst, op) <- traps) {
+        on(rTypeInst) {
+          set(useRs) to True
+          set(useRt) to True
+          set(aluOp) to op
+          set(aluASrc) to ALU_A_SRC.rs
+          set(aluBSrc) to ALU_B_SRC.rt
+          set(isTrap) to True
+        }
+        on(iTypeInst) {
+          set(useRs) to True
+          set(aluOp) to op
+          set(aluASrc) to ALU_A_SRC.rs
+          set(aluBSrc) to ALU_B_SRC.imm
+          set(isTrap) to True
+        }
+      }
+      on(ICacheIndexInvalidate) {
+        set(invalidateICache) to True
+        set(fuck) to True
+      }
+      on(ICacheHitInvalidate) {
+        set(invalidateICache) to True
+        set(fuck) to True
+      }
+      on(DCacheIndexInvalidate) {
+        set(invalidateDCache) to True
+        set(fuck) to True
+      }
+      on(DCacheHitInvalidate) {
+        set(invalidateDCache) to True
+        set(fuck) to True
       }
     }
 
@@ -450,13 +485,19 @@ class DU extends Component {
     io.exception := decoder.output(exception)
   }
   io.eret := decoder.output(eret)
-  io.is_trap := decoder.output(isTrap)
+  io.fuck := decoder.output(fuck)
 
   if (ConstantVal.USE_TLB) {
     io.tlbr := decoder.output(tlbr)
     io.tlbw := decoder.output(tlbw)
     io.tlbp := decoder.output(tlbp)
     io.tlbIndexSrc := decoder.output(tlbIndexSrc)
+  }
+
+  if (ConstantVal.FINAL_MODE) {
+    io.invalidateICache := decoder.output(invalidateICache)
+    io.invalidateDCache := decoder.output(invalidateDCache)
+    io.is_trap := decoder.output(isTrap)
   }
 }
 

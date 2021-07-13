@@ -8,8 +8,6 @@ object ConstantVal {
   def INST_NOP: Mips32Inst = B"00000000000000000000000000100000"
   def INIT_PC = U"hBFC00000"
 
-  val SRAM_BUS_CONFIG =
-    SramBusConfig(dataWidth = 32, addrWidth = 32, selWidth = 2)
   val AXI_BUS_CONFIG = Axi4Config(
     addressWidth = 32,
     dataWidth = 32,
@@ -18,22 +16,26 @@ object ConstantVal {
     useQos = false
   )
 
-  val SIM = false  //是否仿真，会生成RAM的初始化文件
-
   /** TLB相关配置 */
   val PABITS = 32 //至少应该大于等于32，表示支持的物理地址宽度
-  val TLBEntryNum = 16  //TLB表项的个数, 2的幂
-  val USE_TLB = false //是否开启真正的TLB
-  val USE_MASK = false  //是否开启TLB的Mask，和PageMask寄存器
+  val TLBEntryNum = 32  //TLB表项的个数, 2的幂
+  val USE_TLB = true //是否开启真正的TLB
 
   /** Cache配置 */
-  val IcacheLineSize = 32  //bytes, 2的幂
-  val IcacheIndexWIdth = 7  //icache中index的宽度，对应2**DcacheIndexWidth个组
+  val IcacheLineSize = 32  //一个cacheLine的大小，单位是bytes, 2的幂
   val IcacheWayNum = 2  //icache中路数
+  val IcacheSetsPerWay = 128  //影响Config1中的IS字段
   val IcacheFifoDepth = 8 //TODO ICache的victim cache深度
 
-  val DcacheLineSize = 32  //bytes, 2的幂
-  val DcacheIndexWIdth = 7  //dcache中index的宽度，对应2**DcacheIndexWidth个组
+  val DcacheLineSize = 32  //一个cacheLine的大小，单位是bytes, 2的幂
   val DcacheWayNum = 2  //dcache中路数
-  val DcacheFifoDepth = 4 //DCache的FIFO深度
+  val DcacheSetsPerWay = 128  //影响Config1中的IS字段
+  val DcacheFifoDepth = 2 //DCache的FIFO深度
+
+  /** 时钟中断配置 */
+  val TimeInterruptEnable = false
+
+  /** 是否开启全部指令，关闭的时候基本仅覆盖初赛的指令；
+   * 不能控制TLB相关的指令和逻辑 */
+  val FINAL_MODE = true
 }

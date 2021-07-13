@@ -1,14 +1,11 @@
 *.class
 *.log
 *.bak
-*.bin
-*.elf
-*.coe
 *.o
 *.a
-golden_trace.txt
-
-!core/**/rtl/*.v
+vivado.conf
+*.txt
+!golden_trace.txt
 
 # sbt specific
 .bsp/
@@ -35,7 +32,6 @@ bin/
 .project
 .settings
 .cache-main
-
 # VSCode
 .vscode/
 
@@ -58,19 +54,12 @@ simWorkspace/
 tmp/
 null
 
-tests/func/bin.lds
-tests/func/convert
-tests/func/**/obj
-core/*.v
-
 # Vivado
+*.hw/
 *.runs/
 *.sim/
+*.tmp/
+*.cache/
+*.Xil/
 *.jou
 *.ip_user_files/
-**/xilinx_ip/clk_pll/*
-!**/xilinx_ip/clk_pll/*.xci
-**/xilinx_ip/data_ram/*
-!**/xilinx_ip/data_ram/*.xci
-**/xilinx_ip/inst_ram/*
-!**/xilinx_ip/inst_ram/*.xci

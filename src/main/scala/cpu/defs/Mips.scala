@@ -1,8 +1,8 @@
 package cpu.defs
 
-import spinal.core._
-
 import cpu.Utils._
+import spinal.core._
+import scala.language.postfixOps
 
 object Fields {
   val rs     = 25 downto 21
@@ -16,6 +16,8 @@ object Fields {
   val fn     = 5 downto 0
   val co     = 25
   val sel    = 2 downto 0
+
+  val cacheOp = 20 downto 16
 }
 
 case class Mips32Inst() extends Bundle {
@@ -33,6 +35,8 @@ case class Mips32Inst() extends Bundle {
   def fn          = bits(Fields.fn)
   def co          = bits(Fields.co)
   def sel         = bits(Fields.sel).asUInt
+
+  def cacheOp     = bits(Fields.cacheOp)
 }
 
 object Mips32InstImplicits {
@@ -125,6 +129,11 @@ object InstructionSpec {
     if (fillZeros) spec.force(24 downto 6, "0" * 19) else spec
   }
 
+  private def CACHE(cacheOp:String) =
+    InstructionSpec()
+      .force(Fields.op, "101111")
+      .force(Fields.cacheOp, cacheOp)
+
   val ADD   = special(fn = "100000")
   val ADDI  = IType(op = "001000")
   val ADDU  = special(fn = "100001")
@@ -181,19 +190,6 @@ object InstructionSpec {
     .forceZero(Fields.rt)
     .forceZero(Fields.sa)
 
-  val TEQ  = special(fn = "110100", sa = "-----")
-  val TNE  = special(fn = "110110", sa = "-----")
-  val TGE  = special(fn = "110000", sa = "-----")
-  val TGEU = special(fn = "110001", sa = "-----")
-  val TLT  = special(fn = "110010", sa = "-----")
-  val TLTU = special(fn = "110011", sa = "-----")
-
-  val TEQI  = regimm(rt = "01100")
-  val TNEI  = regimm(rt = "01110")
-  val TGEI  = regimm(rt = "01000")
-  val TGEIU = regimm(rt = "01001")
-  val TLTI  = regimm(rt = "01010")
-  val TLTIU = regimm(rt = "01011")
 
   val MFHI = special(fn = "010000").forceZero(Fields.rs).forceZero(Fields.rt)
   val MFLO = special(fn = "010010").forceZero(Fields.rs).forceZero(Fields.rt)
@@ -221,9 +217,27 @@ object InstructionSpec {
   val TLBWI = cop0co(fn = "000010") //write tlb entry indexed by Index CP0 Reg
   val TLBWR = cop0co(fn = "000110") //write tlb entry indexed by Random CP0 Reg
 
+  // Used only when ConstantVal.FINAL_MODE = true
+  val TEQ  = special(fn = "110100", sa = "-----")
+  val TNE  = special(fn = "110110", sa = "-----")
+  val TGE  = special(fn = "110000", sa = "-----")
+  val TGEU = special(fn = "110001", sa = "-----")
+  val TLT  = special(fn = "110010", sa = "-----")
+  val TLTU = special(fn = "110011", sa = "-----")
+
+  val TEQI  = regimm(rt = "01100")
+  val TNEI  = regimm(rt = "01110")
+  val TGEI  = regimm(rt = "01000")
+  val TGEIU = regimm(rt = "01001")
+  val TLTI  = regimm(rt = "01010")
+  val TLTIU = regimm(rt = "01011")
   val SYNC = special(fn = "001111")
     .forceZero(Fields.rs)
     .forceZero(Fields.rt)
     .forceZero(Fields.rd)
   val WAIT = cop0co(fn = "100000", fillZeros = false)
+  val ICacheIndexInvalidate = CACHE("00000")
+  val ICacheHitInvalidate = CACHE("10000")
+  val DCacheIndexInvalidate = CACHE("00001")
+  val DCacheHitInvalidate = CACHE("10101")
 }

@@ -1,140 +1,108 @@
 package cpu
 
-import lib.{Key, Optional, Record, Updating}
+import lib.{Key, Optional, Record}
 import spinal.core._
 
 class Stage extends Area with ValCallbackRec {
-  // Input and output. Automatically connected to StageComponent's,
-  // but actual connection user configurable.
-  // read and output are interfaces of the stage,
-  // while input and produced are linked to StageComponent's.
-  val read     = Record().setAsReg() // Values read from last stage
-  val input    = Record()            // Values serving as StageComponent input
-  val produced = Record()            // Values produced by current stage
-  val output   = Record()            // Values output to the next stage
+  //
+  val stored   = Record().setAsReg() // stage input
+  val input    = Record()            // stage component input
+  val output   = Record()            // stage component output
+  val produced = Record()            // stage output
 
-  // Additional I/O Records for being referenced from other stages.
-  // currentInput does not reset even after the stage finishes its work.
-  // currentOutput keeps its value even after the input resets, when the stage
-  // can not reproduce the output.
-  val currentInput  = Record() // Input for the inst, not reset
-  val currentOutput = Record() // Output of the inst, kept unchanged
-  private val inputStored =
-    Record().setAsReg() // Aux regs to implement currentInput
-  private val outputStored =
-    Record().setAsReg() // Aux regs to implement currentOutput
-
-  // Exceptions.
+  //
   val exceptionToRaise = Optional(EXCEPTION()) default None // User settable
   val prevException    = Reg(Optional(EXCEPTION())) init None
-  val exception =
-    Updating(Optional(EXCEPTION())) init Optional.noneOf(EXCEPTION())
+  val exception        = Optional(EXCEPTION())
+  exception := prevException orElse exceptionToRaise
 
-  // Start of arbitration.
-  // States
-  val empty   = Updating(Bool) init True // Contains no instruction
-  val idle    = Updating(Bool) init True // The current instruction is finished
-  val toFlush = Reg(Bool) init False
-  // Immediate flushing might not be possible,
-  // so the will to flush is stored until "flushable".
-
-  // Signals, user settable.
-  val stalls       = False.allowOverride
-  val signalsFlush = False.allowOverride
-  val flushable    = True.allowOverride
-
-  // Connections (Default values are for the unconnected)
-  val prevOutputReady  = Bool default True
-  val nextWaitingInput = Bool default True
-  val receiving        = Bool default True
-
-  // Calculated. Should be hard to read, since it is already hard to write.
-  val firing    = !empty.prev && !idle.prev
-  val finishing = firing && !stalls
-
-  val wantsFlush = toFlush || signalsFlush
-  val doesFlush  = wantsFlush && flushable
-  toFlush := wantsFlush && !doesFlush
-
-  val outputReady = !empty.prev && !wantsFlush && (idle.prev || finishing)
-  val sending     = outputReady && nextWaitingInput
-
-  val waitingInput = empty.prev || doesFlush || sending
-
-  empty.next := !receiving && waitingInput
-  idle.next := !empty.prev && !receiving && !sending && (idle.prev || finishing) && !doesFlush
-
-  // Makes this stage reset its input in the next cycle.
-  // Though might not be a designated use,
-  // this can be used to force an instruction to be finished in one cycle.
-  val willReset = empty.next || idle.next
-
-  val valid = !empty.prev
-
-  when(firing) {
-    exception.next := exception.prev orElse exceptionToRaise
+  //
+  val is = new Bundle {
+    val empty = RegInit(True)      // 当前该流水段是否为空转
+    val done  = True.allowOverride // 当前该流水段是否已完成工作 用户定义
   }
+  //
+  val can = new Bundle {
+    val flush = True.allowOverride // 当前该流水段能否进行结果的作废 用户定义
+  }
+  //
+  val want = new Bundle {
+    val flush = False.allowOverride // 是否要布置结果作废的任务 用户定义
+  }
+  //
+  val to = new Bundle {
+    val flush = RegInit(False) // 是否有结果作废的任务
+  }
+  //
+  val will = new Bundle {
+    val flush  = Bool // 当前处理结果将被作废
+    val input  = Bool // 有一条有效指令将要移入
+    val output = Bool // 有一条有效指令将要移出
+  }
+  //
+  val prev = new Bundle {
+    val will = new Bundle {
+      val flush  = False.allowOverride
+      val output = True.allowOverride
+    }
+  }
+  val next = new Bundle {
+    val is = new Bundle {
+      val empty = False.allowOverride
+    }
+    val will = new Bundle {
+      val output = True.allowOverride
+    }
+  }
+  //
+  is.empty := !will.input & (is.empty | will.output)
+  to.flush := (to.flush | want.flush) & !can.flush
+  will.flush := (to.flush | want.flush) & can.flush
+  will.input := prev.will.output & !prev.will.flush
+  will.output := !is.empty & (will.flush | is.done & (next.is.empty | next.will.output))
 
-  // End of arbitration.
-
-  // Default linking between I/O Records.
-
+  //
   val currentScope = DslScopeStack.get
 
-  def atTheBeginning(body: => Unit) = {
-    currentScope.push()
-    val swapContext = currentScope.swap()
-    body
-    swapContext.appendBack()
-    currentScope.pop()
+  // Add every StageComponent defined inside the body of this.
+  override def valCallbackRec(obj: Any, name: String) = {
+    obj match {
+      case stageComponent: StageComponent => addComponent(stageComponent)
+      case _                              => super.valCallbackRec(obj, name)
+    }
   }
 
-  input.whenAddedKey(new Record.AddedKeyCallback {
+  stored.whenAddedKey(new Record.AddedKeyCallback {
     def apply[T <: Data](key: Key[T], value: T) = atTheBeginning {
-      value := read(key)
-      value.allowOverride
-      output += key
+      value.setAsReg()
 
-      when(firing) {
-        inputStored(key) := value
-        currentInput(key) := value
-      } otherwise {
-        currentInput(key) := inputStored(key)
+      key.emptyValue match {
+        case Some(v) =>
+          value init v
+          when(will.output && (!will.input || prevException.nonEmpty)) { value := v }
+        case None =>
       }
     }
   })
 
-  produced.whenAddedKey(new Record.AddedKeyCallback {
+  input.whenAddedKey(new Record.AddedKeyCallback {
     def apply[T <: Data](key: Key[T], value: T) = atTheBeginning {
-      output(key) := value
-      value.allowOverride
+      value := stored(key)
     }
   })
 
   output.whenAddedKey(new Record.AddedKeyCallback {
     def apply[T <: Data](key: Key[T], value: T) = atTheBeginning {
+      produced(key) := value
+    }
+  })
+
+  produced.whenAddedKey(new Record.AddedKeyCallback {
+    def apply[T <: Data](key: Key[T], value: T) = atTheBeginning {
       value.allowOverride
-      if (!(produced contains key)) {
-        value := input(key)
+      if (!(output contains key)) {
+        value := stored(key)
       }
-
-      when(finishing) {
-        outputStored(key) := value
-      }
-
-      currentOutput(key) := finishing ? value | outputStored(key)
-    }
-  })
-
-  currentInput.whenAddedKey(new Record.AddedKeyCallback {
-    def apply[T <: Data](key: Key[T], value: T) = atTheBeginning {
-      input += key
-    }
-  })
-
-  currentOutput.whenAddedKey(new Record.AddedKeyCallback {
-    def apply[T <: Data](key: Key[T], value: T) = atTheBeginning {
-      output += key
     }
   })
 
@@ -143,9 +111,8 @@ class Stage extends Area with ValCallbackRec {
     component.input.keys foreach { case key =>
       component.input(key) := input(key)
     }
-
-    component.produced.keys foreach { case key =>
-      produced(key) := component.produced(key)
+    component.output.keys foreach { case key =>
+      output(key) := component.output(key)
     }
 
     component.input.whenAddedKey(new Record.AddedKeyCallback {
@@ -154,60 +121,43 @@ class Stage extends Area with ValCallbackRec {
       }
     })
 
-    component.produced.whenAddedKey(new Record.AddedKeyCallback {
+    component.output.whenAddedKey(new Record.AddedKeyCallback {
       def apply[T <: Data](key: Key[T], value: T) = {
-        produced(key) := value
+        output(key) := value
       }
     })
   }
 
-  // Add every StageComponent defined inside the body of this.
-  override def valCallbackRec(obj: Any, name: String) = {
-    obj match {
-      case stageComponent: StageComponent =>
-        addComponent(stageComponent)
-      case _ => super.valCallbackRec(obj, name)
-    }
-  }
-
-  // Set reset value for a specific input key.
-  // If not set, then that input is preserved een when willReset.
-  def setInputReset[T <: Data](key: Key[T], resetValue: T) = {
-    read(key) init resetValue
-    when(willReset) {
-      read(key) := resetValue
-    }
-  }
-
   def connect(next: Stage) = {
-    next.prevOutputReady := outputReady
-    next.receiving := sending
-    nextWaitingInput := next.waitingInput
+    next.prev.will.flush := will.flush
+    next.prev.will.output := will.output
+    this.next.is.empty := next.is.empty
+    this.next.will.output := next.will.output
 
-    when(next.signalsFlush) {
-      signalsFlush := True
-    }
-
-    when(sending) {
-      next.prevException := exception.next
-      next.exception.prev := exception.next
-      when(exception.next.isDefined) {
-        next.willReset := True
-      }
+    when(next.will.input) {
+      next.prevException := exception
+    } elsewhen (next.will.output) {
+      next.prevException := None
     }
 
     // Prioritize reset over send.
     atTheBeginning {
-      when(sending) {
-        next.read.keys foreach { case key =>
-          next.read(key) := currentOutput(key)
-        }
+      when(next.will.input) {
+        next.stored.keys foreach { case key => next.stored(key) := produced(key) }
       }
     }
+  }
+
+  def atTheBeginning(body: => Unit) = {
+    currentScope.push()
+    val swapContext = currentScope.swap()
+    body
+    swapContext.appendBack()
+    currentScope.pop()
   }
 }
 
 class StageComponent extends Area {
-  val input    = Record()
-  val produced = Record()
+  val input  = Record()
+  val output = Record()
 }

@@ -1,14 +1,18 @@
-name := "LLCL-MIPS"
-version := "0.1"
+ThisBuild / scalaVersion     := "2.13.1"
+ThisBuild / version          := "1.0.0"
+ThisBuild / organization     := ""
+ThisBuild / transitiveClassifiers := Seq(Artifact.SourceClassifier)
 
-scalaVersion := "2.11.12"
-val spinalVersion = "1.5.0"
+val spinalVersion = "1.6.0"
 
-libraryDependencies ++= Seq(
-  "com.github.spinalhdl" % "spinalhdl-core_2.11" % spinalVersion,
-  "com.github.spinalhdl" % "spinalhdl-lib_2.11" % spinalVersion,
-  compilerPlugin("com.github.spinalhdl" % "spinalhdl-idsl-plugin_2.11" % spinalVersion)
-)
-
-fork := true
-
+lazy val root = (project in file("."))
+  .settings(
+    name := "llcl-mips",
+    libraryDependencies ++= Seq(
+      "com.github.spinalhdl" %% "spinalhdl-core" % spinalVersion,
+      "com.github.spinalhdl" %% "spinalhdl-lib" % spinalVersion,
+      compilerPlugin("com.github.spinalhdl" %% "spinalhdl-idsl-plugin" % spinalVersion),
+      "com.typesafe" % "config" % "1.4.1"
+    ),
+    fork := true
+  )
