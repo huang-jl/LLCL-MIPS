@@ -575,7 +575,6 @@ class CPU extends Component {
       output(bhtI) := stored(pc)(BHT.BASE_RANGE) ^ stored(pc)(BHT.INDEX_RANGE)
       bpu.io.r.bhtI := output(bhtI)
       output(bhtV) := bpu.io.r.bhtV
-    }
 
       output(phtI) := U(output(bhtV), PHT.INDEX_WIDTH bits) ^ stored(pc)(PHT.INDEX_RANGE)
     }
@@ -681,15 +680,15 @@ class CPU extends Component {
     IF2.is.done := False
     IF1.is.done := False
   }
-  IF1.stored(pc).addAttribute("mark_debug", "true")
-  IF2.stored(ifPaddr).addAttribute("mark_debug", "true")
-  IF2.stored(pc).addAttribute("mark_debug", "true")
-  ME1.stored(pc).addAttribute("mark_debug", "true")
-  ME1.stored(dataMMURes).paddr.addAttribute("mark_debug", "true")
-  ME2.stored(pc).addAttribute("mark_debug", "true")
+//  IF1.stored(pc).addAttribute("mark_debug", "true")
+//  IF2.stored(ifPaddr).addAttribute("mark_debug", "true")
+//  IF2.stored(pc).addAttribute("mark_debug", "true")
+//  ME1.stored(pc).addAttribute("mark_debug", "true")
+//  ME1.stored(dataMMURes).paddr.addAttribute("mark_debug", "true")
+//  ME2.stored(pc).addAttribute("mark_debug", "true")
 //  cp0.interruptOnNextInst.addAttribute("mark_debug", "true")
 //  cp0.regs("Cause")("IP_HW").addAttribute("mark_debug", "true")
-  cp0.regs("Cause")("ExcCode").addAttribute("mark_debug", "true")
+//  cp0.regs("Cause")("ExcCode").addAttribute("mark_debug", "true")
 //  cp0.regs("Status")("IM").addAttribute("mark_debug", "true")
 //
 //  dcu.io.stage2.read.addAttribute("mark_debug", "true")

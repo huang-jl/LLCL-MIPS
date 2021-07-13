@@ -232,13 +232,20 @@ object InstructionSpec {
   val TGEIU = regimm(rt = "01001")
   val TLTI  = regimm(rt = "01010")
   val TLTIU = regimm(rt = "01011")
+
+  val MADD  = special2(fn = "000000")
+  val MADDU  = special2(fn = "000001")
+  val MSUB  = special2(fn = "000100")
+  val MSUBU  = special2(fn = "000101")
+
+  val ICacheIndexInvalidate = CACHE("00000")
+  val ICacheHitInvalidate = CACHE("10000")
+  val DCacheIndexInvalidate = CACHE("00001")
+  val DCacheHitInvalidate = CACHE("10101")
+
   val SYNC = special(fn = "001111")
     .forceZero(Fields.rs)
     .forceZero(Fields.rt)
     .forceZero(Fields.rd)
   val WAIT = cop0co(fn = "100000", fillZeros = false)
-  val ICacheIndexInvalidate = CACHE("00000")
-  val ICacheHitInvalidate = CACHE("10000")
-  val DCacheIndexInvalidate = CACHE("00001")
-  val DCacheHitInvalidate = CACHE("10101")
 }
