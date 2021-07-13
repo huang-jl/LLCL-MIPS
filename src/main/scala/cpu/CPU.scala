@@ -61,10 +61,10 @@ class CPU extends Component {
   bpu.io.w.bhtEn.clear
   bpu.io.w.phtEn.clear
 
-  val bhtI  = Key(UInt(BHT.INDEX_WIDTH bits))
-  val bhtV  = Key(Bits(BHT.DATA_WIDTH bits))
-  val phtI  = Key(UInt(PHT.INDEX_WIDTH bits))
-  val phtV  = Key(UInt(2 bits))
+  val bhtI = Key(UInt(BHT.INDEX_WIDTH bits))
+  val bhtV = Key(Bits(BHT.DATA_WIDTH bits))
+  val phtI = Key(UInt(PHT.INDEX_WIDTH bits))
+  val phtV = Key(UInt(2 bits))
 
   val btbDataLine = Key(Bits(BTB.NUM_WAYS * BTB.ADDR_WIDTH bits))
   val btbTagLine  = Key(Bits(BTB.NUM_WAYS * (1 + BTB.TAG_WIDTH) bits))
@@ -114,24 +114,18 @@ class CPU extends Component {
   val ifPaddr = Key(UInt(32 bits))
   val if2En   = Key(Bool) setEmptyValue False
 
+  val fuck = Key(Bool) setEmptyValue False //类似特权级的指令，会暂停整个流水线
+
   val dataMMURes         = Key(new MMUTranslationRes(ConstantVal.FINAL_MODE)) //EX阶段查询数据TLB
-  val tlbr               = Key(Bool)                                       //ID解码
-  val tlbw               = Key(Bool)                                       //ID解码
-  val tlbp               = Key(Bool)                                       //ID解码
-  val tlbIndexSrc        = Key(TLBIndexSrc())                              //ID解码
-  val instFetch          = Key(Bool)                                       //异常是否是取值时发生的
-  val tlbRefillException = Key(Bool)                                       //是否是TLB缺失异常（影响异常处理地址）
+  val tlbr               = Key(Bool) setEmptyValue (False)                    //ID解码
+  val tlbw               = Key(Bool) setEmptyValue (False)                    //ID解码
+  val tlbp               = Key(Bool) setEmptyValue (False)                    //ID解码
+  val tlbIndexSrc        = Key(TLBIndexSrc())                                 //ID解码
+  val instFetch          = Key(Bool)                                          //异常是否是取值时发生的
+  val tlbRefillException = Key(Bool)                                          //是否是TLB缺失异常（影响异常处理地址）
 
   val invalidateICache = Key(Bool) setEmptyValue False
   val invalidateDCache = Key(Bool) setEmptyValue False
-
-  val fuck = Key(Bool) setEmptyValue False //类似特权级的指令，会暂停整个流水线
-
-  if (ConstantVal.FINAL_MODE) {
-    tlbw.setEmptyValue(False)
-    tlbp.setEmptyValue(False)
-    tlbr.setEmptyValue(False)
-  }
 
   //MMU input signal
   //目前MMU和CP0直接相连，MMU拿到的CP0寄存器值都是实时的
@@ -259,8 +253,8 @@ class CPU extends Component {
     // 异常
     exceptionToRaise := None
     // Trap异常，当aluResultC的第0位为1时发生
-    if(ConstantVal.FINAL_MODE) {
-      when (input(isTrap) && input(aluResultC)(0)) {
+    if (ConstantVal.FINAL_MODE) {
+      when(input(isTrap) && input(aluResultC)(0)) {
         exceptionToRaise := EXCEPTION.Tr
       }
     }
@@ -349,6 +343,10 @@ class CPU extends Component {
         ALU_B_SRC.rt  -> U(input(rtValue)),
         ALU_B_SRC.imm -> input(inst).immExtended.asUInt
       )
+      if(ConstantVal.FINAL_MODE) {
+        alu.io.input.hi := U(hlu.hi_we ? hlu.new_hi | hlu.hi_v)
+        alu.io.input.lo := U(hlu.lo_we ? hlu.new_lo | hlu.lo_v)
+      }
 
       alu.io.will.input := will.input
       alu.io.will.output := will.output
@@ -458,8 +456,6 @@ class CPU extends Component {
         output(tlbw) := du.io.tlbw
         output(tlbp) := du.io.tlbp
         output(tlbIndexSrc) := du.io.tlbIndexSrc
-      }
-      if (ConstantVal.FINAL_MODE) {
         produced(isTrap) := du.io.is_trap
         output(invalidateICache) := du.io.invalidateICache
         output(invalidateDCache) := du.io.invalidateDCache
@@ -475,25 +471,6 @@ class CPU extends Component {
       output(rsValue) := rfu.io.ra.data
       output(rtValue) := rfu.io.rb.data
     }
-
-//一旦一条指令output，那么可以更新prevBranch，表示这条output的指令是否是branch
-//will.input表明下一周期会有一条新的指令过来，那么delayWillInput表明当前指令是新进来的指令
-//val prevBranch = RegInit(False)
-//    val delayWillInput = RegNext(will.input) init(False)
-//    val bdValue = Updating(Bool) init(False)
-//    when(will.output) {
-//      prevBranch := du.io.ju_op =/= JU_OP.f
-//    }
-//    when(delayWillInput) {
-//      bdValue.next := prevBranch
-//    }.otherwise {
-//      bdValue.next := bdValue.prev
-//    }
-//    when(will.flush) {
-//      prevBranch := False
-//    }
-//    output(bd) := bdValue.next
-
 
     when(EX.stored(rfuWe) && EX.stored(rfuAddr) === stored(inst).rs) {
       produced(rsValue) := EX.produced(rfuData)

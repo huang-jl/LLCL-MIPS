@@ -5,6 +5,7 @@ import spinal.idslplugin.PostInitCallback
 
 import scala.collection.mutable
 import scala.language.existentials
+import scala.language.postfixOps
 
 object NotConsidered extends Key(Bool)
 

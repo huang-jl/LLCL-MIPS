@@ -1,6 +1,7 @@
 package cpu
 
 import spinal.core._
+import scala.language.postfixOps
 
 package object Utils {
   def signExtend(b: Bits, length: Int = 32) = b.asSInt.resize(length).asBits
@@ -9,6 +10,10 @@ package object Utils {
 
   def instantiateWhen[T <: Data](data: => T, when: Boolean): T = {
     if (when) data else null.asInstanceOf[T]
+  }
+
+  def instantiateWhen[T <: SpinalEnum](data: => SpinalEnumElement[T], when: Boolean): SpinalEnumElement[T] = {
+    if (when) data else null.asInstanceOf[SpinalEnumElement[T]]
   }
 
   def equalAny[T <: Data](left: T, right: T*): Bool = {

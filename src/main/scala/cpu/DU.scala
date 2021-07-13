@@ -130,14 +130,16 @@ class DU extends Component {
     default(useRt) to False
     default(exception) to Optional.noneOf(EXCEPTION())
     default(eret) to False
-    default(tlbr) to False
-    default(tlbw) to False
-    default(tlbp) to False
-    default(tlbIndexSrc) to TLBIndexSrc.Index
-    default(invalidateICache) to False
-    default(invalidateDCache) to False
     default(fuck) to False
-    default(isTrap) to False
+    if(ConstantVal.FINAL_MODE) {
+      default(tlbr) to False
+      default(tlbw) to False
+      default(tlbp) to False
+      default(tlbIndexSrc) to TLBIndexSrc.Index
+      default(invalidateICache) to False
+      default(invalidateDCache) to False
+      default(isTrap) to False
+    }
 
     // Arithmetics
     val saShifts = Map(
@@ -197,21 +199,6 @@ class DU extends Component {
           set(hluLoWe) to True
           set(hluLoSrc) to HLU_SRC.alu
         }
-      }
-    }
-
-    val countLeading = Map(
-      CLO -> ALU_OP.clo,
-      CLZ -> ALU_OP.clz
-    )
-
-    for ((inst, op) <- countLeading) {
-      on(inst) {
-        set(useRs) to True
-        set(aluASrc) to ALU_A_SRC.rs
-        set(rfuRd) to RFU_RD.rd
-        set(rfuRdSrc) to RFU_RD_SRC.alu
-        set(aluOp) to op
       }
     }
 
@@ -371,6 +358,44 @@ class DU extends Component {
     }
 
     if (ConstantVal.FINAL_MODE) {
+      val countLeading = Map(
+        CLO -> ALU_OP.clo,
+        CLZ -> ALU_OP.clz
+      )
+
+      for ((inst, op) <- countLeading) {
+        on(inst) {
+          set(useRs) to True
+          set(aluASrc) to ALU_A_SRC.rs
+          set(rfuRd) to RFU_RD.rd
+          set(rfuRdSrc) to RFU_RD_SRC.alu
+          set(aluOp) to op
+        }
+      }
+
+      // Arithmetics using Hi Lo Reg
+      val mulWithHiLo = Map(
+        MADD -> ALU_OP.madd,
+        MADDU -> ALU_OP.maddu,
+        MSUB -> ALU_OP.msub,
+        MSUBU -> ALU_OP.msubu
+      )
+      for((inst, op) <- mulWithHiLo) {
+        on(inst) {
+          set(aluOp) to op
+          set(aluASrc) to ALU_A_SRC.rs
+          set(aluBSrc) to ALU_B_SRC.rt
+          set(useRs) to True
+          set(useRt) to True
+          set(rfuRd) to RFU_RD.rd
+          set(rfuRdSrc) to RFU_RD_SRC.alu
+
+          set(hluHiWe) to True
+          set(hluHiSrc) to HLU_SRC.alu
+          set(hluLoWe) to True
+          set(hluLoSrc) to HLU_SRC.alu
+        }
+      }
       //TLB
       on(TLBR) {
         set(tlbr) to True
