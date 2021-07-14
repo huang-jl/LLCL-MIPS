@@ -22,6 +22,11 @@ class JU extends Component {
   // out
   val jump = out Bool ()
 
+//  val lz = a(31)  //最高位为1表示小于0
+//  val gez = !lz
+//  val gz = !a(31) & a =/= 0 //最高位为0且不等于1
+//  val lez = !gz
+
   jump := op.mux(
     JU_OP.lz  -> (a < 0),
     JU_OP.gez -> (a >= 0),

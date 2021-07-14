@@ -200,12 +200,12 @@ class ALU extends Component {
       val mulAdd = (hi @@ lo) + multiply.result
       val mulSub = (hi @@ lo) - multiply.result
       is(clo) {
-        //        c := cloImpl(a, clo)
-        c := ALU.clo(a)
+        c := cloImpl(a, clo)
+//        c := ALU.clo(a)
       }
       is(clz) {
-        //        c := cloImpl(~a, clz)
-        c := ALU.clz(a)
+        c := cloImpl(~a, clz)
+//        c := ALU.clz(a)
       }
       is(seq) {
         c := (a === b).asUInt(32 bits)
@@ -236,28 +236,28 @@ class ALU extends Component {
         d := mulSub(0, 32 bits)
       }
     }
-//    def cloImpl(a: BitVector, nameProvider: Nameable) =
-//      new Composite(nameProvider) {
-//        val layers = mutable.ArrayBuffer[Vec[Bits]](
-//          Vec(a.asBools map { _.asBits })
-//        )
-//        for (i <- 1 to log2Up(32)) {
-//          val groupLength = 1 << i
-//          val groupCount  = 32 / groupLength
-//          layers += Vec(for (j <- 0 until groupCount) yield {
-//            val hiHalf = layers.last(j)
-//            val loHalf = layers.last(j + 1)
-//            hiHalf.msb mux (
-//              False -> B"0" ## hiHalf,
-//              True -> (loHalf.msb mux (
-//                False -> B"1" ## loHalf,
-//                True  -> B(1 << i)
-//              ))
-//            )
-//          })
-//        }
-//        val result = layers.last(0).asUInt.resize(32 bits)
-//      }.result
+    def cloImpl(a: BitVector, nameProvider: Nameable) =
+      new Composite(nameProvider) {
+        val layers = mutable.ArrayBuffer[Vec[Bits]](
+          Vec(a.asBools map { _.asBits })
+        )
+        for (i <- 1 to log2Up(32)) {
+          val groupLength = 1 << i
+          val groupCount  = 32 / groupLength
+          layers += Vec(for (j <- 0 until groupCount) yield {
+            val hiHalf = layers.last(2 * j + 1)
+            val loHalf = layers.last(j * 2)
+            hiHalf.msb mux (
+              False -> B"0" ## hiHalf,
+              True -> (loHalf.msb mux (
+                False -> B"01" ## loHalf((loHalf.getBitsWidth - 2) downto 0),
+                True  -> B(1 << i)
+              ))
+            )
+          })
+        }
+        val result = layers.last(0).asUInt.resize(32 bits)
+      }.result
   }
 }
 
@@ -270,17 +270,17 @@ object ALU {
   // 然后将其视为One-Hot找到最左侧的1的位置
   // 最后用31去减
   // 如果value为0那么直接是32
-  def clz(value: UInt): UInt = {
-    assert(value.getBitsWidth == 32)
-    val res                      = U(32)
-    val onlyLeftMostBitSet: UInt = OHMasking.last(value)
-    when(value =/= 0) {
-      res := (31 - OHToUInt(onlyLeftMostBitSet)).resize(6)
-    }
-    res.resize(32)
-  }
-
-  def clo(value: UInt): UInt = {
-    clz(~value)
-  }
+//  def clz(value: UInt): UInt = {
+//    assert(value.getBitsWidth == 32)
+//    val res                      = U(32)
+//    val onlyLeftMostBitSet: UInt = OHMasking.last(value)
+//    when(value =/= 0) {
+//      res := (31 - OHToUInt(onlyLeftMostBitSet)).resize(6)
+//    }
+//    res.resize(32)
+//  }
+//
+//  def clo(value: UInt): UInt = {
+//    clz(~value)
+//  }
 }

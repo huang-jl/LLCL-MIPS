@@ -3,6 +3,7 @@ package cache
 //可以用xpm_memory的byte enable信号
 //从fifo装载回cache
 //fifo判断命中也在stage1完成
+//wdata只在一个地方被byteEnable作用
 
 import ip.{BRamIPConfig, SimpleDualPortBram, DualPortLutram, LutRamIPConfig}
 import cpu.defs.ConstantVal
