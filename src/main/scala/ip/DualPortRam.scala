@@ -176,13 +176,13 @@ class SimpleDualPortBram(config: BRamIPConfig) extends Component {
 
   mem.io.addrb := io.portB.addr
 
+  io.portB.dout := mem.io.doutb
   when(prevWriteA & prevAddrA === currAddrB) {
     // 需要进行前传
     io.portB.dout := prevWDataA
-  }.elsewhen(!prevEnB) {
+  }
+  when(!prevEnB) {
     io.portB.dout := prevDoutB
-  }.otherwise {
-    io.portB.dout := mem.io.doutb
   }
 }
 
