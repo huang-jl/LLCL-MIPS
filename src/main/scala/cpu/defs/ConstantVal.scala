@@ -16,6 +16,8 @@ object ConstantVal {
     useQos = false
   )
 
+  val Multiply_Latency = 4
+
   /** TLB相关配置 */
   val PABITS = 32 //至少应该大于等于32，表示支持的物理地址宽度
   val TLBEntryNum = 32  //TLB表项的个数, 2的幂

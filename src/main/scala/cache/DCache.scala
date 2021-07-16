@@ -4,7 +4,7 @@ package cache
 //从fifo装载回cache
 //fifo判断命中也在stage1完成
 
-import ip.{BRamIPConfig, SimpleDualPortBram, DualPortLutram, LutRamIPConfig}
+import ip.{BRamIPConfig, SimpleDualPortBram, SimpleDualPortLutram, LutRamIPConfig}
 import cpu.defs.ConstantVal
 import lib.Updating
 import spinal.core._
@@ -135,7 +135,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     * **********************
     */
   val cacheRam = new Area {
-    val tags  = Array.fill(config.wayNum)(new DualPortLutram(tagRamConfig))
+    val tags  = Array.fill(config.wayNum)(new SimpleDualPortLutram(tagRamConfig))
     val datas = Array.fill(config.wayNum)(new SimpleDualPortBram(dataRamConfig))
   }
 
@@ -176,7 +176,11 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     cacheRam.datas(i).io.portB.addr := stage1.index
   }
 
-  val cacheTags  = Vec(DMeta(config.tagWidth), config.wayNum)  //仅在stage1使用
+  val regs = new Area {
+    val cacheTags =
+      Vec(Reg(DMeta(config.tagWidth)) init DMeta.fromBits(0, config.tagWidth), config.wayNum)
+  }
+  val cacheTags  = Vec(DMeta(config.tagWidth), config.wayNum)
   val cacheDatas = Vec(Block(config.blockSize), config.wayNum) //会在stage2使用
   for (i <- 0 until config.wayNum) {
     cacheTags(i).assignFromBits(cacheRam.tags(i).io.portB.dout)
@@ -184,10 +188,16 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   }
 
   // 根据tag判断是否命中，当不需要keepRData时才更新
-  val hitPerWay: Bits = Reg(Bits(config.wayNum bits)) init (0) //cache每一路是否命中
-  for (i <- 0 until config.wayNum) {
-    when(!io.cpu.stage1.keepRData) {
-      hitPerWay(i) := (cacheTags(i).tag === stage1.tag.asBits) & cacheTags(i).valid
+  val cacheHit = Reg(Bool) init False
+  val hitIndex = Reg(UInt(log2Up(config.wayNum) bits)) init 0 //cache每一路是否命中
+  when(!io.cpu.stage1.keepRData) {
+    cacheHit := False
+    for (i <- 0 until config.wayNum) {
+      when((cacheTags(i).tag === stage1.tag.asBits) & cacheTags(i).valid) {
+        cacheHit := True
+        hitIndex := i
+      }
+      regs.cacheTags(i) := cacheTags(i)
     }
   }
 
@@ -209,14 +219,12 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     */
 
   //only drive portA for write
-  val dataWE   = Bits(config.wayNum bits)                   //写哪一路cache.data的使能
-  val tagWE    = Bits(config.wayNum bits)                   //写哪一路cache.meta的使能
-  val pushTags = Vec(DMeta(config.tagWidth), config.wayNum) //被替换行的Tag信息
+  val dataWE = Bits(config.wayNum bits) //写哪一路cache.data的使能
+  val tagWE  = Bits(config.wayNum bits) //写哪一路cache.meta的使能
   for (i <- 0 until config.wayNum) {
     cacheRam.tags(i).io.portA.en := True
     cacheRam.tags(i).io.portA.we := tagWE(i)
     cacheRam.tags(i).io.portA.addr := stage2.index
-    pushTags(i).assignFromBits(cacheRam.tags(i).io.portA.dout)
 
     cacheRam.datas(i).io.portA.en := True
     cacheRam.datas(i).io.portA.we := dataWE(i)
@@ -236,13 +244,13 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     val rdata       = Bits(32 bits)
 
     /** cache是否直接命中 */
-    val hit: Bool = hitPerWay.orR
     //把hitPerWay中为1的那一路cache对应数据拿出来
-    val hitLine: Block = MuxOH(hitPerWay, for (i <- 0 until config.wayNum) yield cacheDatas(i))
+    val banks = Vec(Bits(32 bits), config.wayNum)
+    for (i <- 0 until config.wayNum) (banks(i) := cacheDatas(i).banks(stage2.wordOffset))
     //读或写命中时更新LRU
-    when((read | write) & hit) {
+    when((read | write) & cacheHit) {
       LRU.we := True
-      LRU.access := OHToUInt(hitPerWay)
+      LRU.access := hitIndex
     }
   }
 
@@ -363,8 +371,8 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     val inv  = Counter(0 to config.wayNum)      //刷新cache某个index时，用来的计算写回数的计数器
   }
 
-  readMiss := !cache.hit & !stage1.fifo.hit & cache.read   //读缺失
-  writeMiss := !cache.hit & !stage1.fifo.hit & cache.write //写缺失
+  readMiss := !cacheHit & !stage1.fifo.hit & cache.read   //读缺失
+  writeMiss := !cacheHit & !stage1.fifo.hit & cache.write //写缺失
 
   tagWE := 0
   dataWE := 0
@@ -543,13 +551,14 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   //2.中cache: hitLine
   //3.命中Fifo中的数据
   //4.命中**正在写回**的wb.data
-  cache.rdata := cache.hitLine.banks(stage2.wordOffset)
+
+  cache.rdata := cache.banks(hitIndex)
   when(readMiss) {
     cache.rdata := writeData(stage2.wordOffset << 5, 32 bits)
-  }.elsewhen(!cache.hit & stage1.fifo.hit) {
+  }.elsewhen(!cacheHit & stage1.fifo.hit) {
 //    cache.rdata := fifo.queryRData(stage2.wordOffset << 5, 32 bits)
     cache.rdata := stage1.fifo.rdata(stage2.wordOffset << 5, 32 bits)
-  }.elsewhen(!cache.hit & wb.hit) {
+  }.elsewhen(!cacheHit & wb.hit) {
     cache.rdata := wb.data.banks(stage2.wordOffset)
   }
   //uncache读出的数据，直接从总线上拿
@@ -559,8 +568,8 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
 
   //Stage 2中和fifo相关的信号，fifo用来存放从cache中替换出去的行
   writeBuffer.io.push := dcacheFSM.isActive(dcacheFSM.waitWb) &
-    pushTags(replace.wayIndex).valid & pushTags(replace.wayIndex).dirty
-  writeBuffer.io.pushTag := pushTags(replace.wayIndex).tag ## stage2.index
+    regs.cacheTags(replace.wayIndex).valid & regs.cacheTags(replace.wayIndex).dirty
+  writeBuffer.io.pushTag := regs.cacheTags(replace.wayIndex).tag ## stage2.index
   writeBuffer.io.pushData := cacheDatas(replace.wayIndex).asBits
 
   stage2.fifo.wdata := 0
@@ -592,9 +601,9 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   dcacheFSM.stateBoot.whenIsActive {
     //当直接写cache命中时，会开启dcache的写使能
     //写DCache命中的时候cache.hit为真，LRU已经默认更新了
-    when(cache.write & cache.hit) {
-      tagWE := hitPerWay
-      dataWE := hitPerWay
+    when(cache.write & cacheHit) {
+      tagWE(hitIndex) := True
+      dataWE(hitIndex) := True
     }
   }
   //写入dache ram的数据
@@ -607,23 +616,23 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   }.elsewhen(dcacheFSM.isActive(dcacheFSM.waitWb)) {
     writeData := wb.data.asBits //在waitWb阶段也可能写cache ram，此时命中正在写回内存的数据
   }.elsewhen(dcacheFSM.isActive(dcacheFSM.stateBoot)) {
-    writeData := cache.hitLine.asBits //直接cache命中则使用cache的值
+    writeData := cacheDatas(hitIndex).asBits //直接cache命中则使用cache的值
   }
   //如果是写指令，那么还需要通过byteEnable修改dcache.writeData
   when(cache.write) {
     writeMeta.dirty := True
     for (i <- 0 until 4) {
       when(io.cpu.stage2.byteEnable(i)) {
-        writeData((stage2.wordOffset << 5) + (i * 8), 8 bits) := cache.wdata(i * 8, 8 bits)
+        writeData(stage2.wordOffset @@ U(i * 8, 5 bits), 8 bits) := cache.wdata(i * 8, 8 bits)
       }
     }
   }
   // 刷新Cache某个index的写回检测逻辑
   dcacheFSM.invalidate.whenIsActive {
     val wayIndex = counter.inv.value.resize(log2Up(config.wayNum))
-    when(pushTags(wayIndex).valid & pushTags(wayIndex).dirty) {
+    when(regs.cacheTags(wayIndex).valid & regs.cacheTags(wayIndex).dirty) {
       writeBuffer.io.push := True
-      writeBuffer.io.pushTag := pushTags(wayIndex).tag ## stage2.index
+      writeBuffer.io.pushTag := regs.cacheTags(wayIndex).tag ## stage2.index
       writeBuffer.io.pushData := cacheDatas(wayIndex).asBits
       when(!writeBuffer.io.full)(counter.inv.increment())
     }.otherwise(counter.inv.increment())

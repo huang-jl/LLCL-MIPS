@@ -226,10 +226,10 @@ class CPU extends Component {
     }
 
     //数据前传：解决先load 后store的数据冲突
-    when(ME2.stored(rfuWe) && ME2.stored(rfuAddr) === input(inst).rs) {
+    when(ME2.stored(rfuWe) && ME2.stored(rfuAddr) === input(inst).rs & ME2.stored(memRe)) {
       produced(rsValue) := ME2.produced(rfuData)
     }
-    when(ME2.stored(rfuWe) && ME2.stored(rfuAddr) === input(inst).rt) {
+    when(ME2.stored(rfuWe) && ME2.stored(rfuAddr) === input(inst).rt & ME2.stored(memRe)) {
       produced(rtValue) := ME2.produced(rfuData)
     }
 
@@ -343,7 +343,7 @@ class CPU extends Component {
         ALU_B_SRC.rt  -> U(input(rtValue)),
         ALU_B_SRC.imm -> input(inst).immExtended.asUInt
       )
-      if(ConstantVal.FINAL_MODE) {
+      if (ConstantVal.FINAL_MODE) {
         alu.io.input.hi := U(hlu.hi_we ? hlu.new_hi | hlu.hi_v)
         alu.io.input.lo := U(hlu.lo_we ? hlu.new_lo | hlu.lo_v)
       }
@@ -381,17 +381,23 @@ class CPU extends Component {
     }
 
     //数据前传：解决load + 中间一条无关指令 + store的数据冲突
-    when(ME1.stored(rfuWe) && ME1.stored(rfuAddr) === input(inst).rs) {
-      produced(rsValue) := ME1.produced(rfuData)
-    }.elsewhen(ME2.stored(rfuWe) && ME2.stored(rfuAddr) === input(inst).rs) {
+    when(ME2.stored(rfuWe) && ME2.stored(rfuAddr) === input(inst).rs & ME2.stored(memRe)) {
       produced(rsValue) := ME2.produced(rfuData)
     }
-
-    when(ME1.stored(rfuWe) && ME1.stored(rfuAddr) === input(inst).rt) {
-      produced(rtValue) := ME1.produced(rfuData)
-    }.elsewhen(ME2.stored(rfuWe) && ME2.stored(rfuAddr) === input(inst).rt) {
+    when(ME2.stored(rfuWe) && ME2.stored(rfuAddr) === input(inst).rt & ME2.stored(memRe)) {
       produced(rtValue) := ME2.produced(rfuData)
     }
+//    when(ME1.stored(rfuWe) && ME1.stored(rfuAddr) === input(inst).rs) {
+//      produced(rsValue) := ME1.produced(rfuData)
+//    }.elsewhen(ME2.stored(rfuWe) && ME2.stored(rfuAddr) === input(inst).rs) {
+//      produced(rsValue) := ME2.produced(rfuData)
+//    }
+//
+//    when(ME1.stored(rfuWe) && ME1.stored(rfuAddr) === input(inst).rt) {
+//      produced(rtValue) := ME1.produced(rfuData)
+//    }.elsewhen(ME2.stored(rfuWe) && ME2.stored(rfuAddr) === input(inst).rt) {
+//      produced(rtValue) := ME2.produced(rfuData)
+//    }
 
     // CP0 harzard : 根据ME1的情况暂停EX阶段
     val cp0_RAW_hazard = new Area {

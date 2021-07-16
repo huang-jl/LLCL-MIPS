@@ -62,13 +62,18 @@ class DualPortBram(config: BRamIPConfig) extends Component {
   val prevAddrA  = RegNext(io.portA.addr) init 0
   val prevWDataA = RegNext(io.portA.din) init 0
   // 当前周期读出的dout对应的地址
+  val prevEnB   = RegNext(io.portB.en) init False
+  val prevDoutB = RegNext(io.portB.dout) init 0
   val currAddrB = RegNext(mem.io.addrb) init 0
 
-  mem.io.addrb := io.portB.en ? io.portB.addr | currAddrB
+//  mem.io.addrb := io.portB.en ? io.portB.addr | currAddrB
+  mem.io.addrb := io.portB.addr
 
   when(prevWriteA & prevAddrA === currAddrB) {
     // 需要进行前传
     io.portB.dout := prevWDataA
+  }.elsewhen(!prevEnB) {
+    io.portB.dout := prevDoutB
   }.otherwise {
     io.portB.dout := mem.io.doutb
   }
@@ -165,13 +170,56 @@ class SimpleDualPortBram(config: BRamIPConfig) extends Component {
   val prevAddrA  = RegNext(io.portA.addr) init 0
   val prevWDataA = RegNext(io.portA.din) init 0
   // 当前周期读出的dout对应的地址
+  val prevEnB   = RegNext(io.portB.en) init False
+  val prevDoutB = RegNext(io.portB.dout) init 0
   val currAddrB = RegNext(mem.io.addrb) init 0
 
-  mem.io.addrb := io.portB.en ? io.portB.addr | currAddrB
+  mem.io.addrb := io.portB.addr
 
   when(prevWriteA & prevAddrA === currAddrB) {
     // 需要进行前传
     io.portB.dout := prevWDataA
+  }.elsewhen(!prevEnB) {
+    io.portB.dout := prevDoutB
+  }.otherwise {
+    io.portB.dout := mem.io.doutb
+  }
+}
+
+/** @note A端口只写，B端口只读，已经内置前传
+  * @note 使用LruSDP_RAM默认其读延迟为0
+  *  @note 目前仅针对cache使用
+  */
+class SimpleDualPortLutram(config: LutRamIPConfig) extends Component {
+  val io = new Bundle {
+    val portA = slave(WriteOnlyRamPort(config.dataWidth, log2Up(config.depth)))
+    val portB = slave(ReadOnlyRamPort(config.dataWidth, log2Up(config.depth)))
+  }
+
+  val param = new xpm_memory_sdpram_generic
+  param.WRITE_DATA_WIDTH_A = config.dataWidth
+  param.READ_DATA_WIDTH_B = config.dataWidth
+  param.BYTE_WRITE_WIDTH_A = config.dataWidth
+  param.ADDR_WIDTH_A = log2Up(config.depth)
+  param.ADDR_WIDTH_B = log2Up(config.depth)
+  param.READ_LATENCY_B = 0
+  param.MEMORY_SIZE = config.size
+  param.MEMORY_PRIMITIVE = "distributed"
+  param.WRITE_MODE_B = "read_first"
+
+  val mem = new xpm_memory_sdpram(param)
+  // A: write only
+  mem.io.ena := io.portA.en
+  mem.io.dina := io.portA.din
+  mem.io.addra := io.portA.addr
+  mem.io.wea := io.portA.we.asBits
+  // B: read only
+  mem.io.enb := True
+  mem.io.addrb := io.portB.addr
+
+  when(io.portA.we & io.portA.addr === io.portB.addr) {
+    // 内置跨端口的写优先
+    io.portB.dout := io.portA.din
   }.otherwise {
     io.portB.dout := mem.io.doutb
   }

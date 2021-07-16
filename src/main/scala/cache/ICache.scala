@@ -173,20 +173,25 @@ class ICache(config: CacheRamConfig) extends Component {
     cacheRam.datas(i).io.portA.addr := stage2.index
   }
   //判断是否命中cache
-  val hitPerWay = Bits(config.wayNum bits) //每一路是否命中
-  for (i <- 0 until config.wayNum) {
-    hitPerWay(i) := (cacheTags(i).tag === stage2.tag) & cacheTags(i).valid
+  val hitIndex:UInt = U(0, log2Up(config.wayNum) bits)
+  val hitLine: Block = cacheDatas(0)
+  val hit:Bool = (cacheTags(0).tag === stage2.tag) & cacheTags(0).valid
+  for (i <- 1 until config.wayNum) {
+    when((cacheTags(i).tag === stage2.tag) & cacheTags(i).valid) {
+      hit := True
+      hitIndex := i
+      hitLine := cacheDatas(i)
+    }
   }
-  val hit: Bool = hitPerWay.orR
 
   //把命中的数据拿出来并返回
-  val hitLine: Block = MuxOH(hitPerWay, for (i <- 0 until config.wayNum) yield cacheDatas(i))
-  val hitTag: Meta   = MuxOH(hitPerWay, for (i <- 0 until config.wayNum) yield cacheTags(i))
+//  val hitLine: Block = MuxOH(hitPerWay, for (i <- 0 until config.wayNum) yield cacheDatas(i))
+//  val hitTag: Meta   = MuxOH(hitPerWay, for (i <- 0 until config.wayNum) yield cacheTags(i))
   io.cpu.stage2.rdata := hitLine(stage2.wordOffset)
   //更新LRU
   when(io.cpu.stage2.en & hit) {
     LRU.we := True
-    LRU.access := OHToUInt(hitPerWay)
+    LRU.access := hitIndex
   }
 
   //不命中处理：访存，并且写Cache Ram

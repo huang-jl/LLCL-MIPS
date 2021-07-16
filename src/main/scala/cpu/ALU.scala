@@ -1,7 +1,7 @@
 package cpu
 
 import lib.{Optional, Task}
-import ip.DividerIP
+import ip.{DividerIP, MultiplierIP}
 import cpu.defs.ConstantVal
 import spinal.core._
 import spinal.lib.fsm._
@@ -100,9 +100,14 @@ class ALU extends Component {
     val multiply: Bool =
       if (ConstantVal.FINAL_MODE) Utils.equalAny(io.input.op, mult, multu, madd, maddu, msub, msubu)
       else Utils.equalAny(io.input.op, mult, multu)
-    val temp: UInt = RegNext(abs.a * abs.b) //stateBoot中开始计算
+    val multiplier = new MultiplierIP()
+    multiplier.io.A := abs.a
+    multiplier.io.B := abs.b
+    multiplier.io.CE := multiply
     // 如果有符号乘法并且a和b异号，那么得到的结果取相反数。这个过程在working中计算
-    val result: UInt = temp.twoComplement(abs.signed & (a(31) ^ b(31)))(0, 64 bits).asUInt
+    val result: UInt =
+      multiplier.io.P.twoComplement(abs.signed & (a(31) ^ b(31)))(0, 64 bits).asUInt
+    val counter = Reg(UInt(log2Up(ConstantVal.Multiply_Latency - 1) + 1 bits)) init 0
 
     new StateMachine {
       setEntry(stateBoot)
@@ -112,10 +117,17 @@ class ALU extends Component {
       stateBoot
         .whenIsNext(stall := False)
         .whenIsActive {
-          when(multiply)(goto(working))
+          when(multiply) {
+            counter := 0
+            goto(working)
+          }
         }
 
-      working.whenIsActive(goto(stateBoot))
+      working.whenIsActive {
+        when(counter === ConstantVal.Multiply_Latency - 1) {
+          goto(stateBoot)
+        }.otherwise(counter := counter + 1)
+      }
     }
   }
   io.stall := divide.stall | (multiply.multiply & multiply.stall)

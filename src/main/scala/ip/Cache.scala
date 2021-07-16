@@ -1,6 +1,7 @@
 package ip
 
 import spinal.core._
+import scala.language.postfixOps
 
 class SDPRAM(numEntries: Int, numWays: Int, indexWidth: Int, entryWidth: Int) extends Component {
   val memGeneric = new xpm_memory_sdpram_generic
@@ -29,6 +30,8 @@ class SDPRAM(numEntries: Int, numWays: Int, indexWidth: Int, entryWidth: Int) ex
   val prevAddra = RegNext(mem.io.addra)
   val prevDina  = RegNext(mem.io.dina)
 
+  val prevEnb = RegNext(io.enb)
+  val prevDoutb = RegNext(io.doutb)
   val currAddrb = out(RegNext(mem.io.addrb))
 
   mem.io.ena := io.ena
@@ -37,9 +40,13 @@ class SDPRAM(numEntries: Int, numWays: Int, indexWidth: Int, entryWidth: Int) ex
   mem.io.wea := B"1"
 
   mem.io.enb := True
-  mem.io.addrb := io.enb ? io.addrb | currAddrb
-  io.doutb := (io.ena & currAddrb === io.addra) ?
-    io.dina | ((prevEna & currAddrb === prevAddra) ? prevDina | mem.io.doutb)
+//  mem.io.addrb := io.enb ? io.addrb | currAddrb
+//  io.doutb := (io.ena & currAddrb === io.addra) ?
+//    io.dina | ((prevEna & currAddrb === prevAddra) ? prevDina | mem.io.doutb)
+  mem.io.addrb := io.addrb
+  io.doutb := (io.ena & currAddrb === io.addra) ? io.dina |
+    ((prevEna & currAddrb === prevAddra) ? prevDina |
+    (prevEnb ? mem.io.doutb | prevDoutb))
 
   def write(input: Bits, we: Bits, data: Bits): Bits = {
     val output = Bits(input.getBitsWidth bits)
