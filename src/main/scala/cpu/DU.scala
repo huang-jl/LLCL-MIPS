@@ -6,6 +6,7 @@ import defs.Mips32InstImplicits._
 import defs.ConstantVal
 import lib.{Decoder, Key, NotConsidered, Optional}
 import spinal.core.{SYNC => _, _}
+
 import scala.language.postfixOps
 
 class DU extends Component {
@@ -20,31 +21,31 @@ class DU extends Component {
     val alu_a_src = out(ALU_A_SRC)
     val alu_b_src = out(ALU_B_SRC)
 
-    val cp0_re = out Bool()
-    val cp0_we = out Bool()
+    val cp0_re = out Bool ()
+    val cp0_we = out Bool ()
 
-    val dcu_re = out Bool()
-    val dcu_we = out Bool()
+    val dcu_re = out Bool ()
+    val dcu_we = out Bool ()
     val dcu_be = out UInt (2 bits)
     val mu_ex  = out(MU_EX)
 
-    val hlu_hi_we  = out Bool()
+    val hlu_hi_we  = out Bool ()
     val hlu_hi_src = out(HLU_SRC)
-    val hlu_lo_we  = out Bool()
+    val hlu_lo_we  = out Bool ()
     val hlu_lo_src = out(HLU_SRC)
 
-    val rfu_we     = out Bool()
+    val rfu_we     = out Bool ()
     val rfu_rd     = out UInt (5 bits)
     val rfu_rd_src = out(RFU_RD_SRC)
 
     val ju_op     = out(JU_OP)
     val ju_pc_src = out(JU_PC_SRC)
 
-    val use_rs = out Bool()
-    val use_rt = out Bool()
+    val use_rs = out Bool ()
+    val use_rt = out Bool ()
 
     val exception = out(Optional(EXCEPTION()))
-    val eret      = out Bool()
+    val eret      = out Bool ()
 
     //tlb相关
     //读tlb到CP0
@@ -58,11 +59,14 @@ class DU extends Component {
       Utils.instantiateWhen(out(TLBIndexSrc()), ConstantVal.FINAL_MODE)
 
     // 仅在开启FINAL_MODE后使用的
-    val invalidateDCache = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
-    val invalidateICache = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
-    val is_trap   = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
+    val invalidate_dcache = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
+    val invalidate_icache = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
+    val is_trap           = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
+    val condition_mov     = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
+    val compare_op        = Utils.instantiateWhen(out(CompareOp), ConstantVal.FINAL_MODE)
+    val me_type           = Utils.instantiateWhen(out(ME_TYPE), ConstantVal.FINAL_MODE)
 
-    val fuck = out Bool() //例如特权指令，拉高后让后面的指令都不发射
+    val fuck = out Bool () //例如特权指令，拉高后让后面的指令都不发射
   }
 
   // wires
@@ -99,13 +103,16 @@ class DU extends Component {
 
   val exception = Key(Optional(EXCEPTION()))
   val eret      = Key(Bool)
+  val fuck      = Key(Bool)
 
   val tlbr, tlbw, tlbp = Key(Bool)
   val tlbIndexSrc      = Key(TLBIndexSrc())
   val invalidateICache = Key(Bool)
   val invalidateDCache = Key(Bool)
-  val isTrap    = Key(Bool)
-  val fuck             = Key(Bool)
+  val isTrap           = Key(Bool)
+  val conditionMov     = Key(Bool)
+  val compareOp        = Key(CompareOp())
+  val meType           = Key(ME_TYPE())
 
   val decoder = new Decoder(32 bits, enableNotConsidered = true) {
     //下面是默认值，避免出现Latch
@@ -131,7 +138,7 @@ class DU extends Component {
     default(exception) to Optional.noneOf(EXCEPTION())
     default(eret) to False
     default(fuck) to False
-    if(ConstantVal.FINAL_MODE) {
+    if (ConstantVal.FINAL_MODE) {
       default(tlbr) to False
       default(tlbw) to False
       default(tlbp) to False
@@ -139,6 +146,9 @@ class DU extends Component {
       default(invalidateICache) to False
       default(invalidateDCache) to False
       default(isTrap) to False
+      default(conditionMov) to False
+      default(compareOp) to CompareOp.EZ
+      default(meType) to ME_TYPE.normal
     }
 
     // Arithmetics
@@ -358,11 +368,52 @@ class DU extends Component {
     }
 
     if (ConstantVal.FINAL_MODE) {
+      val unalignedLoad = Map(
+        LWL -> ME_TYPE.lwl,
+        LWR -> ME_TYPE.lwr,
+      )
+      for((inst, ty) <- unalignedLoad) {
+        on(inst) {
+          set(dcuRe) to True
+          set(rfuRd) to RFU_RD.rt
+          set(rfuRdSrc) to RFU_RD_SRC.mu
+          set(dcuBe) to U"11"
+          set(useRs) to True //手册中对应的是base而不是rs
+          set(meType) to ty
+        }
+      }
+      val unalignedStore = Map(
+        SWL -> ME_TYPE.swl,
+        SWR -> ME_TYPE.swr
+      )
+      for((inst, ty) <- unalignedStore) {
+        on(inst) {
+          set(dcuWe) to True
+          set(dcuBe) to U"11"
+          set(useRs) to True //手册中对应的是base而不是rs
+          set(meType) to ty
+        }
+      }
+      val conditionMove = Map(
+        MOVN -> CompareOp.NZ,
+        MOVZ -> CompareOp.EZ
+      )
+      for ((inst, op) <- conditionMove) {
+        on(inst) {
+          set(conditionMov) to True
+          set(compareOp) to op
+          set(useRt) to True
+          set(useRs) to True //理论上MOV指令是不需要useRs的，但是为了简化前传的逻辑，直接useRs拉高
+          set(rfuRd) to RFU_RD.rd
+          set(rfuRdSrc) to RFU_RD_SRC.alu
+          set(aluASrc) to ALU_A_SRC.rs
+          set(aluBSrc) to ALU_B_SRC.rt
+        }
+      }
       val countLeading = Map(
         CLO -> ALU_OP.clo,
         CLZ -> ALU_OP.clz
       )
-
       for ((inst, op) <- countLeading) {
         on(inst) {
           set(useRs) to True
@@ -375,12 +426,12 @@ class DU extends Component {
 
       // Arithmetics using Hi Lo Reg
       val mulWithHiLo = Map(
-        MADD -> ALU_OP.madd,
+        MADD  -> ALU_OP.madd,
         MADDU -> ALU_OP.maddu,
-        MSUB -> ALU_OP.msub,
+        MSUB  -> ALU_OP.msub,
         MSUBU -> ALU_OP.msubu
       )
-      for((inst, op) <- mulWithHiLo) {
+      for ((inst, op) <- mulWithHiLo) {
         on(inst) {
           set(aluOp) to op
           set(aluASrc) to ALU_A_SRC.rs
@@ -446,12 +497,12 @@ class DU extends Component {
         (ICacheIndexInvalidate, DCacheIndexInvalidate),
         (ICacheHitInvalidate, DCacheHitInvalidate)
       )
-      for((icacheInv, dcacheInv) <- caches) {
+      for ((icacheInv, dcacheInv) <- caches) {
         on(icacheInv) {
           set(invalidateICache) to True
           set(fuck) to True
         }
-        on(dcacheInv){
+        on(dcacheInv) {
           set(invalidateDCache) to True
           set(fuck) to True
         }
@@ -513,9 +564,15 @@ class DU extends Component {
     io.tlbw := decoder.output(tlbw)
     io.tlbp := decoder.output(tlbp)
     io.tlbIndexSrc := decoder.output(tlbIndexSrc)
-    io.invalidateICache := decoder.output(invalidateICache)
-    io.invalidateDCache := decoder.output(invalidateDCache)
+    io.invalidate_icache := decoder.output(invalidateICache)
+    io.invalidate_dcache := decoder.output(invalidateDCache)
     io.is_trap := decoder.output(isTrap)
+    io.me_type := decoder.output(meType)
+    io.condition_mov := decoder.output(conditionMov)
+    io.compare_op := decoder.output(compareOp)
+    when(io.condition_mov) {
+      io.rfu_we := False
+    }
   }
 }
 

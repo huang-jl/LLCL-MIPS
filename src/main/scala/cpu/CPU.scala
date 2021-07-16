@@ -82,7 +82,6 @@ class CPU extends Component {
   val bd         = Key(Bool)
   val inst       = Key(Mips32Inst()) setEmptyValue ConstantVal.INST_NOP
   val eret       = Key(Bool) setEmptyValue False
-  val isTrap     = Key(Bool) setEmptyValue False
   val aluOp      = Key(ALU_OP()) setEmptyValue ALU_OP.sll()
   val aluASrc    = Key(ALU_A_SRC())
   val aluBSrc    = Key(ALU_B_SRC())
@@ -123,9 +122,15 @@ class CPU extends Component {
   val tlbIndexSrc        = Key(TLBIndexSrc())                                 //ID解码
   val instFetch          = Key(Bool)                                          //异常是否是取值时发生的
   val tlbRefillException = Key(Bool)                                          //是否是TLB缺失异常（影响异常处理地址）
+  val isTrap     = Key(Bool) setEmptyValue False
 
   val invalidateICache = Key(Bool) setEmptyValue False
   val invalidateDCache = Key(Bool) setEmptyValue False
+
+  val meType = Key(ME_TYPE())
+
+  val compareOp    = Key(CompareOp())
+  val conditionMov = Key(Bool)
 
   //MMU input signal
   //目前MMU和CP0直接相连，MMU拿到的CP0寄存器值都是实时的
@@ -162,6 +167,10 @@ class CPU extends Component {
       dcu2.io.input.extend := input(memEx)
       dcu2.io.input.wdata := input(rtValue)
       dcu2.io.input.rdata := dbus.stage2.rdata
+      if(ConstantVal.FINAL_MODE) {
+        dcu2.io.input.meType := input(meType)
+        dcu2.io.input.byteOffset := input(dataMMURes).paddr(0, 2 bits)
+      }
 
       dbus.stage2.read := input(memRe)
       dbus.stage2.write := input(memWe)
@@ -188,6 +197,9 @@ class CPU extends Component {
     val dcu1C = new StageComponent {
       dcu1.io.input.paddr := input(dataMMURes).paddr
       dcu1.io.input.byteEnable := input(memBe)
+      if(ConstantVal.FINAL_MODE) {
+        dcu1.io.input.meType := input(meType)
+      }
       output(byteEnable) := dcu1.io.output.byteEnable
 
       dbus.stage1.keepRData := !ME2.is.empty & !ME2.will.input
@@ -234,16 +246,14 @@ class CPU extends Component {
     }
 
     //TLB相关：写MMU和写CP0的逻辑信号
-    val cp0TLB = new StageComponent {
+    val tlbRelatedC = new StageComponent {
       if (ConstantVal.FINAL_MODE) {
+        // TLB
         //used for TLBR
         cp0.io.tlbBus.tlbr := input(tlbr)
         //used for tlbp
         cp0.io.tlbBus.tlbp := input(tlbp)
-      }
-    }
-    val MMU = new StageComponent {
-      if (ConstantVal.FINAL_MODE) {
+        //MMU
         mmu.io.write := input(tlbw)
         when(input(tlbw) & input(tlbIndexSrc) === TLBIndexSrc.Random) {
           mmu.io.index := cp0.io.tlbBus.random //如果是写tlbwr那么用random
@@ -252,14 +262,12 @@ class CPU extends Component {
     }
     // 异常
     exceptionToRaise := None
-    // Trap异常，当aluResultC的第0位为1时发生
     if (ConstantVal.FINAL_MODE) {
+      // Trap异常，当aluResultC的第0位为1时发生
       when(input(isTrap) && input(aluResultC)(0)) {
         exceptionToRaise := EXCEPTION.Tr
       }
-    }
-    // TLB异常
-    if (ConstantVal.FINAL_MODE) {
+      // TLB异常
       val refillException = input(dataMMURes).mapped & input(dataMMURes).miss
       val invalidException =
         input(dataMMURes).mapped & !input(dataMMURes).miss & !input(dataMMURes).valid
@@ -374,7 +382,7 @@ class CPU extends Component {
     )
 
     //EX阶段计算出地址后再去查TLB
-    val ME_Translate = new StageComponent {
+    val AddrTranslateC = new StageComponent {
       // MMU translate
       mmu.io.dataVaddr := aguC.output(memAddr)
       output(dataMMURes) := mmu.io.dataRes
@@ -408,6 +416,21 @@ class CPU extends Component {
     }
 
     exceptionToRaise := alu.io.exception
+    // 针对MOV指令
+    val conditionMovC = new StageComponent {
+      if(ConstantVal.FINAL_MODE) {
+        val comparator = new Comparator
+        comparator.io.op := input(compareOp)
+        comparator.io.operand := input(rtValue)
+        output(rfuWe) := input(conditionMov) & comparator.io.mov
+      }
+    }
+    if(ConstantVal.FINAL_MODE) {
+      produced(rfuWe) := conditionMovC.output(rfuWe) | input(rfuWe)
+      when(conditionMovC.output(rfuWe)) {
+        produced(rfuData) := input(rsValue)
+      }
+    }
   }
 
   val ID = new Stage {
@@ -463,8 +486,11 @@ class CPU extends Component {
         output(tlbp) := du.io.tlbp
         output(tlbIndexSrc) := du.io.tlbIndexSrc
         produced(isTrap) := du.io.is_trap
-        output(invalidateICache) := du.io.invalidateICache
-        output(invalidateDCache) := du.io.invalidateDCache
+        output(invalidateICache) := du.io.invalidate_icache
+        output(invalidateDCache) := du.io.invalidate_dcache
+        output(meType) := du.io.me_type
+        output(compareOp) := du.io.compare_op
+        output(conditionMov) := du.io.condition_mov
       } else {
         output(invalidateICache) := False
         output(invalidateDCache) := False
@@ -511,6 +537,16 @@ class CPU extends Component {
         ME2.stored(rfuAddr) === stored(inst).rt && produced(useRt))
 
     exceptionToRaise := du.io.exception
+
+    if (ConstantVal.FINAL_MODE) {
+      // 解决MOV指令的前传问题
+      when(EX.produced(rfuWe) && EX.stored(rfuAddr) === stored(inst).rs) {
+        produced(rsValue) := EX.produced(rfuData)
+      }
+      when(EX.produced(rfuWe) && EX.stored(rfuAddr) === stored(inst).rt) {
+        produced(rtValue) := EX.produced(rfuData)
+      }
+    }
   }
 
   val IF2 = new Stage {

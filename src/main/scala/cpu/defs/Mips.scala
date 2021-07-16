@@ -219,6 +219,9 @@ object InstructionSpec {
   val CLO = special2(fn = "100001")
   val CLZ = special2(fn = "100000")
 
+  val MOVN = special(fn = "001011")
+  val MOVZ = special(fn = "001010")
+
   val TEQ  = special(fn = "110100", sa = "-----")
   val TNE  = special(fn = "110110", sa = "-----")
   val TGE  = special(fn = "110000", sa = "-----")
@@ -242,6 +245,11 @@ object InstructionSpec {
   val ICacheHitInvalidate = CACHE("10000")
   val DCacheIndexInvalidate = CACHE("00001")
   val DCacheHitInvalidate = CACHE("10101")
+
+  val LWL = IType("100010")
+  val LWR = IType("100110")
+  val SWL = IType("101010")
+  val SWR = IType("101110")
 
   val SYNC = special(fn = "001111")
     .forceZero(Fields.rs)
