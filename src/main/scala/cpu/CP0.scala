@@ -37,9 +37,12 @@ class TLBInterface extends Bundle with IMasterSlave {
   /** following is used for tlb exception related logic */
   val refillException = Bool
 
+  /** following is used for random register to update (round robin) */
+  val tlbwr = Bool
+
   override def asMaster(): Unit = {
     in(index, random, tlbwEntry)
-    out(tlbrEntry, tlbr, tlbp, probeIndex, refillException)
+    out(tlbrEntry, tlbr, tlbp, tlbwr, probeIndex, refillException)
   }
 }
 
@@ -294,7 +297,8 @@ object CP0 {
 
     describeRegister("Status", 12, 0)
       .field("Bev", 22, true)
-      .field("IM", 15 downto 8)
+      .field("IM", 15 downto 8, "1" * (15 - 8 + 1))
+      .field("ERL", 2, true)
       .field("EXL", 1, false)
       .field("IE", 0, false)
 
@@ -312,13 +316,13 @@ object CP0 {
     describeRegister("EBase", 15, 1)
       .hardwiredField("31", 31, true) //31位始终为1
       .field("ExceptionBase", 29 downto 12, 0.toBinaryString(29 - 12 + 1))
-      .field("CPUNum", 9 downto 0, 1.toBinaryString(10))
+      .hardwiredField("CPUNum", 9 downto 0, 1.toBinaryString(10))
 
     //TODO K0可能需要修改？现在的MMU实现kseg0因为是unmapped，因此会被cache
     describeRegister("Config0", 16, 0)
       .hardwiredField("M", 31, true)
       .hardwiredField("MT", 9 downto 7, "001")
-      .hardwiredField("K0", 2 downto 0, "011")
+      .field("K0", 2 downto 0, "011")
 
     //TODO 实现了CP2需要加入C2域，实现了FPU需要加入FPU域
     describeRegister("Config1", 16, 1)
@@ -345,6 +349,9 @@ object CP0 {
         (log2Up(ConstantVal.DcacheLineSize) - 1).toBinaryString(3)
       )
       .hardwiredField("DA", 9 downto 7, (ConstantVal.DcacheWayNum - 1).toBinaryString(3))
+
+    describeRegister("ErrorEPC", number = 30, sel = 0)
+      .field("ErrorEPC", 31 downto 0, "0" * 32)
 
     //CP0 Reg for TLB-based MMU
     if (ConstantVal.FINAL_MODE) {
@@ -429,9 +436,11 @@ class CP0 extends Component {
     val read          = slave(Read())
 
     val tlbBus = Utils.instantiateWhen(slave(new TLBInterface), ConstantVal.FINAL_MODE)
-//    val tlbBus = if (ConstantVal.FINAL_MODE) slave(new TLBInterface) else null //tlbBus
 
-    val externalInterrupt = in Bits (6 bits)
+    val K0  = Utils.instantiateWhen(out(Bits(3 bits)), ConstantVal.FINAL_MODE)
+    val ERL = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
+
+    val externalInterrupt = in Bits (5 bits)
     val exceptionInput    = in(ExceptionInput())
     val jumpPc            = out(Optional(UInt(32 bits)))
 
@@ -461,8 +470,8 @@ class CP0 extends Component {
     }
   }
 
-  // TLB related logic and register
   if (ConstantVal.FINAL_MODE) {
+    // TLB related logic and register
     val TLBRelated = new Area {
       val entryHi  = regs("EntryHi")
       val entryLo0 = regs("EntryLo0")
@@ -475,6 +484,9 @@ class CP0 extends Component {
           ConstantVal.TLBEntryNum - 1,
           log2Up(ConstantVal.TLBEntryNum) bits
         )
+      }
+      when(io.tlbBus.tlbwr) {
+        random.next("Random") := B(random("Random").asUInt + 1)
       }
       //tlbBus signal
       io.tlbBus.index := index("Index").asUInt
@@ -524,6 +536,8 @@ class CP0 extends Component {
         )
       }
     }
+    io.K0 := regs("Config0")("K0")
+    io.ERL := regs("Status")("ERL").asBool
   }
 
   // Count & Compare
@@ -537,24 +551,28 @@ class CP0 extends Component {
   val compare        = regs("Compare")("Compare")
   val timerInterrupt = count === compare
 
+  regs("Cause")("IP_HW")(0, 5 bits) := io.externalInterrupt
   if (ConstantVal.TimeInterruptEnable) {
-    regs("Cause")("IP_HW")(5) := io.externalInterrupt(5) || timerInterrupt
-    regs("Cause")("IP_HW")(4 downto 0) := io.externalInterrupt(4 downto 0)
+    regs("Cause")("IP_HW")(5) := timerInterrupt
   } else {
-    regs("Cause")("IP_HW") := io.externalInterrupt
+    regs("Cause")("IP_HW")(5) := False
   }
 
-  val epc = regs("EPC")("EPC")
+  val epc     = regs("EPC")("EPC")
+  val epcNext = regs("EPC").next("EPC")
+  //ErrorEPC
+  regs("ErrorEPC").next("ErrorEPC") := epcNext
   val exl = regs("Status")("EXL")
+  val erl = regs("Status")("ERL")
 
   // Exception
   io.exceptionInput.exception.whenIsDefined { exc =>
     when(!exl.asBool) {
       exl := True.asBits
       when(io.exceptionInput.bd) {
-        epc := (io.exceptionInput.pc - 4).asBits
+        epcNext := (io.exceptionInput.pc - 4).asBits
       } otherwise {
-        epc := io.exceptionInput.pc.asBits
+        epcNext := io.exceptionInput.pc.asBits
       }
       regs("Cause")("BD") := io.exceptionInput.bd.asBits
       regs("Cause")("ExcCode") := exc.asBits.resized
@@ -601,16 +619,17 @@ class CP0 extends Component {
   val interruptOnNextInst = Updating(Bool) init False
   io.interruptOnNextInst := interruptOnNextInst.next
 
-  when(interrupts.orR && !exl.asBool & regs("Status")("IE").asBool) {
+  //Status.EXL = 1 | Status.ERL = 1 会禁止所有中断
+  when(interrupts.orR && !exl.asBool & regs("Status")("IE").asBool & !erl.asBool) {
     interruptOnNextInst.next := True
   }
   when(interruptOnNextInst.prev && io.instOnInt.valid) {
     interruptOnNextInst.next := False
     exl := True.asBits
     when(io.instOnInt.bd) {
-      epc := (io.instOnInt.pc - 4).asBits
+      epcNext := (io.instOnInt.pc - 4).asBits
     } otherwise {
-      epc := io.instOnInt.pc.asBits
+      epcNext := io.instOnInt.pc.asBits
     }
     regs("Cause")("BD") := io.instOnInt.bd.asBits
     regs("Cause")("ExcCode") := EXCEPTION.Int.asBits.resized
@@ -649,8 +668,12 @@ class CP0 extends Component {
     }
 
     // ERET
+//    when(io.exceptionInput.eret) {
+//      io.jumpPc := epc.asUInt
+//      exl := False.asBits
+//    }
     when(io.exceptionInput.eret) {
-      io.jumpPc := epc.asUInt
+      io.jumpPc := erl.asBool ? regs("ErrorEPC")("ErrorEPC").asUInt | epc.asUInt
       exl := False.asBits
     }
   }

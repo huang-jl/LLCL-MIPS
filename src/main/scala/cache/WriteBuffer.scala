@@ -111,7 +111,9 @@ class WriteBuffer(config: WriteBufferConfig) extends Component {
 //    queryReadHit(i) := (fifo.tag(i) === io.query.tag) & fifo.valid(i)
 //    queryWriteHit(i) := (io.pop & counter.head.value === i) ? False | queryReadHit(i)
     //如果当前第i个是head并且正在pop，那么不命中，应该考虑去WB中寻找这个数据
-    hitPerWay(i) := (fifo.tag(i) === io.query.tag) & fifo.valid(i) & !(io.pop & !io.empty & counter.head.value === i)
+    hitPerWay(i) := (fifo.tag(i) === io.query.tag) & fifo.valid(
+      i
+    ) & !(io.pop & !io.empty & counter.head.value === i)
   }
   io.query.hit := hitPerWay.orR
   io.query.hitAddr := OHToUInt(hitPerWay)
@@ -139,6 +141,7 @@ class WriteBuffer(config: WriteBufferConfig) extends Component {
   }
   // 下面是当发生write merge时的前传逻辑
   when(io.merge.write) {
+
     /** 1. 前传1 ： 从wdata到pop
       * 写的逻辑实际上是Cache第二个阶段发生的，这个时候可能对应位置正在被pop，这个时候需要把数据直接前传过去
       * 并且此时不需要写入fifo了

@@ -14,7 +14,7 @@ import scala.language.postfixOps
 
 class CPU extends Component {
   val io = new Bundle {
-    val externalInterrupt = in Bits (6 bits)
+    val externalInterrupt = in Bits (5 bits)
     val icacheAXI         = master(Axi4(ConstantVal.AXI_BUS_CONFIG))
     val dcacheAXI         = master(Axi4(ConstantVal.AXI_BUS_CONFIG))
     val uncacheAXI        = master(Axi4(ConstantVal.AXI_BUS_CONFIG))
@@ -43,7 +43,7 @@ class CPU extends Component {
   val hlu  = new HLU
   val rfu  = new RFU
   val cp0  = new CP0
-  val mmu  = new MMU(useTLB = ConstantVal.FINAL_MODE)
+  val mmu  = new MMU
 
   val btb = new Cache(
     BTB.NUM_ENTRIES,
@@ -143,6 +143,8 @@ class CPU extends Component {
     mmu.io.probeASID := cp0.io.tlbBus.tlbwEntry.asid
     mmu.io.index := cp0.io.tlbBus.index //默认是读index寄存器的值
     mmu.io.wdata := cp0.io.tlbBus.tlbwEntry
+    mmu.io.K0 := cp0.io.K0
+    mmu.io.ERL := cp0.io.ERL
 
     cp0.io.tlbBus.probeIndex := mmu.io.probeIndex
     cp0.io.tlbBus.tlbrEntry := mmu.io.rdata
@@ -256,8 +258,9 @@ class CPU extends Component {
         //MMU
         mmu.io.write := input(tlbw)
         when(input(tlbw) & input(tlbIndexSrc) === TLBIndexSrc.Random) {
+          cp0.io.tlbBus.tlbwr := True
           mmu.io.index := cp0.io.tlbBus.random //如果是写tlbwr那么用random
-        }
+        }.otherwise(cp0.io.tlbBus.tlbwr := False)
       }
     }
     // 异常
@@ -701,14 +704,15 @@ class CPU extends Component {
   }
 //  IF1.stored(pc).addAttribute("mark_debug", "true")
 //  IF2.stored(ifPaddr).addAttribute("mark_debug", "true")
-//  IF2.stored(pc).addAttribute("mark_debug", "true")
-//  ME1.stored(pc).addAttribute("mark_debug", "true")
-//  ME1.stored(dataMMURes).paddr.addAttribute("mark_debug", "true")
-//  ME2.stored(pc).addAttribute("mark_debug", "true")
-//  cp0.interruptOnNextInst.addAttribute("mark_debug", "true")
-//  cp0.regs("Cause")("IP_HW").addAttribute("mark_debug", "true")
-//  cp0.regs("Cause")("ExcCode").addAttribute("mark_debug", "true")
-//  cp0.regs("Status")("IM").addAttribute("mark_debug", "true")
+  IF2.stored(pc).addAttribute("mark_debug", "true")
+  ID.stored(inst).addAttribute("mark_debug", "true")
+  ME1.stored(pc).addAttribute("mark_debug", "true")
+  ME1.stored(dataMMURes).paddr.addAttribute("mark_debug", "true")
+  ME2.stored(pc).addAttribute("mark_debug", "true")
+  cp0.interruptOnNextInst.addAttribute("mark_debug", "true")
+  cp0.regs("Cause")("IP_HW").addAttribute("mark_debug", "true")
+  cp0.regs("Cause")("ExcCode").addAttribute("mark_debug", "true")
+  cp0.regs("Status")("IM").addAttribute("mark_debug", "true")
 //
 //  dcu.io.stage2.read.addAttribute("mark_debug", "true")
 //  dcu.io.stage2.write.addAttribute("mark_debug", "true")
