@@ -398,17 +398,6 @@ class CPU extends Component {
     when(ME2.stored(rfuWe) && ME2.stored(rfuAddr) === input(inst).rt & ME2.stored(memRe)) {
       produced(rtValue) := ME2.produced(rfuData)
     }
-//    when(ME1.stored(rfuWe) && ME1.stored(rfuAddr) === input(inst).rs) {
-//      produced(rsValue) := ME1.produced(rfuData)
-//    }.elsewhen(ME2.stored(rfuWe) && ME2.stored(rfuAddr) === input(inst).rs) {
-//      produced(rsValue) := ME2.produced(rfuData)
-//    }
-//
-//    when(ME1.stored(rfuWe) && ME1.stored(rfuAddr) === input(inst).rt) {
-//      produced(rtValue) := ME1.produced(rfuData)
-//    }.elsewhen(ME2.stored(rfuWe) && ME2.stored(rfuAddr) === input(inst).rt) {
-//      produced(rtValue) := ME2.produced(rfuData)
-//    }
 
     // CP0 harzard : 根据ME1的情况暂停EX阶段
     val cp0_RAW_hazard = new Area {

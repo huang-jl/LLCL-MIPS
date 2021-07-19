@@ -246,8 +246,8 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
 
     /** cache是否直接命中 */
     //把hitPerWay中为1的那一路cache对应数据拿出来
-    val banks = Vec(Bits(32 bits), config.wayNum)
-    for (i <- 0 until config.wayNum) (banks(i) := cacheDatas(i).banks(stage2.wordOffset))
+    val targetData = Vec(Bits(32 bits), config.wayNum)
+    for (i <- 0 until config.wayNum) (targetData(i) := cacheDatas(i)(stage2.wordOffset))
     //读或写命中时更新LRU
     when((read | write) & cacheHit) {
       LRU.we := True
@@ -537,23 +537,13 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     }
   }
 
-  //判断是否前传
-  //前传发生在：两个阶段索引相同，第二个阶段没有stall，并且即将写ram的阶段
-  // 值得一提的是：这里cacheTags和cacheDatas需要分成直接前传和打一拍前传
-  // 因为cacheTags是组合逻辑读，而cacheDatas是空了一拍读；cacheTags需要当前修改的周期就前传
-//  val tagForward: Bool = stage1.index === stage2.index & !io.cpu.stage2.stall &
-//    (dcacheFSM.isActive(dcacheFSM.readMem) | dcacheFSM.isActive(dcacheFSM.waitWb) | cache.write)
-//  when(tagForward) {
-//    cacheTags(modifiedWayIndex.next) := writeMeta
-//  }
-
   //cache读出的数据可能是
   //1.如果读miss，那么只能是来自内存的数据送回cpu（此时数据在writeData中要写回ram）
   //2.中cache: hitLine
   //3.命中Fifo中的数据
   //4.命中**正在写回**的wb.data
 
-  cache.rdata := cache.banks(hitIndex)
+  cache.rdata := cache.targetData(hitIndex)
   when(readMiss) {
     cache.rdata := writeData(stage2.wordOffset << 5, 32 bits)
   }.elsewhen(!cacheHit & stage1.fifo.hit) {

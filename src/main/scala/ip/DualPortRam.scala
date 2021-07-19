@@ -77,6 +77,7 @@ class DualPortBram(config: BRamIPConfig) extends Component {
   }.otherwise {
     io.portB.dout := mem.io.doutb
   }
+  prevEnB.addAttribute("max_fanout", 25)
 }
 
 /** @param dataWidth 数据宽度，单位是bit
@@ -184,6 +185,8 @@ class SimpleDualPortBram(config: BRamIPConfig) extends Component {
   when(!prevEnB) {
     io.portB.dout := prevDoutB
   }
+
+  prevEnB.addAttribute("max_fanout", 25)
 }
 
 /** @note A端口只写，B端口只读，已经内置前传
