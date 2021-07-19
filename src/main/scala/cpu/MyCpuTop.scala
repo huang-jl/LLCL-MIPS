@@ -126,7 +126,6 @@ object LLCL_CPU {
   def main(args: Array[String]): Unit = {
     val report = SpinalVerilog(SpinalConfig(removePruned = true))(new LLCL_CPU)
     report.mergeRTLSource("mergeRTL")
-    report.printPruned()
   }
 }
 
@@ -134,6 +133,5 @@ object Generate {
   def main(args: Array[String]): Unit = {
     val report = SpinalVerilog(SpinalConfig(removePruned = true))(new MyCPUTop)
     report.mergeRTLSource("mergeRTL")
-    report.printPruned()
   }
 }

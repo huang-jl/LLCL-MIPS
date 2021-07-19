@@ -46,6 +46,25 @@ class TLBInterface extends Bundle with IMasterSlave {
   }
 }
 
+/** 从CP0返回当前机器状态的信息 */
+class MachineStateBus extends Bundle with IMasterSlave {
+  val userMode = Bool
+  val cu0 = Bool
+  val ERL = Bool
+  val K0 = Bits(3 bits)
+
+  override def asMaster(): Unit = {
+    in(userMode, cu0, ERL, K0)
+  }
+}
+
+class ExceptionBus extends Bundle with IMasterSlave {
+
+  override def asMaster(): Unit = {
+
+  }
+}
+
 object CP0 {
   def main(args: Array[String]): Unit = {
     SpinalVerilog(new CP0)
@@ -251,7 +270,6 @@ object CP0 {
     val memAddr   = UInt(32 bits) //虚地址
     val pc        = UInt(32 bits)
     val bd        = Bool
-    val instFetch = Bool          //是否是取址时的异常
   }
 
   object Field {
@@ -296,15 +314,18 @@ object CP0 {
       .field("Compare", 31 downto 0, "1" * 32)
 
     describeRegister("Status", 12, 0)
+      .field("CU0", 28, false)
       .field("Bev", 22, true)
       .field("IM", 15 downto 8, "1" * (15 - 8 + 1))
-      .field("ERL", 2, true)
+      .field("UM", 4, false)
+      .field("ERL", 2, false)   // TODO 手册上要求初始化为1，但是许多地方包括nontrivials也初始化为0
       .field("EXL", 1, false)
       .field("IE", 0, false)
 
     describeRegister("Cause", 13, 0)
       .readOnlyField("BD", 31)
       .readOnlyField("TI", 30)
+      .readOnlyField("CE", 29 downto 28, "00")
       .field("IV", 23, false)
       .hardwiredField("IP_HW", 15 downto 10)
       .field("IP_SW", 9 downto 8)
@@ -316,7 +337,7 @@ object CP0 {
     describeRegister("EBase", 15, 1)
       .hardwiredField("31", 31, true) //31位始终为1
       .field("ExceptionBase", 29 downto 12, 0.toBinaryString(29 - 12 + 1))
-      .hardwiredField("CPUNum", 9 downto 0, 1.toBinaryString(10))
+      .hardwiredField("CPUNum", 9 downto 0, 0.toBinaryString(10))
 
     //TODO K0可能需要修改？现在的MMU实现kseg0因为是unmapped，因此会被cache
     describeRegister("Config0", 16, 0)
@@ -436,9 +457,7 @@ class CP0 extends Component {
     val read          = slave(Read())
 
     val tlbBus = Utils.instantiateWhen(slave(new TLBInterface), ConstantVal.FINAL_MODE)
-
-    val K0  = Utils.instantiateWhen(out(Bits(3 bits)), ConstantVal.FINAL_MODE)
-    val ERL = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
+    val machineState = Utils.instantiateWhen(slave(new MachineStateBus), ConstantVal.FINAL_MODE)
 
     val externalInterrupt = in Bits (5 bits)
     val exceptionInput    = in(ExceptionInput())
@@ -536,8 +555,12 @@ class CP0 extends Component {
         )
       }
     }
-    io.K0 := regs("Config0")("K0")
-    io.ERL := regs("Status")("ERL").asBool
+    //其他的信息
+    io.machineState.ERL :=  regs("Status")("ERL").asBool
+    io.machineState.K0 := regs("Config0")("K0")
+    // 目前仅实现了Kernel和User Mode
+    io.machineState.userMode := regs("Status")("UM") === 1 & regs("Status")("ERL") === 0 & regs("Status")("EXL") === 0
+    io.machineState.cu0 := regs("Status")("CU0").asBool
   }
 
   // Count & Compare
@@ -575,42 +598,27 @@ class CP0 extends Component {
         epcNext := io.exceptionInput.pc.asBits
       }
       regs("Cause")("BD") := io.exceptionInput.bd.asBits
-      regs("Cause")("ExcCode") := exc.asBits.resized
+      regs("Cause")("ExcCode") := EXCEPTION.code(exc).asBits.resized
 
       when(
-        Utils.equalAny(
-          exc,
-          EXCEPTION.AdES,
-          EXCEPTION.AdEL,
-          EXCEPTION.TLBL,
-          EXCEPTION.TLBS,
-          EXCEPTION.Mod
-        )
+        EXCEPTION.addrRelated(exc) | EXCEPTION.tlbRelated(exc)
       ) {
-        regs("BadVAddr")("BadVAddr") := (io.exceptionInput.instFetch
+        regs("BadVAddr")("BadVAddr") := (EXCEPTION.instFetch(exc)
           ? io.exceptionInput.pc
           | io.exceptionInput.memAddr).asBits
 
       }
       if (ConstantVal.FINAL_MODE) {
-        when(Utils.equalAny(exc, EXCEPTION.TLBS, EXCEPTION.TLBL, EXCEPTION.Mod)) {
-          regs("EntryHi")("VPN2") := (io.exceptionInput.instFetch
+        when(EXCEPTION.tlbRelated(exc)) {
+          regs("EntryHi")("VPN2") := (EXCEPTION.instFetch(exc)
             ? io.exceptionInput.pc
             | io.exceptionInput.memAddr)(31 downto 13).asBits
 
-          regs("Context")("BadVPN2") := (io.exceptionInput.instFetch
+          regs("Context")("BadVPN2") := (EXCEPTION.instFetch(exc)
             ? io.exceptionInput.pc
             | io.exceptionInput.memAddr)(31 downto 13).asBits
         }
       }
-      //      when(exc === EXCEPTION.AdEL || exc === EXCEPTION.AdES) {
-      //        val isFromInstruction =
-      //          io.exceptionInput.pc(1) || io.exceptionInput.pc(0)
-      //        regs("BadVAddr")("BadVAddr") :=
-      //          (isFromInstruction
-      //            ? io.exceptionInput.pc
-      //            | io.exceptionInput.memAddr).asBits
-      //      }
     }
   }
 
@@ -632,12 +640,12 @@ class CP0 extends Component {
       epcNext := io.instOnInt.pc.asBits
     }
     regs("Cause")("BD") := io.instOnInt.bd.asBits
-    regs("Cause")("ExcCode") := EXCEPTION.Int.asBits.resized
+    regs("Cause")("ExcCode") := ExcCode.Int.asBits.resized
   }
 
+  io.jumpPc := None //默认不发生跳转
   // 计算发生异常和中断时的跳转地址
   val jumpAddr = new Area {
-    io.jumpPc := None //默认不发生跳转
     // TODO 实现Cache Error后需要增加Base的可能
     val vectorBaseAddr: UInt = regs("Status")("Bev").asBool ? U"32'hBFC0_0200" |
       U"2'b10" @@ regs("EBase")("ExceptionBase").asUInt @@ U"12'b0"
@@ -647,8 +655,8 @@ class CP0 extends Component {
       if (ConstantVal.FINAL_MODE) {
         // TLB Refill并且Status.EXL为0时offset为0x0
         when(
-          Utils
-            .equalAny(exc, EXCEPTION.TLBS, EXCEPTION.TLBL) & io.tlbBus.refillException & !exl.asBool
+          Utils.equalAny(exc, EXCEPTION.fetchTLBError, EXCEPTION.loadTLBError, EXCEPTION.storeTLBError) &
+            io.tlbBus.refillException & !exl.asBool
         ) {
           offset := U"10'h0"
         }
@@ -668,13 +676,14 @@ class CP0 extends Component {
     }
 
     // ERET
-//    when(io.exceptionInput.eret) {
-//      io.jumpPc := epc.asUInt
-//      exl := False.asBits
-//    }
     when(io.exceptionInput.eret) {
-      io.jumpPc := erl.asBool ? regs("ErrorEPC")("ErrorEPC").asUInt | epc.asUInt
-      exl := False.asBits
+      when(erl.asBool) {
+        io.jumpPc := regs("ErrorEPC")("ErrorEPC").asUInt
+        erl := False.asBits
+      }.otherwise {
+        io.jumpPc := epc.asUInt
+        exl := False.asBits
+      }
     }
   }
 }

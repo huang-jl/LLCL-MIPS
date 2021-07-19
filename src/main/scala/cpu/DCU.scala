@@ -17,6 +17,7 @@ class DCU1 extends Component {
       val paddr      = in UInt (32 bits) //stage1
       val byteEnable = in UInt (2 bits)  //stage1
       val meType     = Utils.instantiateWhen(in(ME_TYPE()), ConstantVal.FINAL_MODE)
+      val userMode   = Utils.instantiateWhen(in(Bool), ConstantVal.FINAL_MODE)
     }
     val output = new Bundle {
       val byteEnable = out Bits(4 bits) //stage1，只对写寄存器有用

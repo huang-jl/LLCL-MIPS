@@ -141,7 +141,7 @@ class ALU extends Component {
       val temp = S(a, 33 bits) + S(b, 33 bits)
       c := U(temp(31 downto 0))
       when(temp(32) =/= temp(31)) {
-        io.exception := EXCEPTION.Ov
+        io.exception := EXCEPTION.overflow
       }
     }
     is(addu) {
@@ -151,7 +151,7 @@ class ALU extends Component {
       val temp = S(a, 33 bits) - S(b, 33 bits)
       c := U(temp(31 downto 0))
       when(temp(32) =/= temp(31)) {
-        io.exception := EXCEPTION.Ov
+        io.exception := EXCEPTION.overflow
       }
     }
     is(subu) {

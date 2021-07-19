@@ -314,10 +314,10 @@ class DU extends Component {
 
     // Traps
     on(SYSCALL) {
-      set(exception) to Optional.some(EXCEPTION.Sys())
+      set(exception) to Optional.some(EXCEPTION.syscall())
     }
     on(BREAK) {
-      set(exception) to Optional.some(EXCEPTION.Bp())
+      set(exception) to Optional.some(EXCEPTION.break())
     }
     on(ERET) {
       set(eret) to True
@@ -552,7 +552,7 @@ class DU extends Component {
   io.use_rt := decoder.output(useRt)
 
   when(decoder.output(NotConsidered)) {
-    io.exception := EXCEPTION.RI
+    io.exception := EXCEPTION.reservedInstruction
   } otherwise {
     io.exception := decoder.output(exception)
   }

@@ -120,7 +120,6 @@ class CPU extends Component {
   val tlbw               = Key(Bool) setEmptyValue (False)                    //ID解码
   val tlbp               = Key(Bool) setEmptyValue (False)                    //ID解码
   val tlbIndexSrc        = Key(TLBIndexSrc())                                 //ID解码
-  val instFetch          = Key(Bool)                                          //异常是否是取值时发生的
   val tlbRefillException = Key(Bool)                                          //是否是TLB缺失异常（影响异常处理地址）
   val isTrap     = Key(Bool) setEmptyValue False
 
@@ -143,8 +142,9 @@ class CPU extends Component {
     mmu.io.probeASID := cp0.io.tlbBus.tlbwEntry.asid
     mmu.io.index := cp0.io.tlbBus.index //默认是读index寄存器的值
     mmu.io.wdata := cp0.io.tlbBus.tlbwEntry
-    mmu.io.K0 := cp0.io.K0
-    mmu.io.ERL := cp0.io.ERL
+    mmu.io.K0 := cp0.io.machineState.K0
+    mmu.io.ERL := cp0.io.machineState.ERL
+    mmu.io.userMode := cp0.io.machineState.userMode
 
     cp0.io.tlbBus.probeIndex := mmu.io.probeIndex
     cp0.io.tlbBus.tlbrEntry := mmu.io.rdata
@@ -234,7 +234,6 @@ class CPU extends Component {
       cp0.io.exceptionInput.memAddr := input(memAddr)
       cp0.io.exceptionInput.pc := input(pc)
       cp0.io.exceptionInput.bd := input(bd)
-      cp0.io.exceptionInput.instFetch := input(instFetch)
 
       cp0.io.externalInterrupt := io.externalInterrupt
     }
@@ -268,7 +267,7 @@ class CPU extends Component {
     if (ConstantVal.FINAL_MODE) {
       // Trap异常，当aluResultC的第0位为1时发生
       when(input(isTrap) && input(aluResultC)(0)) {
-        exceptionToRaise := EXCEPTION.Tr
+        exceptionToRaise := EXCEPTION.trapError
       }
       // TLB异常
       val refillException = input(dataMMURes).mapped & input(dataMMURes).miss
@@ -277,19 +276,20 @@ class CPU extends Component {
       val modifiedException = input(dataMMURes).mapped & input(memWe) &
         !input(dataMMURes).miss & input(dataMMURes).valid & !input(dataMMURes).dirty
       when(refillException | invalidException) {
-        when(input(memRe))(exceptionToRaise := EXCEPTION.TLBL)
-          .elsewhen(input(memWe))(exceptionToRaise := EXCEPTION.TLBS)
-      }.elsewhen(modifiedException)(exceptionToRaise := EXCEPTION.Mod)
+        when(input(memRe))(exceptionToRaise := EXCEPTION.loadTLBError)
+          .elsewhen(input(memWe))(exceptionToRaise := EXCEPTION.storeTLBError)
+      }.elsewhen(modifiedException)(exceptionToRaise := EXCEPTION.tlbModError)
 
       // 当memRe或memWe时才会由本阶段触发refillException
       cp0.io.tlbBus.refillException := input(tlbRefillException) |
         (refillException & (input(memRe) | input(memWe)))
     }
-    // 访存地址不对齐异常（更优先）
-    // Cache指令不允许引起地址异常的错误
-    when(!dcu1.io.output.addrValid & !input(invalidateDCache) & !input(invalidateICache)) {
-      when(input(memRe))(exceptionToRaise := EXCEPTION.AdEL)
-        .elsewhen(input(memWe))(exceptionToRaise := EXCEPTION.AdES)
+    // 访存地址异常（更优先）
+    //访问权限不够的异常 或 Cache指令不允许引起地址异常的错误
+    when(input(dataMMURes).illegal |
+      (!dcu1.io.output.addrValid & !input(invalidateDCache) & !input(invalidateICache))) {
+      when(input(memRe))(exceptionToRaise := EXCEPTION.loadAddrError)
+        .elsewhen(input(memWe))(exceptionToRaise := EXCEPTION.storeTLBError)
     }
   }
 
@@ -620,23 +620,20 @@ class CPU extends Component {
       output(if2En) := True
 
       // 异常
-      output(instFetch) := False //默认取指没有产生异常
       exceptionToRaise := None
       // TLB异常
       if (ConstantVal.FINAL_MODE) {
         val refillException  = mmu.io.instRes.mapped & mmu.io.instRes.miss
         val invalidException = mmu.io.instRes.mapped & !mmu.io.instRes.miss & !mmu.io.instRes.valid
         when(refillException | invalidException) {
-          exceptionToRaise := EXCEPTION.TLBL
-          output(instFetch) := True
+          exceptionToRaise := EXCEPTION.fetchTLBError
           output(if2En) := False
         }
         output(tlbRefillException) := refillException
       }
-      // 访存地址不对齐异常（更优先）
-      when(!icu.io.addrValid) {
-        exceptionToRaise := EXCEPTION.AdEL
-        output(instFetch) := True
+      //访问权限不够的异常 或 访存地址异常（更优先）
+      when(!icu.io.addrValid | mmu.io.instRes.illegal) {
+        exceptionToRaise := EXCEPTION.fetchAddrError
         output(if2En) := False
       }
     }
@@ -695,13 +692,15 @@ class CPU extends Component {
 //  IF2.stored(ifPaddr).addAttribute("mark_debug", "true")
   IF2.stored(pc).addAttribute("mark_debug", "true")
   ID.stored(inst).addAttribute("mark_debug", "true")
-  ME1.stored(pc).addAttribute("mark_debug", "true")
-  ME1.stored(dataMMURes).paddr.addAttribute("mark_debug", "true")
   ME2.stored(pc).addAttribute("mark_debug", "true")
+  ME2.stored(dataMMURes).paddr.addAttribute("mark_debug", "true")
+  ME2.stored(dataMMURes).cached.addAttribute("mark_debug", "true")
   cp0.interruptOnNextInst.addAttribute("mark_debug", "true")
   cp0.regs("Cause")("IP_HW").addAttribute("mark_debug", "true")
   cp0.regs("Cause")("ExcCode").addAttribute("mark_debug", "true")
   cp0.regs("Status")("IM").addAttribute("mark_debug", "true")
+  cp0.regs("Status")("ERL").addAttribute("mark_debug", "true")
+  cp0.regs("Config0")("K0").addAttribute("mark_debug", "true")
 //
 //  dcu.io.stage2.read.addAttribute("mark_debug", "true")
 //  dcu.io.stage2.write.addAttribute("mark_debug", "true")
