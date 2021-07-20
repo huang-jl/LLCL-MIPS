@@ -44,7 +44,7 @@ class DU extends Component {
     val use_rs = out Bool ()
     val use_rt = out Bool ()
 
-    val exception = out(Optional(EXCEPTION()))
+    val exception = out(Optional(ExcCode()))
     val eret      = out Bool ()
 
     //tlb相关
@@ -101,7 +101,7 @@ class DU extends Component {
 
   val useRs, useRt = Key(Bool)
 
-  val exception = Key(Optional(EXCEPTION()))
+  val exception = Key(Optional(ExcCode()))
   val eret      = Key(Bool)
   val fuck      = Key(Bool)
 
@@ -135,7 +135,7 @@ class DU extends Component {
     default(juPcSrc) to JU_PC_SRC.rs
     default(useRs) to False
     default(useRt) to False
-    default(exception) to Optional.noneOf(EXCEPTION())
+    default(exception) to Optional.noneOf(ExcCode())
     default(eret) to False
     default(fuck) to False
     if (ConstantVal.FINAL_MODE) {
@@ -314,10 +314,10 @@ class DU extends Component {
 
     // Traps
     on(SYSCALL) {
-      set(exception) to Optional.some(EXCEPTION.syscall())
+      set(exception) to Optional.some(ExcCode.syscall())
     }
     on(BREAK) {
-      set(exception) to Optional.some(EXCEPTION.break())
+      set(exception) to Optional.some(ExcCode.break())
     }
     on(ERET) {
       set(eret) to True
@@ -552,7 +552,7 @@ class DU extends Component {
   io.use_rt := decoder.output(useRt)
 
   when(decoder.output(NotConsidered)) {
-    io.exception := EXCEPTION.reservedInstruction
+    io.exception := ExcCode.reservedInstruction
   } otherwise {
     io.exception := decoder.output(exception)
   }

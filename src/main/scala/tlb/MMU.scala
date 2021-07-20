@@ -14,11 +14,26 @@ import scala.language.postfixOps
   * @note MMU进行地址翻译后得到的结果
   */
 class MMUTranslationRes(useTLB: Boolean) extends Bundle {
-  val paddr              = UInt(32 bits)
-  val miss, dirty, valid = Bool
-  val cached             = Bool
-  val mapped             = Utils.instantiateWhen(Bool, useTLB)
-  val illegal            = Bool   // MMU会检查**虚拟地址**区域是否合法
+  val paddr                = UInt(32 bits)
+  val miss, dirty, invalid = Bool
+  val cached               = Bool
+  val mapped               = Bool
+  val illegal              = Bool // MMU会检查**虚拟地址**区域是否合法
+
+  /**
+   * @note 在关闭Final Mode时使用，这个设置下不会触发TLB的异常
+   * */
+  def setDefault():Unit = {
+    miss := False
+    dirty := True
+    invalid := False
+    illegal := False
+    mapped := False
+  }
+
+  def tlbRefillException: Bool = mapped & miss
+  def tlbInvalidException: Bool = mapped & invalid
+  def tlbModException: Bool = mapped & !dirty
 }
 
 class CPUMMUInterface extends Bundle with IMasterSlave {
@@ -47,8 +62,8 @@ class CPUMMUInterface extends Bundle with IMasterSlave {
     Utils.instantiateWhen(Bits(32 bits), ConstantVal.FINAL_MODE) //这个值可以直接写回Index CP0寄存器
 
   //其他信息
-  val K0  = Utils.instantiateWhen(Bits(3 bits), ConstantVal.FINAL_MODE)
-  val ERL = Utils.instantiateWhen(Bool, ConstantVal.FINAL_MODE)
+  val K0       = Utils.instantiateWhen(Bits(3 bits), ConstantVal.FINAL_MODE)
+  val ERL      = Utils.instantiateWhen(Bool, ConstantVal.FINAL_MODE)
   val userMode = Utils.instantiateWhen(Bool, ConstantVal.FINAL_MODE)
 
   override def asMaster(): Unit = {
@@ -83,8 +98,18 @@ class MMU extends Component {
       io.probeIndex := tlb.io.probeIndex
     }
     //在Uncache区域或者TLB的C字段为2，那么就Uncache
-    io.instRes.cached := !Utils.VAddr.isUncached(io.instVaddr, tlb.io.instRes.cacheAttr, io.K0, io.ERL)
-    io.dataRes.cached := !Utils.VAddr.isUncached(io.dataVaddr, tlb.io.dataRes.cacheAttr, io.K0, io.ERL)
+    io.instRes.cached := !Utils.VAddr.isUncached(
+      io.instVaddr,
+      tlb.io.instRes.cacheAttr,
+      io.K0,
+      io.ERL
+    )
+    io.dataRes.cached := !Utils.VAddr.isUncached(
+      io.dataVaddr,
+      tlb.io.dataRes.cacheAttr,
+      io.K0,
+      io.ERL
+    )
     io.instRes.mapped := !Utils.VAddr.isUnmapped(io.instVaddr, io.ERL)
     io.dataRes.mapped := !Utils.VAddr.isUnmapped(io.dataVaddr, io.ERL)
     when(Utils.VAddr.isUnmappedSection(io.instVaddr)) {
@@ -97,11 +122,8 @@ class MMU extends Component {
     io.instRes.illegal := io.userMode & !Utils.VAddr.isUseg(io.instVaddr)
     io.dataRes.illegal := io.userMode & !Utils.VAddr.isUseg(io.dataVaddr)
   } else {
-    //miss, illegal已经默认为False了
-    io.instRes.assignFromBits(B(0, io.instRes.getBitsWidth bits))
-    io.dataRes.assignFromBits(B(0, io.dataRes.getBitsWidth bits))
-    io.instRes.allowOverride
-    io.dataRes.allowOverride
+    io.instRes.setDefault()
+    io.dataRes.setDefault()
     io.instRes.paddr := (B(0, 3 bits) ## io.instVaddr(0, 29 bits)).asUInt
     io.dataRes.paddr := (B(0, 3 bits) ## io.dataVaddr(0, 29 bits)).asUInt
     //不开启TLB的时候除了kseg1全是Cache的
@@ -110,7 +132,7 @@ class MMU extends Component {
   }
 }
 
-object MMU{
+object MMU {
   def main(args: Array[String]): Unit = {
     SpinalVerilog(new MMU)
   }

@@ -6,15 +6,295 @@ import spinal.core._
 import spinal.lib.{cpu => _, _}
 import tlb.{TLBConfig, TLBEntry}
 import Utils.IntToFixedLengthBinaryString
+import cpu.CP0.Cp0Reg
 
 import scala.collection.mutable
-import scala.language.postfixOps
+import scala.language.{existentials, postfixOps}
 
 /** TLBR, TLBWI: 来源是Index寄存器
   * TLBWR: 来源是Random寄存器
   */
 object TLBIndexSrc extends SpinalEnum {
   val Index, Random = newElement()
+}
+
+// 处理中断异常的部件使用
+class ExceptionBus extends Bundle with IMasterSlave {
+  val exception       = new EXCEPTION
+  val eret            = Bool
+  val vaddr           = UInt(32 bits) //虚地址
+  val pc              = UInt(32 bits)
+  val bd              = Bool
+  val refillException = Bool
+
+
+  val jumpPc = Optional(UInt(32 bits))
+
+  override def asMaster(): Unit = {
+    out(exception, eret, vaddr, pc, bd, refillException)
+    in(jumpPc)
+  }
+}
+
+case class Addr() extends Bundle {
+  val rd  = UInt(5 bits)
+  val sel = UInt(3 bits)
+
+  def :=(that: (Int, Int)) = {
+    rd := that._1
+    sel := that._2
+  }
+
+  def =/=(that: (Int, Int)) = !(this === that)
+
+  def ===(that: (Int, Int)) = rd === that._1 && sel === that._2
+}
+
+case class Read() extends Bundle with IMasterSlave {
+  val addr = Addr()
+  val data = Bits(32 bits)
+
+  override def asMaster() = {
+    out(addr)
+    in(data)
+  }
+}
+
+case class Write() extends Bundle {
+  val addr = Addr()
+  val data = Bits(32 bits)
+}
+
+object CP0 {
+  def main(args: Array[String]): Unit = {
+    SpinalVerilog(new CP0)
+  }
+
+  object Type extends Enumeration {
+    val SoftWrite, HardWrite, NoWrite = Value
+  }
+
+  def TLBIndexWidth: Int = log2Up(ConstantVal.TLBEntryNum)
+
+  class RegisterBase(num: Int, sel: Int) extends Bundle {
+    case class RegValue(name: String, range: Range, ty: Type.Value) {}
+
+    val map: mutable.Map[RegValue, Bits] = mutable.Map()
+    val addr                             = Addr()
+    addr := (num, sel)
+
+    def addField(name: String, range: Range, ty: CP0.Type.Value, initial: Option[Bits]): Bits = {
+      for ((field, _) <- map) {
+        assert(range.max < field.range.min || range.min > field.range.max)
+        assert(field.name != name)
+      }
+      initial match {
+        case Some(v) =>
+          assert(v.getBitsWidth == range.length)
+          ty match {
+            case Type.SoftWrite =>
+              map += RegValue(name, range, ty) -> (Reg(Bits(range.length bits)) init v)
+            case Type.HardWrite =>
+              map += RegValue(name, range, ty) -> (Reg(Bits(range.length bits)) init v)
+            case Type.NoWrite => map += RegValue(name, range, ty) -> B(v, range.length bits)
+          }
+        case None =>
+          ty match {
+            case Type.SoftWrite =>
+              map += RegValue(name, range, ty) -> Reg(Bits(range.length bits))
+            case Type.HardWrite =>
+              map += RegValue(name, range, ty) -> Reg(Bits(range.length bits))
+            case Type.NoWrite => map += RegValue(name, range, ty) -> Bits(range.length bits)
+          }
+      }
+      this.apply(name).setCompositeName(this, name)
+      this.apply(name)
+    }
+
+    /** 普通的域 */
+    def field(name: String, range: Range, initial: Bits): Bits = {
+      addField(name, range, Type.SoftWrite, Some(initial))
+    }
+    def field(name: String, range: Range): Bits = {
+      addField(name, range, Type.SoftWrite, None)
+    }
+    def field(name: String, idx: Int, initial: Bits): Bits = {
+      addField(name, idx to idx, Type.SoftWrite, Some(initial))
+    }
+    def field(name: String, idx: Int): Bits = {
+      addField(name, idx to idx, Type.SoftWrite, None)
+    }
+
+    /** 只有硬件可写的域 */
+    def hardField(name: String, range: Range, initial: Bits): Bits = {
+      addField(name, range, Type.HardWrite, Some(initial))
+    }
+    def hardField(name: String, range: Range): Bits = {
+      addField(name, range, Type.HardWrite, None)
+    }
+    def hardField(name: String, idx: Int, initial: Bits): Bits = {
+      addField(name, idx to idx, Type.HardWrite, Some(initial))
+    }
+    def hardField(name: String, idx: Int): Bits = {
+      addField(name, idx to idx, Type.HardWrite, None)
+    }
+
+    /** 不可写的域 */
+    def staticField(name: String, range: Range, initial: Bits): Bits = {
+      addField(name, range, Type.NoWrite, Some(initial))
+    }
+    def staticField(name: String, range: Range): Bits = {
+      addField(name, range, Type.NoWrite, None)
+    }
+    def staticField(name: String, idx: Int, initial: Bits): Bits = {
+      addField(name, idx to idx, Type.NoWrite, Some(initial))
+    }
+    def staticField(name: String, idx: Int): Bits = {
+      addField(name, idx to idx, Type.NoWrite, None)
+    }
+
+    def softWrite(next: Bits): Unit = {
+      for ((meta, value) <- map) {
+        if (meta.ty == Type.SoftWrite) {
+          value := next(meta.range)
+        }
+      }
+    }
+
+    def hardWrite(next: Bits): Unit = {
+      for ((meta, value) <- map) {
+        if (meta.ty != Type.NoWrite) {
+          value := next(meta.range)
+        }
+      }
+    }
+
+    def apply(fieldName: String): Bits = {
+      for ((meta, value) <- map) {
+        if (meta.name == fieldName) return value
+      }
+      assert(false, s"Not find ${fieldName}")
+      B(0)
+    }
+
+    def value: Bits = {
+      val res = map.toList.sortBy(_._1.range.min).foldRight(B(0, 0 bits)) { case (x, y) =>
+        y ## B(0, 31 - x._1.range.max - y.getBitsWidth bits) ## x._2
+      }
+      res ## B(0, 32 - res.getBitsWidth bits)
+    }
+  }
+
+  class BadVaddr extends RegisterBase(8, 0) {
+    val badVaddr = hardField("BadVaddr", 31 downto 0)
+  }
+  class Count extends RegisterBase(9, 0) {
+    val count = field("Count", 31 downto 0, B"32'h0")
+  }
+  class Comparae extends RegisterBase(11, 0) {
+    val compare = field("Compare", 31 downto 0, B"32'hffff_ffff")
+  }
+  class Status extends RegisterBase(12, 0) {
+    val cu0 = field("CU0", 28, B"0")
+    val bev = field("Bev", 22, B"1")
+    val im  = field("IM", 15 downto 8, B"8'hff")
+    val um  = field("UM", 4, B"0")
+    val erl = field("ERL", 2, B"0") // TODO 手册上要求初始化为1，但是许多地方包括nontrivials也初始化为0
+    val exl = field("EXL", 1, B"0")
+    val ie  = field("IE", 0, B"0")
+  }
+  class Cause extends RegisterBase(13, 0) {
+    val bd      = hardField("BD", 31)
+    val ti      = staticField("TI", 30, B"0")
+    val ce      = hardField("CE", 29 downto 28, B"00")  //TODO 如果有其他的COP需要修改
+    val iv      = field("IV", 23, B"0")
+    val ipHW    = staticField("IP_HW", 15 downto 10)
+    val ipSW    = field("IP_SW", 9 downto 8, B"00")
+    val excCode = hardField("ExcCode", 6 downto 2)
+  }
+  class EPC extends RegisterBase(14, 0) {
+    val epc = field("EPC", 31 downto 0)
+  }
+  class EBase extends RegisterBase(15, 1) {
+    val _             = staticField("31", 31, B"1")
+    val exceptionBase = field("ExceptionBase", 29 downto 12, B"18'h0")
+    val cpuNum        = staticField("CPUNum", 9 downto 0, B"10'h0")
+  }
+  class Config0 extends RegisterBase(16, 0) {
+    val M  = staticField("M", 31, B"1")
+    val MT = staticField("MT", 9 downto 7, B"001")
+    val K0 = field("K0", 2 downto 0, B"011")
+  }
+  class Config1 extends RegisterBase(16, 1) {
+    val mmuSize = staticField("MMUSize", 30 downto 25, B(ConstantVal.TLBEntryNum, 6 bits))
+    val IS      = staticField("IS", 24 downto 22, B(log2Up(ConstantVal.IcacheSetsPerWay) - 6, 3 bits))
+    val IL      = staticField("IL", 21 downto 19, B(log2Up(ConstantVal.IcacheLineSize) - 1, 3 bits))
+    val IA      = staticField("IA", 18 downto 16, B(ConstantVal.IcacheWayNum - 1, 3 bits))
+    val DS      = staticField("DS", 15 downto 13, B(log2Up(ConstantVal.DcacheSetsPerWay) - 6, 3 bits))
+    val DL      = staticField("DL", 12 downto 10, B(log2Up(ConstantVal.DcacheLineSize) - 1, 3 bits))
+    val DA      = staticField("DA", 9 downto 7, B(ConstantVal.DcacheWayNum - 1, 3 bits))
+  }
+  class ErrorEPC extends RegisterBase(30, 0) {
+    val errorEPC = field("ErrorEPC", 31 downto 0, B"32'h0")
+  }
+  class EntryLo0 extends RegisterBase(2, 0) {
+    val pfn = field("PFN", (ConstantVal.PABITS - 7) downto 6)
+    val C   = field("C", 5 downto 3)
+    val D   = field("D", 2)
+    val V   = field("V", 1)
+    val G   = field("G", 0)
+  }
+  class EntryLo1 extends RegisterBase(3, 0) {
+    val pfn = field("PFN", (ConstantVal.PABITS - 7) downto 6)
+    val C   = field("C", 5 downto 3)
+    val D   = field("D", 2)
+    val V   = field("V", 1)
+    val G   = field("G", 0)
+  }
+  class Index extends RegisterBase(0, 0) {
+    val P     = hardField("P", 31, B"0")
+    val index = field("Index", 0 until TLBIndexWidth)
+  }
+  class EntryHi extends RegisterBase(10, 0) {
+    val vpn2 = field("VPN2", 31 downto 13)
+    val asid = field("ASID", 7 downto 0)
+  }
+  class PageMask extends RegisterBase(5, 0) {
+    val mask = staticField("Mask", 28 downto 13, B(0, TLBConfig.maskWidth bits))
+  }
+  class Random extends RegisterBase(1, 0) {
+    val random =
+      hardField("Random", 0 until TLBIndexWidth, B(ConstantVal.TLBEntryNum - 1, TLBIndexWidth bits))
+  }
+  class Wired extends RegisterBase(6, 0) {
+    val wired = field("Wired", 0 until TLBIndexWidth, B(0, TLBIndexWidth bits))
+  }
+  class Context extends RegisterBase(4, 0) {
+    val pteBase = field("PTEBase", 31 downto 23)
+    val badVPN2 = hardField("BadVPN2", 22 downto 4)
+  }
+
+  class Cp0Reg extends Bundle {
+    val badVaddr = new BadVaddr
+    val count    = new Count
+    val compare  = new Comparae
+    val status   = new Status
+    val cause    = new Cause
+    val epc      = new EPC
+    val eBase    = new EBase
+    val config0  = new Config0
+    val config1  = new Config1
+    val errorEPC = new ErrorEPC
+
+    val entryLo0 = new EntryLo0
+    val entryLo1 = new EntryLo1
+    val index    = new Index
+    val entryHi  = new EntryHi
+    val pageMask = new PageMask
+    val random   = new Random
+    val wired    = new Wired
+    val context  = new Context
+  }
 }
 
 /** 从CP0中读和TLB相关值的接口 */
@@ -34,417 +314,24 @@ class TLBInterface extends Bundle with IMasterSlave {
   val tlbp       = Bool
   val probeIndex = Bits(32 bits)
 
-  /** following is used for tlb exception related logic */
-  val refillException = Bool
-
   /** following is used for random register to update (round robin) */
   val tlbwr = Bool
 
   override def asMaster(): Unit = {
     in(index, random, tlbwEntry)
-    out(tlbrEntry, tlbr, tlbp, tlbwr, probeIndex, refillException)
+    out(tlbrEntry, tlbr, tlbp, tlbwr, probeIndex)
   }
 }
 
 /** 从CP0返回当前机器状态的信息 */
 class MachineStateBus extends Bundle with IMasterSlave {
   val userMode = Bool
-  val cu0 = Bool
-  val ERL = Bool
-  val K0 = Bits(3 bits)
+  val cu0      = Bool
+  val ERL      = Bool
+  val K0       = Bits(3 bits)
 
   override def asMaster(): Unit = {
     in(userMode, cu0, ERL, K0)
-  }
-}
-
-class ExceptionBus extends Bundle with IMasterSlave {
-
-  override def asMaster(): Unit = {
-
-  }
-}
-
-object CP0 {
-  def main(args: Array[String]): Unit = {
-    SpinalVerilog(new CP0)
-  }
-
-  case class RegisterDescription(
-      name: String,
-      addr: (Int, Int),
-      fields: mutable.ArrayBuffer[Field.Description] = mutable.ArrayBuffer()
-  ) {
-    def field(name: String, index: Int, init: Boolean): RegisterDescription =
-      field(name, index to index, if (init) "1" else "0")
-
-    def field(name: String, range: Range, init: String) =
-      regField(name, Field.Type.ReadWrite, range, Some(init))
-
-    private def regField(
-        name: String,
-        fieldType: Field.Type.Value,
-        range: Range,
-        init: Option[String]
-    ) = addField(Field.Description(name, fieldType, range, init))
-
-    def field(name: String, index: Int): RegisterDescription =
-      field(name, index to index)
-
-    def field(name: String, range: Range) =
-      regField(name, Field.Type.ReadWrite, range, None)
-
-    def readOnlyField(
-        name: String,
-        index: Int,
-        init: Boolean
-    ): RegisterDescription =
-      readOnlyField(name, index to index, if (init) "1" else "0")
-
-    def readOnlyField(name: String, range: Range, init: String) =
-      regField(name, Field.Type.ReadOnly, range, Some(init))
-
-    def readOnlyField(name: String, index: Int): RegisterDescription =
-      readOnlyField(name, index to index)
-
-    def readOnlyField(name: String, range: Range) =
-      regField(name, Field.Type.ReadOnly, range, None)
-
-    def hardwiredField(
-        name: String,
-        index: Int,
-        init: Boolean
-    ): RegisterDescription =
-      hardwiredField(name, index to index, if (init) "1" else "0")
-
-    def hardwiredField(name: String, range: Range, init: String) =
-      addField(Field.Description(name, Field.Type.Hardwired, range, Some(init)))
-
-    private def addField(field: Field.Description) = {
-      assert(fields.forall({ other =>
-        other.name != field.name && (other.range.max < field.range.min || field.range.max < other.range.min)
-      }))
-      fields += field
-      this
-    }
-
-    def hardwiredField(name: String, index: Int): RegisterDescription =
-      hardwiredField(name, index to index)
-
-    def hardwiredField(name: String, range: Range) =
-      addField(Field.Description(name, Field.Type.Hardwired, range, None))
-
-    def softwareWriteMask = B(
-      (0 until 32)
-        .map(index =>
-          if (
-            fields.exists(field =>
-              (field.fieldType == Field.Type.ReadWrite) && (field.range contains index)
-            )
-          ) '1'
-          else '0'
-        )
-        .mkString
-    )
-  }
-
-  class Register(val description: RegisterDescription) extends Bundle {
-    //    setWeakName(description.name)
-    setName(description.name)
-
-    val field = Map.from(
-      for (field <- description.fields) yield (field.name -> {
-        val length = field.range.length
-        if (field.fieldType == Field.Type.Hardwired) {
-          val bits = Bits(length bits).setCompositeName(this, field.name)
-          field.init match {
-            case Some(i) =>
-              bits := B(i)
-              bits.allowOverride
-            case None =>
-          }
-          bits
-        } else {
-          val bits = Reg(Bits(length bits)).setCompositeName(this, field.name)
-          field.init match {
-            case Some(i) => bits init B(i)
-            case None    => bits init 0
-          }
-          bits
-        }
-      })
-    )
-
-    val next = Map.from(
-      for (field <- description.fields) yield (field.name -> {
-        val length = field.range.length
-        if (field.fieldType == Field.Type.Hardwired) {
-          this.field(field.name)
-        } else {
-          val bits =
-            Bits(length bits).setCompositeName(this, field.name + "_next")
-          bits := this.field(field.name)
-          this.field(field.name) := bits
-          bits.allowOverride
-        }
-      })
-    )
-
-    val value = {
-      val sorted = description.fields.sortBy(_.range.min)
-
-      val concatenated = sorted
-        .foldRight(B(0, 0 bits)) {
-          case (field, bits) => {
-            bits ##
-              B(0, (31 - widthOf(bits) - field.range.max) bits) ##
-              this.field(field.name)
-          }
-        }
-      concatenated ## B(0, (32 - widthOf(concatenated)) bits)
-    }
-
-    def softwareWrite(data: Bits) = {
-      for (field <- description.fields) {
-        if (field.fieldType == Field.Type.ReadWrite) {
-          this.next(field.name) := data(field.range)
-        }
-      }
-    }
-
-    /** @param data 要写的各个域的值，按照起始bit的降序（从高到低）排列
-      * @note 这个方法用于硬件自己写，但是只能写Hardwired和ReadWrite
-      */
-    def write(data: Seq[Bits]): Unit = {
-      for ((field, index) <- description.fields.sortBy(x => x.range.max).reverse.zipWithIndex) {
-        this.next(field.name) := data(index)
-      }
-    }
-
-    /** @param data 要写的各个域的值，按照起始bit的降序（从高到低）排列
-      * @note 这个方法用于硬件自己写，但是只能写Readonly和ReadWrite
-      */
-    def write(data: Bits): Unit = {
-      for (field <- description.fields) {
-        if (field.fieldType != Field.Type.Hardwired) {
-          this.next(field.name) := data(field.range)
-        }
-      }
-    }
-
-    def apply(name: String) = field.apply(name)
-  }
-
-  case class Addr() extends Bundle {
-    val rd  = UInt(5 bits)
-    val sel = UInt(3 bits)
-
-    def :=(that: (Int, Int)) = {
-      rd := that._1
-      sel := that._2
-    }
-
-    def =/=(that: (Int, Int)) = !(this === that)
-
-    def ===(that: (Int, Int)) = rd === that._1 && sel === that._2
-  }
-
-  case class Read() extends Bundle with IMasterSlave {
-    val addr = Addr()
-    val data = Bits(32 bits)
-
-    override def asMaster() = {
-      out(addr)
-      in(data)
-    }
-  }
-
-  case class Write() extends Bundle {
-    val addr = Addr()
-    val data = Bits(32 bits)
-  }
-
-  case class ExceptionInput() extends Bundle {
-    val exception = Optional(EXCEPTION())
-    val eret      = Bool
-    val memAddr   = UInt(32 bits) //虚地址
-    val pc        = UInt(32 bits)
-    val bd        = Bool
-  }
-
-  object Field {
-    case class Description(
-        name: String,
-        fieldType: Type.Value,
-        range: Range,
-        init: Option[String]
-    ) {
-      assert(0 <= range.min && range.max < 32)
-      assert(range.step == 1 || range.step == -1)
-
-      for (s <- init) {
-        assert(s.length == range.length)
-        assert(s.forall("01" contains _))
-      }
-    }
-
-    object Type extends Enumeration {
-      val ReadWrite, ReadOnly, Hardwired = Value
-    }
-  }
-
-  object Register {
-    val allDescriptions = mutable.HashMap[(Int, Int), RegisterDescription]()
-
-    def apply(description: RegisterDescription) = new Register(description)
-
-    def describeRegister(name: String, number: Int, sel: Int) = {
-      val description = RegisterDescription(name, (number, sel))
-      allDescriptions((number, sel)) = description
-      description
-    }
-
-    describeRegister("BadVAddr", 8, 0)
-      .readOnlyField("BadVAddr", 31 downto 0)
-
-    describeRegister("Count", 9, 0)
-      .field("Count", 31 downto 0, "0" * 32)
-
-    describeRegister("Compare", 11, 0)
-      .field("Compare", 31 downto 0, "1" * 32)
-
-    describeRegister("Status", 12, 0)
-      .field("CU0", 28, false)
-      .field("Bev", 22, true)
-      .field("IM", 15 downto 8, "1" * (15 - 8 + 1))
-      .field("UM", 4, false)
-      .field("ERL", 2, false)   // TODO 手册上要求初始化为1，但是许多地方包括nontrivials也初始化为0
-      .field("EXL", 1, false)
-      .field("IE", 0, false)
-
-    describeRegister("Cause", 13, 0)
-      .readOnlyField("BD", 31)
-      .readOnlyField("TI", 30)
-      .readOnlyField("CE", 29 downto 28, "00")
-      .field("IV", 23, false)
-      .hardwiredField("IP_HW", 15 downto 10)
-      .field("IP_SW", 9 downto 8)
-      .readOnlyField("ExcCode", 6 downto 2)
-
-    describeRegister("EPC", 14, 0)
-      .field("EPC", 31 downto 0)
-
-    describeRegister("EBase", 15, 1)
-      .hardwiredField("31", 31, true) //31位始终为1
-      .field("ExceptionBase", 29 downto 12, 0.toBinaryString(29 - 12 + 1))
-      .hardwiredField("CPUNum", 9 downto 0, 0.toBinaryString(10))
-
-    //TODO K0可能需要修改？现在的MMU实现kseg0因为是unmapped，因此会被cache
-    describeRegister("Config0", 16, 0)
-      .hardwiredField("M", 31, true)
-      .hardwiredField("MT", 9 downto 7, "001")
-      .field("K0", 2 downto 0, "011")
-
-    //TODO 实现了CP2需要加入C2域，实现了FPU需要加入FPU域
-    describeRegister("Config1", 16, 1)
-      .hardwiredField("MMUSize", 30 downto 25, ConstantVal.TLBEntryNum.toBinaryString(6))
-      .hardwiredField(
-        "IS",
-        24 downto 22,
-        (log2Up(ConstantVal.IcacheSetsPerWay) - 6).toBinaryString(3)
-      )
-      .hardwiredField(
-        "IL",
-        21 downto 19,
-        (log2Up(ConstantVal.IcacheLineSize) - 1).toBinaryString(3)
-      )
-      .hardwiredField("IA", 18 downto 16, (ConstantVal.IcacheWayNum - 1).toBinaryString(3))
-      .hardwiredField(
-        "DS",
-        15 downto 13,
-        (log2Up(ConstantVal.DcacheSetsPerWay) - 6).toBinaryString(3)
-      )
-      .hardwiredField(
-        "DL",
-        12 downto 10,
-        (log2Up(ConstantVal.DcacheLineSize) - 1).toBinaryString(3)
-      )
-      .hardwiredField("DA", 9 downto 7, (ConstantVal.DcacheWayNum - 1).toBinaryString(3))
-
-    describeRegister("ErrorEPC", number = 30, sel = 0)
-      .field("ErrorEPC", 31 downto 0, "0" * 32)
-
-    //CP0 Reg for TLB-based MMU
-    if (ConstantVal.FINAL_MODE) {
-      val TLBIndexWidth: Int = log2Up(ConstantVal.TLBEntryNum)
-      describeRegister("EntryLo0", number = 2, sel = 0)
-        //31 downto (PABITS - 6) is hardwire to 0
-        .field("PFN", (ConstantVal.PABITS - 7) downto 6)
-        .field("C", 5 downto 3)
-        .field("D", 2)
-        .field("V", 1)
-        .field("G", 0)
-
-      describeRegister("EntryLo1", number = 3, sel = 0)
-        //31 downto (PABITS - 6) is hardwire to 0
-        .field("PFN", (ConstantVal.PABITS - 7) downto 6)
-        .field("C", 5 downto 3)
-        .field("D", 2)
-        .field("V", 1)
-        .field("G", 0)
-
-      describeRegister("Index", number = 0, sel = 0)
-        .readOnlyField("P", 31, init = false)
-        //log2Up(TLBConfig.tlbEntryNum) to 30 is hardwired to 0
-        .field("Index", 0 until TLBIndexWidth, "0" * TLBIndexWidth)
-
-      describeRegister("EntryHi", number = 10, sel = 0)
-        .field("VPN2", 31 downto 13, "0" * TLBConfig.vpn2Width)
-        //In Release1 VPN2X(12 downto 11) and (10 downto 8) is hardwired to 0
-        .field("ASID", 7 downto 0, "0" * TLBConfig.asidWidth)
-
-      describeRegister("PageMask", number = 5, sel = 0)
-        //(31 downto 29) is hardwired to 0
-        //1 means do not participate in TLB match, current only support 4KiB page
-        .hardwiredField("Mask", 28 downto 13, "0" * TLBConfig.maskWidth)
-      //In Release1 MaskX(12 downto 11) is hardwired to 0
-
-      //TODO Random be set with (TLBEntryNum - 1)  when Reset Exception and write wired register
-      //TODO Implemented Random
-      //Random Range : [Wired, TLBEntryNum - 1]
-      describeRegister("Random", number = 1, sel = 0)
-        .readOnlyField(
-          "Random",
-          0 until TLBIndexWidth,
-          (ConstantVal.TLBEntryNum - 1).toBinaryString(TLBIndexWidth)
-        )
-
-      describeRegister("Wired", number = 6, sel = 0)
-        .field("Wired", 0 until TLBIndexWidth, "0" * TLBIndexWidth)
-
-      // Context.BadVPN2记录发生TLB异常的VA[31...13]
-      describeRegister("Context", number = 4, sel = 0)
-        .field("PTEBase", 31 downto 23, "0" * (31 - 23 + 1))
-        .readOnlyField("BadVPN2", 22 downto 4, "0" * (22 - 4 + 1))
-    }
-  }
-
-  object AddrImplicits {
-    implicit class InstHasAddr(inst: Mips32Inst) {
-      def addr = signalCache(inst, "addr") {
-        val addr = Addr()
-        addr.rd := inst.rd
-        addr.sel := inst.sel
-        addr
-      }
-    }
-
-    implicit class BitsHasAddr(bits: Bits) {
-
-      import defs.Mips32InstImplicits._
-
-      def addr = new InstHasAddr(bits).addr
-    }
   }
 }
 
@@ -456,259 +343,217 @@ class CP0 extends Component {
     val softwareWrite = slave Flow (Write())
     val read          = slave(Read())
 
-    val tlbBus = Utils.instantiateWhen(slave(new TLBInterface), ConstantVal.FINAL_MODE)
-    val machineState = Utils.instantiateWhen(slave(new MachineStateBus), ConstantVal.FINAL_MODE)
+    val tlbBus       = Utils.instantiateWhen(slave(new TLBInterface), ConstantVal.FINAL_MODE)
+    val machineState = slave(new MachineStateBus)
 
     val externalInterrupt = in Bits (5 bits)
-    val exceptionInput    = in(ExceptionInput())
-    val jumpPc            = out(Optional(UInt(32 bits)))
-
-    val interruptOnNextInst = out Bool ()
-
-    val instOnInt = new Bundle {
-      val valid = in Bool ()
-      val bd    = in Bool ()
-      val pc    = in UInt (32 bits)
-    }
+    val exceptionBus      = slave(new ExceptionBus)
   }
 
   // Register constructions, read and write.
+  val regs = new Cp0Reg
 
   io.read.data := 0
-
-  val regs = mutable.Map[String, Register]()
-  for ((addr, description) <- Register.allDescriptions) {
-    val reg = Register(description)
-    regs(description.name) = reg
-
-    when(io.read.addr === addr) {
+  for (reg <- regs.elements.map(x => x._2.asInstanceOf[RegisterBase])) {
+    when(io.read.addr === reg.addr) {
       io.read.data := reg.value
     }
-    when(io.softwareWrite.valid && io.softwareWrite.addr === addr) {
-      reg.softwareWrite(io.softwareWrite.data)
+    when(io.softwareWrite.valid && io.softwareWrite.addr === reg.addr) {
+      reg.softWrite(io.softwareWrite.data)
     }
   }
-
-  if (ConstantVal.FINAL_MODE) {
-    // TLB related logic and register
-    val TLBRelated = new Area {
-      val entryHi  = regs("EntryHi")
-      val entryLo0 = regs("EntryLo0")
-      val entryLo1 = regs("EntryLo1")
-      val index    = regs("Index")
-      val random   = regs("Random")
-      //reset random when write Wired Reg
-      when(io.softwareWrite.valid & io.softwareWrite.addr === (6, 0)) {
-        random.next("Random") := B(
-          ConstantVal.TLBEntryNum - 1,
-          log2Up(ConstantVal.TLBEntryNum) bits
-        )
-      }
-      when(io.tlbBus.tlbwr) {
-        random.next("Random") := B(random("Random").asUInt + 1)
-      }
-      //tlbBus signal
-      io.tlbBus.index := index("Index").asUInt
-      io.tlbBus.random := random("Random").asUInt
-      //tlbp
-      when(io.tlbBus.tlbp) {
-        index.write(io.tlbBus.probeIndex)
-      }
-      //read from cp0
-      io.tlbBus.tlbwEntry.vpn2 := entryHi("VPN2") //TLB模块会自己做Mask处理
-      io.tlbBus.tlbwEntry.asid := entryHi("ASID")
-      io.tlbBus.tlbwEntry.G := (entryLo0("G") & entryLo1("G")).asBool
-      io.tlbBus.tlbwEntry.pfn1 := entryLo1("PFN")
-      io.tlbBus.tlbwEntry.C1 := entryLo1("C")
-      io.tlbBus.tlbwEntry.D1 := entryLo1("D").asBool
-      io.tlbBus.tlbwEntry.V1 := entryLo1("V").asBool
-      io.tlbBus.tlbwEntry.pfn0 := entryLo0("PFN")
-      io.tlbBus.tlbwEntry.C0 := entryLo0("C")
-      io.tlbBus.tlbwEntry.D0 := entryLo0("D").asBool
-      io.tlbBus.tlbwEntry.V0 := entryLo0("V").asBool
-      //read from cp0
-      io.tlbBus.tlbwEntry.mask := regs("PageMask")("Mask")
-      //write to cp0 for TLBR
-      when(io.tlbBus.tlbr) {
-        // TODO Becasue current only support 4KiB page, so cannot modify PageMask's Mask Field
-        // pageMask.write(Array(io.tlbBus.tlbrEntry.mask))
-        val vpnMask = ~io.tlbBus.tlbrEntry.mask.resize(TLBConfig.vpn2Width)
-        val pfnMask = ~io.tlbBus.tlbrEntry.mask.resize(TLBConfig.pfnWidth)
-        entryHi.write(Array(io.tlbBus.tlbrEntry.vpn2 & vpnMask, io.tlbBus.tlbrEntry.asid))
-        entryLo0.write(
-          Array(
-            io.tlbBus.tlbrEntry.pfn0 & pfnMask,
-            io.tlbBus.tlbrEntry.C0,
-            io.tlbBus.tlbrEntry.D0.asBits,
-            io.tlbBus.tlbrEntry.V0.asBits,
-            io.tlbBus.tlbrEntry.G.asBits
-          )
-        )
-        entryLo1.write(
-          Array(
-            io.tlbBus.tlbrEntry.pfn1 & pfnMask,
-            io.tlbBus.tlbrEntry.C1,
-            io.tlbBus.tlbrEntry.D1.asBits,
-            io.tlbBus.tlbrEntry.V1.asBits,
-            io.tlbBus.tlbrEntry.G.asBits
-          )
-        )
-      }
-    }
-    //其他的信息
-    io.machineState.ERL :=  regs("Status")("ERL").asBool
-    io.machineState.K0 := regs("Config0")("K0")
-    // 目前仅实现了Kernel和User Mode
-    io.machineState.userMode := regs("Status")("UM") === 1 & regs("Status")("ERL") === 0 & regs("Status")("EXL") === 0
-    io.machineState.cu0 := regs("Status")("CU0").asBool
+  //reset random when write Wired Reg
+  when(io.softwareWrite.valid & io.softwareWrite.addr === (6, 0)) {
+    regs.random.random := B(ConstantVal.TLBEntryNum - 1, log2Up(ConstantVal.TLBEntryNum) bits)
   }
 
-  // Count & Compare
   val increaseCount = Reg(Bool) init False
   increaseCount := !increaseCount
-  val count = regs("Count")("Count")
+  val count = regs.count.count
   when(increaseCount) {
     count := (count.asUInt + 1).asBits
   }
 
-  val compare        = regs("Compare")("Compare")
-  val timerInterrupt = count === compare
-
-  regs("Cause")("IP_HW")(0, 5 bits) := io.externalInterrupt
+  regs.cause.ipHW(0, 5 bits) := io.externalInterrupt
   if (ConstantVal.TimeInterruptEnable) {
-    regs("Cause")("IP_HW")(5) := timerInterrupt
+    regs.cause.ipHW(5) := count === regs.compare.compare
   } else {
-    regs("Cause")("IP_HW")(5) := False
+    regs.cause.ipHW(5) := False
   }
+  val tlbHandler       = if(ConstantVal.FINAL_MODE) new TLBHandler(regs, io.tlbBus) else null
+  val exceptionHandler = new ExceptionHandler(regs, io.exceptionBus)
+  //其他的信息
+  io.machineState.ERL := regs.status.erl.asBool
+  io.machineState.K0 := regs.config0.K0
+  // 目前仅实现了Kernel和User Mode
+  io.machineState.userMode := regs.status.um === 1 & regs.status.erl === 0 & regs.status.exl === 0
+  io.machineState.cu0 := regs.status.cu0.asBool
+}
 
-  val epc     = regs("EPC")("EPC")
-  val epcNext = regs("EPC").next("EPC")
-  //ErrorEPC
-  regs("ErrorEPC").next("ErrorEPC") := epcNext
-  val exl = regs("Status")("EXL")
-  val erl = regs("Status")("ERL")
-
+class ExceptionHandler(val regs: Cp0Reg, val exceptBus: ExceptionBus) extends Area {
+  val jumpPc    = exceptBus.jumpPc
+  val epc       = regs.epc.epc
+  val errorEpc  = regs.errorEPC.errorEPC
+  val exl       = regs.status.exl
+  val erl       = regs.status.erl
+  val excCode   = exceptBus.exception.excCode
+  val instFetch = exceptBus.exception.instFetch
   // Exception
-  io.exceptionInput.exception.whenIsDefined { exc =>
+  excCode.whenIsDefined { exc =>
     when(!exl.asBool) {
       exl := True.asBits
-      when(io.exceptionInput.bd) {
-        epcNext := (io.exceptionInput.pc - 4).asBits
+      when(exceptBus.bd) {
+        epc := (exceptBus.pc - 4).asBits
+        errorEpc := (exceptBus.pc - 4).asBits
       } otherwise {
-        epcNext := io.exceptionInput.pc.asBits
+        epc := exceptBus.pc.asBits
+        errorEpc := exceptBus.pc.asBits
       }
-      regs("Cause")("BD") := io.exceptionInput.bd.asBits
-      regs("Cause")("ExcCode") := EXCEPTION.code(exc).asBits.resized
+      regs.cause.bd := exceptBus.bd.asBits
+      regs.cause.excCode := exc.asBits.resized
 
-      when(
-        EXCEPTION.addrRelated(exc) | EXCEPTION.tlbRelated(exc)
-      ) {
-        regs("BadVAddr")("BadVAddr") := (EXCEPTION.instFetch(exc)
-          ? io.exceptionInput.pc
-          | io.exceptionInput.memAddr).asBits
-
+      when(ExcCode.addrRelated(exc) | ExcCode.tlbRelated(exc)) {
+        regs.badVaddr.badVaddr := (instFetch
+          ? exceptBus.pc
+          | exceptBus.vaddr).asBits
       }
-      if (ConstantVal.FINAL_MODE) {
-        when(EXCEPTION.tlbRelated(exc)) {
-          regs("EntryHi")("VPN2") := (EXCEPTION.instFetch(exc)
-            ? io.exceptionInput.pc
-            | io.exceptionInput.memAddr)(31 downto 13).asBits
+      when(ExcCode.tlbRelated(exc)) {
+        regs.entryHi.vpn2 := (instFetch
+          ? exceptBus.pc
+          | exceptBus.vaddr)(31 downto 13).asBits
 
-          regs("Context")("BadVPN2") := (EXCEPTION.instFetch(exc)
-            ? io.exceptionInput.pc
-            | io.exceptionInput.memAddr)(31 downto 13).asBits
-        }
+        regs.context.badVPN2 := (instFetch
+          ? exceptBus.pc
+          | exceptBus.vaddr)(31 downto 13).asBits
       }
     }
   }
-
   // Interrupt
-  val interrupts          = (regs("Cause")("IP_HW") ## regs("Cause").next("IP_SW")) & regs("Status")("IM")
-  val interruptOnNextInst = Updating(Bool) init False
-  io.interruptOnNextInst := interruptOnNextInst.next
-
+  val interrupts = (regs.cause.ipHW ## regs.cause.ipSW) & regs.status.im
   //Status.EXL = 1 | Status.ERL = 1 会禁止所有中断
-  when(interrupts.orR && !exl.asBool & regs("Status")("IE").asBool & !erl.asBool) {
-    interruptOnNextInst.next := True
-  }
-  when(interruptOnNextInst.prev && io.instOnInt.valid) {
-    interruptOnNextInst.next := False
+  val intTaken   = interrupts.orR && !exl.asBool & !erl.asBool & regs.status.ie.asBool
+
+  when(intTaken) {
     exl := True.asBits
-    when(io.instOnInt.bd) {
-      epcNext := (io.instOnInt.pc - 4).asBits
+    when(exceptBus.bd) {
+      epc := (exceptBus.pc - 4).asBits
+      errorEpc := (exceptBus.pc - 4).asBits
     } otherwise {
-      epcNext := io.instOnInt.pc.asBits
+      epc := exceptBus.pc.asBits
+      errorEpc := exceptBus.pc.asBits
     }
-    regs("Cause")("BD") := io.instOnInt.bd.asBits
-    regs("Cause")("ExcCode") := ExcCode.Int.asBits.resized
+    regs.cause.bd := exceptBus.bd.asBits
+    regs.cause.excCode := ExcCode.Int
   }
 
-  io.jumpPc := None //默认不发生跳转
   // 计算发生异常和中断时的跳转地址
-  val jumpAddr = new Area {
-    // TODO 实现Cache Error后需要增加Base的可能
-    val vectorBaseAddr: UInt = regs("Status")("Bev").asBool ? U"32'hBFC0_0200" |
-      U"2'b10" @@ regs("EBase")("ExceptionBase").asUInt @@ U"12'b0"
-    //当异常或中断发生时，默认是偏移180
-    val offset = U"10'h180"
-    io.exceptionInput.exception.whenIsDefined { exc =>
-      if (ConstantVal.FINAL_MODE) {
-        // TLB Refill并且Status.EXL为0时offset为0x0
-        when(
-          Utils.equalAny(exc, EXCEPTION.fetchTLBError, EXCEPTION.loadTLBError, EXCEPTION.storeTLBError) &
-            io.tlbBus.refillException & !exl.asBool
-        ) {
-          offset := U"10'h0"
-        }
-      }
-      io.jumpPc := vectorBaseAddr + offset
+  jumpPc := None
+  // TODO 实现Cache Error后需要增加Base的可能
+  val vectorBaseAddr: UInt = regs.status.bev.asBool ? U"32'hBFC0_0200" |
+    U"2'b10" @@ regs.eBase.exceptionBase.asUInt @@ U"12'b0"
+  //当异常或中断发生时，默认是偏移180
+  val offset = U"10'h180"
+  excCode.whenIsDefined { exc =>
+    // TLB Refill并且Status.EXL为0时offset为0x0
+    when(
+      Utils.equalAny(exc, ExcCode.loadTLBError, ExcCode.storeTLBError) &
+        exceptBus.exception.tlbRefill & !exl.asBool
+    ) {
+      offset := U"10'h0"
     }
+    jumpPc := vectorBaseAddr + offset
+  }
 
-    // 中断
-    when(interruptOnNextInst.prev && io.instOnInt.valid) {
-      // Cause.IV用来配置Interrupt Vector
-      // Cause.IV = 0时offset为默认的0x180
-      // Casue.IV = 1时offset为0x200
-      when(regs("Cause")("IV").asBool) {
-        offset := U"10'h200"
-      }
-      io.jumpPc := vectorBaseAddr + offset
+  // 中断
+  when(intTaken) {
+    // Cause.IV用来配置Interrupt Vector
+    // Cause.IV = 0时offset为默认的0x180
+    // Casue.IV = 1时offset为0x200
+    when(regs.cause.iv.asBool) {
+      offset := U"10'h200"
     }
+    jumpPc := vectorBaseAddr + offset
+  }
 
-    // ERET
-    when(io.exceptionInput.eret) {
-      when(erl.asBool) {
-        io.jumpPc := regs("ErrorEPC")("ErrorEPC").asUInt
-        erl := False.asBits
-      }.otherwise {
-        io.jumpPc := epc.asUInt
-        exl := False.asBits
-      }
+  // ERET
+  when(exceptBus.eret) {
+    when(erl.asBool) {
+      jumpPc := errorEpc.asUInt
+      erl := False.asBits
+    }.otherwise {
+      jumpPc := epc.asUInt
+      exl := False.asBits
     }
   }
 }
 
-// case class CP0ExecUnitInput() extends Bundle {
-//   val addr      = CP0.Addr()
-//   val old_value = Bits(32 bits)
-//   val new_value = Bits(32 bits)
-// }
+class TLBHandler(val regs: Cp0Reg, val tlbBus: TLBInterface) extends Area {
+  // TLB related logic and register
+  val entryHi  = regs.entryHi
+  val entryLo0 = regs.entryLo0
+  val entryLo1 = regs.entryLo1
+  val index    = regs.index
+  val random   = regs.random
+  when(tlbBus.tlbwr) {
+    random.random := B(random.random.asUInt + 1)
+  }
+  //tlbBus signal
+  tlbBus.index := index("Index").asUInt
+  tlbBus.random := random("Random").asUInt
+  //tlbp
+  when(tlbBus.tlbp) {
+    index.hardWrite(tlbBus.probeIndex)
+  }
+  //read from cp0
+  tlbBus.tlbwEntry.vpn2 := entryHi.vpn2 //TLB模块会自己做Mask处理
+  tlbBus.tlbwEntry.asid := entryHi.asid
+  tlbBus.tlbwEntry.G := (entryLo0.G & entryLo1.G).asBool
+  tlbBus.tlbwEntry.pfn1 := entryLo1.pfn
+  tlbBus.tlbwEntry.C1 := entryLo1.C
+  tlbBus.tlbwEntry.D1 := entryLo1.D.asBool
+  tlbBus.tlbwEntry.V1 := entryLo1.V.asBool
+  tlbBus.tlbwEntry.pfn0 := entryLo0.pfn
+  tlbBus.tlbwEntry.C0 := entryLo0.C
+  tlbBus.tlbwEntry.D0 := entryLo0.D.asBool
+  tlbBus.tlbwEntry.V0 := entryLo0.V.asBool
+  tlbBus.tlbwEntry.mask := regs.pageMask.mask
+  //write to cp0 for TLBR
+  when(tlbBus.tlbr) {
+    // TODO Becasue current only support 4KiB page, so cannot modify PageMask's Mask Field
+    val vpnMask = ~tlbBus.tlbrEntry.mask.resize(TLBConfig.vpn2Width)
+    val pfnMask = ~tlbBus.tlbrEntry.mask.resize(TLBConfig.pfnWidth)
+    entryHi.vpn2 := tlbBus.tlbrEntry.vpn2 & vpnMask
+    entryHi.asid := tlbBus.tlbrEntry.asid
 
-// class CP0ExecUnit extends Component {
-//   import CP0._
+    entryLo0.pfn := tlbBus.tlbrEntry.pfn0 & pfnMask
+    entryLo0.C := tlbBus.tlbrEntry.C0
+    entryLo0.D := tlbBus.tlbrEntry.D0.asBits
+    entryLo0.V := tlbBus.tlbrEntry.V0.asBits
+    entryLo0.G := tlbBus.tlbrEntry.G.asBits
 
-//   val io = new Bundle {
-//     val input = in(CP0ExecUnitInput())
+    entryLo1.pfn := tlbBus.tlbrEntry.pfn1 & pfnMask
+    entryLo1.C := tlbBus.tlbrEntry.C1
+    entryLo1.D := tlbBus.tlbrEntry.D1.asBits
+    entryLo1.V := tlbBus.tlbrEntry.V1.asBits
+    entryLo1.G := tlbBus.tlbrEntry.G.asBits
+  }
+}
 
-//     val to_write = out Bits (32 bits)
-//   }
 
-//   io.to_write := io.input.old_value
-//   for ((addr, description) <- Register.allDescriptions) {
-//     when(io.input.addr === addr) {
-//       val softwareWriteMask = description.softwareWriteMask
-//       io.to_write := (softwareWriteMask & io.input.new_value) |
-//         (~softwareWriteMask & io.input.old_value)
-//     }
-//   }
-// }
+//object AddrImplicits {
+//  implicit class InstHasAddr(inst: Mips32Inst) {
+//    def addr = signalCache(inst, "addr") {
+//      val addr = Addr()
+//      addr.rd := inst.rd
+//      addr.sel := inst.sel
+//      addr
+//    }
+//  }
+//
+//  implicit class BitsHasAddr(bits: Bits) {
+//
+//    import defs.Mips32InstImplicits._
+//
+//    def addr = new InstHasAddr(bits).addr
+//  }
+//}

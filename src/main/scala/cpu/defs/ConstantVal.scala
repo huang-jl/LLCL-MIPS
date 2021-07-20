@@ -40,5 +40,5 @@ object ConstantVal {
 
   /** 是否开启全部指令，关闭的时候基本仅覆盖初赛的指令；
    * 包括TLB相关的指令和逻辑 */
-  val FINAL_MODE = true
+  val FINAL_MODE = false
 }

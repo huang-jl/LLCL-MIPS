@@ -44,7 +44,7 @@ class ALU extends Component {
     val d     = out UInt (32 bits)
     val stall = out Bool ()
 
-    val exception = out(Optional(EXCEPTION()))
+    val exception = out(Optional(ExcCode()))
 
     val will = new Bundle {
       val input  = in Bool ()
@@ -141,7 +141,7 @@ class ALU extends Component {
       val temp = S(a, 33 bits) + S(b, 33 bits)
       c := U(temp(31 downto 0))
       when(temp(32) =/= temp(31)) {
-        io.exception := EXCEPTION.overflow
+        io.exception := ExcCode.overflow
       }
     }
     is(addu) {
@@ -151,7 +151,7 @@ class ALU extends Component {
       val temp = S(a, 33 bits) - S(b, 33 bits)
       c := U(temp(31 downto 0))
       when(temp(32) =/= temp(31)) {
-        io.exception := EXCEPTION.overflow
+        io.exception := ExcCode.overflow
       }
     }
     is(subu) {
