@@ -98,8 +98,8 @@ class ALU extends Component {
   val multiply = new Area {
     val stall: Bool = True
     val multiply: Bool =
-      if (ConstantVal.FINAL_MODE) Utils.equalAny(io.input.op, mult, multu, madd, maddu, msub, msubu)
-      else Utils.equalAny(io.input.op, mult, multu)
+      if (ConstantVal.FINAL_MODE) Utils.equalAny(io.input.op, mul, mult, multu, madd, maddu, msub, msubu)
+      else Utils.equalAny(io.input.op, mult, multu, mul)
     val multiplier = new MultiplierIP()
     multiplier.io.A := abs.a
     multiplier.io.B := abs.b
