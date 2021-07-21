@@ -36,7 +36,7 @@ case class Mips32Inst() extends Bundle {
   def co          = bits(Fields.co)
   def sel         = bits(Fields.sel).asUInt
 
-  def cacheOp     = bits(Fields.cacheOp)
+  def cacheOp = bits(Fields.cacheOp)
 }
 
 object Mips32InstImplicits {
@@ -129,7 +129,7 @@ object InstructionSpec {
     if (fillZeros) spec.force(24 downto 6, "0" * 19) else spec
   }
 
-  private def CACHE(cacheOp:String) =
+  private def CACHE(cacheOp: String) =
     InstructionSpec()
       .force(Fields.op, "101111")
       .force(Fields.cacheOp, cacheOp)
@@ -187,7 +187,6 @@ object InstructionSpec {
     .forceZero(Fields.rt)
     .forceZero(Fields.sa)
 
-
   val MFHI = special(fn = "010000").forceZero(Fields.rs).forceZero(Fields.rt)
   val MFLO = special(fn = "010010").forceZero(Fields.rs).forceZero(Fields.rt)
   val MTHI = special(fn = "010001").forceZero(Fields.rt).forceZero(Fields.rd)
@@ -208,7 +207,6 @@ object InstructionSpec {
   val ERET = cop0co(fn = "011000")
   val MFC0 = cop0(rs = "00000")
   val MTC0 = cop0(rs = "00100")
-
 
   // Used only when ConstantVal.FINAL_MODE = true
   val TLBP  = cop0co(fn = "001000") //probe tlb for matching entry
@@ -237,19 +235,25 @@ object InstructionSpec {
   val TLTIU = regimm(rt = "01011")
 
   val MADD  = special2(fn = "000000")
-  val MADDU  = special2(fn = "000001")
+  val MADDU = special2(fn = "000001")
   val MSUB  = special2(fn = "000100")
-  val MSUBU  = special2(fn = "000101")
+  val MSUBU = special2(fn = "000101")
 
   val ICacheIndexInvalidate = CACHE("00000")
-  val ICacheHitInvalidate = CACHE("10000")
+  val ICacheHitInvalidate   = CACHE("10000")
   val DCacheIndexInvalidate = CACHE("00001")
-  val DCacheHitInvalidate = CACHE("10101")
+  val DCacheHitInvalidate   = CACHE("10101")
 
   val LWL = IType("100010")
   val LWR = IType("100110")
   val SWL = IType("101010")
   val SWR = IType("101110")
+
+  val JR_HB = special(fn = "001000")
+    .forceZero(Fields.rt)
+    .forceZero(Fields.rd)
+    .force(10, "1")
+    .forceZero(9 downto 6)
 
   val SYNC = special(fn = "001111")
     .forceZero(Fields.rs)

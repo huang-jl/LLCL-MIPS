@@ -60,7 +60,7 @@ class ICache(config: CacheRamConfig) extends Component {
   val stage2 = new Area {
     val wordOffset: UInt = io.cpu.stage2.paddr.wordOffset
     val index: UInt      = io.cpu.stage2.paddr.index
-    val tag: Bits = io.cpu.stage2.paddr.cacheTag
+    val tag: Bits        = io.cpu.stage2.paddr.cacheTag
   }
 
   val cacheRam = new Area {
@@ -73,21 +73,14 @@ class ICache(config: CacheRamConfig) extends Component {
   }
 
   val LRU = new Area {
-    val mem        = new LRUManegr(config.wayNum, config.setSize)
-    val calculator = new LRUCalculator(config.wayNum)
-    // LRU读端口
-    mem.io.read.addr := io.cpu.stage1.index
-    //如果需要保持住当前阶段读出的值（比如EX.stall住了），那么直接保持replaceAddr
-    val rindex = RegNextWhen(
-      calculator.leastRecentUsedIndex(mem.io.read.data),
-      !io.cpu.stage1.keepRData
-    ) init 0
+    val mem    = new LRUManegr(config.wayNum, config.setSize)
+    val rindex = RegNextWhen(mem.latestWayIndex(io.cpu.stage1.index), !io.cpu.stage1.keepRData)
     // LRU写端口
     val access = U(0, log2Up(config.wayNum) bits)
     val we     = False //默认为False
-    mem.io.write.access := access
-    mem.io.write.en := we
-    mem.io.write.addr := stage2.index
+    mem.write.access := access
+    mem.write.en := we
+    mem.write.addr := stage2.index
   }
 
   val axiDefault = new Area {
@@ -174,12 +167,12 @@ class ICache(config: CacheRamConfig) extends Component {
   }
   //提前选择，减少fanout
   val targetData = Vec(Bits(32 bits), config.wayNum)
-  for(i <- 0 until config.wayNum) {
+  for (i <- 0 until config.wayNum) {
     targetData(i) := cacheDatas(i)(stage2.wordOffset)
   }
   //判断是否命中cache，并选出对应的数据
-  val hitIndex:UInt = U(0, log2Up(config.wayNum) bits)
-  val hit:Bool = (cacheTags(0).tag === stage2.tag) & cacheTags(0).valid
+  val hitIndex: UInt = U(0, log2Up(config.wayNum) bits)
+  val hit: Bool      = (cacheTags(0).tag === stage2.tag) & cacheTags(0).valid
   io.cpu.stage2.rdata := targetData(0)
   for (i <- 1 until config.wayNum) {
     when((cacheTags(i).tag === stage2.tag) & cacheTags(i).valid) {

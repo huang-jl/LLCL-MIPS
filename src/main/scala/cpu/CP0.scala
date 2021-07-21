@@ -208,7 +208,7 @@ object CP0 {
     val ti      = staticField("TI", 30, B"0")
     val ce      = hardField("CE", 29 downto 28, B"00")  //TODO 如果有其他的COP需要修改
     val iv      = field("IV", 23, B"0")
-    val ipHW    = staticField("IP_HW", 15 downto 10)
+    val ipHW    = staticField("IP_HW", 15 downto 10).setAsReg() //跨时钟域的问题，需要寄存下来
     val ipSW    = field("IP_SW", 9 downto 8, B"00")
     val excCode = hardField("ExcCode", 6 downto 2)
   }

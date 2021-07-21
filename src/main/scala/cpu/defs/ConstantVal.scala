@@ -26,7 +26,7 @@ object ConstantVal {
 
   /** Cache配置 */
   val IcacheLineSize = 32  //一个cacheLine的大小，单位是bytes, 2的幂
-  val IcacheWayNum = 2  //icache中路数
+  val IcacheWayNum = 4  //icache中路数
   val IcacheSetsPerWay = 128  //影响Config1中的IS字段
   val IcacheFifoDepth = 8 //TODO ICache的victim cache深度
 

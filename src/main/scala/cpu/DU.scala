@@ -507,6 +507,12 @@ class DU extends Component {
           set(fuck) to True
         }
       }
+      on(JR_HB) {
+        set(useRs) to True
+        set(juOp) to JU_OP.t
+        set(juPcSrc) to JU_PC_SRC.rs
+        set(fuck) to True
+      }
       // Instruction that does nothing
       val useless = Set(SYNC, WAIT)
       for (inst <- useless) {

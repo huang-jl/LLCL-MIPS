@@ -146,20 +146,14 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     */
   val LRU = new Area {
     val mem        = new LRUManegr(config.wayNum, config.setSize)
-    val calculator = new LRUCalculator(config.wayNum)
     // LRU读端口
-    mem.io.read.addr := stage1.index
-    //如果需要保持住当前阶段读出的值（比如EX.stall住了），那么直接保持replaceAddr
-    val rindex = RegNextWhen(
-      calculator.leastRecentUsedIndex(mem.io.read.data),
-      !io.cpu.stage1.keepRData
-    ) init 0
+    val rindex = RegNextWhen(mem.latestWayIndex(stage1.index), !io.cpu.stage1.keepRData)
     // LRU写端口
     val access = U(0, log2Up(config.wayNum) bits)
     val we     = False //默认为False
-    mem.io.write.access := access
-    mem.io.write.en := we
-    mem.io.write.addr := stage2.index
+    mem.write.access := access
+    mem.write.en := we
+    mem.write.addr := stage2.index
   }
 
   /** *********************************
