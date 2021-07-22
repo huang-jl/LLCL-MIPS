@@ -209,6 +209,11 @@ class CPU extends Component {
 
       dbus.stage1.keepRData := !ME2.is.empty & !ME2.will.input
       dbus.stage1.paddr := input(dataMMURes).paddr
+
+      if(!ConstantVal.FINAL_MODE) {
+        output(memRe) := input(dataMMURes).paddr =/= U"32'h1faf_fff0" & input(memRe)
+        output(memWe) := input(dataMMURes).paddr =/= U"32'h1faf_fff0" & input(memWe)
+      }
     }
 
     //因为写hi lo的指令以及写cp0本身不会触发异常
@@ -706,24 +711,31 @@ class CPU extends Component {
     IF2.is.done := False
     IF1.is.done := False
   }
-//  IF1.stored(pc).addAttribute("mark_debug", "true")
-//  IF2.stored(ifPaddr).addAttribute("mark_debug", "true")
+
   IF2.stored(pc).addAttribute("mark_debug", "true")
   ID.stored(inst).addAttribute("mark_debug", "true")
   ME2.stored(pc).addAttribute("mark_debug", "true")
   ME2.stored(dataMMURes).paddr.addAttribute("mark_debug", "true")
-  ME2.stored(dataMMURes).cached.addAttribute("mark_debug", "true")
-  cp0.regs.cause.ipHW.addAttribute("mark_debug", "true")
+  WB.stored(pc).addAttribute("mark_debug", "true")
+  WB.stored(rfuWe).addAttribute("mark_debug", "true")
+  WB.stored(rfuAddr).addAttribute("mark_debug", "true")
+  WB.stored(rfuData).addAttribute("mark_debug", "true")
+
   cp0.regs.cause.excCode.addAttribute("mark_debug", "true")
-  cp0.regs.status.im.addAttribute("mark_debug", "true")
-  cp0.regs.status.erl.addAttribute("mark_debug", "true")
-  cp0.regs.config0.K0.addAttribute("mark_debug", "true")
+
 //
-//  dcu.io.stage2.read.addAttribute("mark_debug", "true")
-//  dcu.io.stage2.write.addAttribute("mark_debug", "true")
-//  dcu.io.stage2.stall.addAttribute("mark_debug", "true")
-//  dcu.dcache.dcacheFSM.stateReg.addAttribute("mark_debug", "true")
-//  dcu.io.stage2.uncache.addAttribute("mark_debug", "true")
+  dbus.stage2.read.addAttribute("mark_debug", "true")
+  dbus.stage2.write.addAttribute("mark_debug", "true")
+  dbus.stage2.stall.addAttribute("mark_debug", "true")
+  dbus.stage2.uncache.addAttribute("mark_debug", "true")
+  dbus.stage2.rdata.addAttribute("mark_debug", "true")
+
+  cp0.regs.status.exl.addAttribute("mark_debug", "true")
+  cp0.regs.status.erl.addAttribute("mark_debug", "true")
+  cp0.regs.compare.compare.addAttribute("mark_debug", "true")
+  cp0.regs.count.count.addAttribute("mark_debug", "true")
+  cp0.regs.cause.ipHW.addAttribute("mark_debug", "true")
+  cp0.regs.status.im.addAttribute("mark_debug", "true")
 //
 //  io.uncacheAXI.aw.valid.addAttribute("mark_debug", "true")
 //  io.uncacheAXI.aw.ready.addAttribute("mark_debug", "true")

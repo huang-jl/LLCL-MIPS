@@ -255,6 +255,7 @@ object InstructionSpec {
     .force(10, "1")
     .forceZero(9 downto 6)
 
+  val PREF = IType("110011")
   val SYNC = special(fn = "001111")
     .forceZero(Fields.rs)
     .forceZero(Fields.rt)

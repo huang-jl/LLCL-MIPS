@@ -27,7 +27,6 @@ class ExceptionBus extends Bundle with IMasterSlave {
   val bd              = Bool
   val refillException = Bool
 
-
   val jumpPc = Optional(UInt(32 bits))
 
   override def asMaster(): Unit = {
@@ -206,7 +205,7 @@ object CP0 {
   class Cause extends RegisterBase(13, 0) {
     val bd      = hardField("BD", 31)
     val ti      = staticField("TI", 30, B"0")
-    val ce      = hardField("CE", 29 downto 28, B"00")  //TODO 如果有其他的COP需要修改
+    val ce      = hardField("CE", 29 downto 28, B"00")          //TODO 如果有其他的COP需要修改
     val iv      = field("IV", 23, B"0")
     val ipHW    = staticField("IP_HW", 15 downto 10).setAsReg() //跨时钟域的问题，需要寄存下来
     val ipSW    = field("IP_SW", 9 downto 8, B"00")
@@ -226,7 +225,7 @@ object CP0 {
     val K0 = field("K0", 2 downto 0, B"011")
   }
   class Config1 extends RegisterBase(16, 1) {
-    val mmuSize = staticField("MMUSize", 30 downto 25, B(ConstantVal.TLBEntryNum, 6 bits))
+    val mmuSize = staticField("MMUSize", 30 downto 25, B(ConstantVal.TLBEntryNum - 1, 6 bits))
     val IS      = staticField("IS", 24 downto 22, B(log2Up(ConstantVal.IcacheSetsPerWay) - 6, 3 bits))
     val IL      = staticField("IL", 21 downto 19, B(log2Up(ConstantVal.IcacheLineSize) - 1, 3 bits))
     val IA      = staticField("IA", 18 downto 16, B(ConstantVal.IcacheWayNum - 1, 3 bits))
@@ -273,6 +272,10 @@ object CP0 {
     val pteBase = field("PTEBase", 31 downto 23)
     val badVPN2 = hardField("BadVPN2", 22 downto 4)
   }
+  class PRId extends RegisterBase(15, 0) {
+    val companyID   = staticField("CompanyID", 23 downto 16, B"8'h01")
+    val processorID = staticField("ProcessorID", 15 downto 8, B"8'h80")
+  }
 
   class Cp0Reg extends Bundle {
     val badVaddr = new BadVaddr
@@ -294,6 +297,7 @@ object CP0 {
     val random   = new Random
     val wired    = new Wired
     val context  = new Context
+    val prid     = new PRId
   }
 }
 
@@ -380,7 +384,7 @@ class CP0 extends Component {
   } else {
     regs.cause.ipHW(5) := False
   }
-  val tlbHandler       = if(ConstantVal.FINAL_MODE) new TLBHandler(regs, io.tlbBus) else null
+  val tlbHandler       = if (ConstantVal.FINAL_MODE) new TLBHandler(regs, io.tlbBus) else null
   val exceptionHandler = new ExceptionHandler(regs, io.exceptionBus)
   //其他的信息
   io.machineState.ERL := regs.status.erl.asBool
@@ -400,41 +404,41 @@ class ExceptionHandler(val regs: Cp0Reg, val exceptBus: ExceptionBus) extends Ar
   val instFetch = exceptBus.exception.instFetch
   // Exception
   excCode.whenIsDefined { exc =>
+    exl := 1
+    //对于EPC和Casuse.BD仅在exl为0时设置
     when(!exl.asBool) {
-      exl := True.asBits
       when(exceptBus.bd) {
         epc := (exceptBus.pc - 4).asBits
-        errorEpc := (exceptBus.pc - 4).asBits
       } otherwise {
         epc := exceptBus.pc.asBits
-        errorEpc := exceptBus.pc.asBits
       }
       regs.cause.bd := exceptBus.bd.asBits
-      regs.cause.excCode := exc.asBits.resized
+    }
+    // 下面的逻辑：不论EXL的值是多少都需要修改
+    regs.cause.excCode := exc.asBits.resized
+    errorEpc := exceptBus.bd ? (exceptBus.pc - 4).asBits | exceptBus.pc.asBits
+    when(ExcCode.addrRelated(exc) | ExcCode.tlbRelated(exc)) {
+      regs.badVaddr.badVaddr := (instFetch
+        ? exceptBus.pc
+        | exceptBus.vaddr).asBits
+    }
+    when(ExcCode.tlbRelated(exc)) {
+      regs.entryHi.vpn2 := (instFetch
+        ? exceptBus.pc
+        | exceptBus.vaddr)(31 downto 13).asBits
 
-      when(ExcCode.addrRelated(exc) | ExcCode.tlbRelated(exc)) {
-        regs.badVaddr.badVaddr := (instFetch
-          ? exceptBus.pc
-          | exceptBus.vaddr).asBits
-      }
-      when(ExcCode.tlbRelated(exc)) {
-        regs.entryHi.vpn2 := (instFetch
-          ? exceptBus.pc
-          | exceptBus.vaddr)(31 downto 13).asBits
-
-        regs.context.badVPN2 := (instFetch
-          ? exceptBus.pc
-          | exceptBus.vaddr)(31 downto 13).asBits
-      }
+      regs.context.badVPN2 := (instFetch
+        ? exceptBus.pc
+        | exceptBus.vaddr)(31 downto 13).asBits
     }
   }
   // Interrupt
   val interrupts = (regs.cause.ipHW ## regs.cause.ipSW) & regs.status.im
   //Status.EXL = 1 | Status.ERL = 1 会禁止所有中断
-  val intTaken   = interrupts.orR && !exl.asBool & !erl.asBool & regs.status.ie.asBool
+  val intTaken = interrupts.orR && !exl.asBool & !erl.asBool & regs.status.ie.asBool
 
   when(intTaken) {
-    exl := True.asBits
+    exl := 1
     when(exceptBus.bd) {
       epc := (exceptBus.pc - 4).asBits
       errorEpc := (exceptBus.pc - 4).asBits
@@ -496,7 +500,7 @@ class TLBHandler(val regs: Cp0Reg, val tlbBus: TLBInterface) extends Area {
   val random   = regs.random
   when(tlbBus.tlbwr) {
     random.random := B(random.random.asUInt + 1)
-    when(random.random.andR) (random.random := regs.wired.wired)
+    when(random.random.andR)(random.random := regs.wired.wired)
   }
   //tlbBus signal
   tlbBus.index := index("Index").asUInt
@@ -539,7 +543,6 @@ class TLBHandler(val regs: Cp0Reg, val tlbBus: TLBInterface) extends Area {
     entryLo1.G := tlbBus.tlbrEntry.G.asBits
   }
 }
-
 
 //object AddrImplicits {
 //  implicit class InstHasAddr(inst: Mips32Inst) {

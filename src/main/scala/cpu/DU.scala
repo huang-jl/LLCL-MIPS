@@ -514,7 +514,7 @@ class DU extends Component {
         set(fuck) to True
       }
       // Instruction that does nothing
-      val useless = Set(SYNC, WAIT)
+      val useless = Set(SYNC, WAIT, PREF)
       for (inst <- useless) {
         on(inst) {
           // Do nothing. Prevents Reserved Instruction exception.

@@ -26,7 +26,7 @@ object ConstantVal {
 
   /** Cache配置 */
   val IcacheLineSize = 32  //一个cacheLine的大小，单位是bytes, 2的幂
-  val IcacheWayNum = 4  //icache中路数
+  val IcacheWayNum = 2  //icache中路数
   val IcacheSetsPerWay = 128  //影响Config1中的IS字段
   val IcacheFifoDepth = 8 //TODO ICache的victim cache深度
 
@@ -36,9 +36,9 @@ object ConstantVal {
   val DcacheFifoDepth = 2 //DCache的FIFO深度
 
   /** 时钟中断配置 */
-  val TimeInterruptEnable = false
+  val TimeInterruptEnable = true
 
   /** 是否开启全部指令，关闭的时候基本仅覆盖初赛的指令；
    * 包括TLB相关的指令和逻辑 */
-  val FINAL_MODE = false
+  val FINAL_MODE = true
 }
