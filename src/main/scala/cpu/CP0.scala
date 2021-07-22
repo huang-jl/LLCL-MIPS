@@ -6,7 +6,7 @@ import spinal.core._
 import spinal.lib.{cpu => _, _}
 import tlb.{TLBConfig, TLBEntry}
 import Utils.IntToFixedLengthBinaryString
-import cpu.CP0.Cp0Reg
+import cpu.CP0.{Cp0Reg, TLBIndexWidth}
 
 import scala.collection.mutable
 import scala.language.{existentials, postfixOps}
@@ -364,7 +364,7 @@ class CP0 extends Component {
   }
   //reset random when write Wired Reg
   when(io.softwareWrite.valid & io.softwareWrite.addr === (6, 0)) {
-    regs.random.random := B(ConstantVal.TLBEntryNum - 1, log2Up(ConstantVal.TLBEntryNum) bits)
+    regs.random.random := B(ConstantVal.TLBEntryNum - 1, TLBIndexWidth bits)
   }
 
   val increaseCount = Reg(Bool) init False
@@ -496,6 +496,7 @@ class TLBHandler(val regs: Cp0Reg, val tlbBus: TLBInterface) extends Area {
   val random   = regs.random
   when(tlbBus.tlbwr) {
     random.random := B(random.random.asUInt + 1)
+    when(random.random.andR) (random.random := regs.wired.wired)
   }
   //tlbBus signal
   tlbBus.index := index("Index").asUInt
