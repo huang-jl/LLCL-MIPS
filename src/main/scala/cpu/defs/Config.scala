@@ -6,9 +6,14 @@ import scala.language.postfixOps
 class Config {}
 
 object Config {
+  def INIT_PC = U"hBFC00000"
+
   val ADDR_WIDTH = 32
   val INST_WIDTH = 32
   val BYTE_WIDTH = 8
+
+  val ADDR_USELESS_WIDTH   = log2Up(2 * INST_WIDTH / BYTE_WIDTH)
+  def ADDR_USELESS_PADDING = UInt(ADDR_USELESS_WIDTH bits)
 
   object BTB {
     val NUM_ENTRIES = 4096

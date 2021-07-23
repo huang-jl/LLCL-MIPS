@@ -2,15 +2,19 @@ package cpu
 
 import spinal.core._
 import spinal.lib._
-import scala.language.postfixOps
 
 object RFU_RD_SRC extends SpinalEnum {
   val pc, alu, hi, lo, mu, cp0 = newElement()
 }
 
+case class RegWrite() extends Bundle {
+  val index = UInt(5 bits)
+  val data  = Bits(32 bits)
+}
+
 case class RegRead() extends Bundle with IMasterSlave {
   val index = UInt(5 bits)
-  val data = Bits(32 bits)
+  val data  = Bits(32 bits)
 
   def asMaster = {
     out(index)
@@ -18,32 +22,28 @@ case class RegRead() extends Bundle with IMasterSlave {
   }
 }
 
-case class RegWrite() extends Bundle {
-  val index = UInt(5 bits)
-  val data = Bits(32 bits)
-}
-
-class RFU extends Component {
+class RFU(numW: Int = 1, numR: Int = 2) extends Component {
   /// 读写寄存器
 
   val io = new Bundle {
-    // in
-    val write = slave Flow(RegWrite())
-
-    val ra = slave(RegRead())
-    val rb = slave(RegRead())
+    val w = Vec(slave(Flow(RegWrite())), numW)
+    val r = Vec(slave(RegRead()), numR)
   }
 
-  // regs
-  val regs = Vec(RegInit(B"32'0"), 32)
+  val mem = Mem(Seq.fill(32)(B"32'0"))
 
-  //
-  when(io.write.valid) {
-    regs(io.write.index) := io.write.data
+  for (i <- 0 until numW) {
+    mem.write(io.w(i).index, io.w(i).data, io.w(i).valid)
   }
 
-  io.ra.data := regs(io.ra.index)
-  io.rb.data := regs(io.rb.index)
+  for (i <- 0 until numR) {
+    io.r(i).data := mem.readAsync(io.r(i).index, writeFirst)
+    for (j <- 0 until numW) {
+      when(io.w(j).valid & io.w(j).index === io.r(i).index) {
+        io.r(i).data := io.w(j).data
+      }
+    }
+  }
 }
 
 object RFU {

@@ -19,47 +19,41 @@ class Stage extends Area with ValCallbackRec {
   //
   val is = new Bundle {
     val empty = RegInit(True)      // 当前该流水段是否为空转
-    val done  = True.allowOverride // 当前该流水段是否已完成工作 用户定义
+    val done  = True allowOverride // 当前该流水段是否已完成工作 用户定义
   }
   //
   val can = new Bundle {
-    val flush = True.allowOverride // 当前该流水段能否进行结果的作废 用户定义
+    val flush = True allowOverride // 当前该流水段能否进行结果的作废 用户定义
+    val input = Bool               // 该流水段在下一个上升沿是否能接受一条有效指令
   }
   //
-  val want = new Bundle {
-    val flush = False.allowOverride // 是否要布置结果作废的任务 用户定义
+  val assign = new Bundle {
+    val flush = False allowOverride // 是否要布置结果作废的任务 用户定义
   }
   //
   val to = new Bundle {
     val flush = RegInit(False) // 是否有结果作废的任务
   }
   //
+  val want = new Bundle {
+    val flush = Bool // 该流水段当前是否需要进行结果的作废
+  }
+  //
   val will = new Bundle {
-    val flush  = Bool // 当前处理结果将被作废
-    val input  = Bool // 有一条有效指令将要移入
-    val output = Bool // 有一条有效指令将要移出
+    val flush  = Bool               // 当前处理结果将被作废
+    val input  = True allowOverride // 有一条有效指令将要移入
+    val output = True allowOverride // 有一条有效指令将要移出
   }
   //
-  val prev = new Bundle {
-    val will = new Bundle {
-      val flush  = False.allowOverride
-      val output = True.allowOverride
-    }
-  }
-  val next = new Bundle {
-    val is = new Bundle {
-      val empty = False.allowOverride
-    }
-    val will = new Bundle {
-      val output = True.allowOverride
-    }
-  }
-  //
-  is.empty := !will.input & (is.empty | will.output)
-  to.flush := (to.flush | want.flush) & !can.flush
-  will.flush := (to.flush | want.flush) & can.flush
-  will.input := prev.will.output & !prev.will.flush
-  will.output := !is.empty & (will.flush | is.done & (next.is.empty | next.will.output))
+  is.empty := can.input & !will.input
+
+  can.input := is.empty | will.output
+
+  to.flush := want.flush & !can.flush
+
+  want.flush := to.flush | assign.flush
+
+  will.flush := want.flush & can.flush
 
   //
   val currentScope = DslScopeStack.get
@@ -128,15 +122,13 @@ class Stage extends Area with ValCallbackRec {
     })
   }
 
-  def connect(next: Stage) = {
-    next.prev.will.flush := will.flush
-    next.prev.will.output := will.output
-    this.next.is.empty := next.is.empty
-    this.next.will.output := next.will.output
+  def connect(next: Stage, canPass: Bool) = {
+    next.will.input := will.output & !will.flush
+    will.output := !is.empty & (will.flush | is.done & canPass)
 
     when(next.will.input) {
       next.prevException := exception
-    } elsewhen (next.will.output) {
+    } elsewhen next.will.output {
       next.prevException := None
     }
 

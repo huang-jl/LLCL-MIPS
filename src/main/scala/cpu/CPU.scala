@@ -1,15 +1,16 @@
 package cpu
 
-import defs.Mips32InstImplicits._
-import defs.{ConstantVal, Mips32Inst}
-import cache.{CacheRamConfig, DCache, ICache, CPUDCacheInterface, CPUICacheInterface}
-import lib.{Key, Task}
-import tlb.{MMU, MMUTranslationRes}
+import cache._
 import cpu.defs.Config._
+import cpu.defs.Mips32InstImplicits._
+import cpu.defs.{ConstantVal, Mips32Inst}
 import ip._
+import lib.{Key, Task}
 import spinal.core._
-import spinal.lib.{cpu => _, _}
 import spinal.lib.bus.amba4.axi._
+import spinal.lib.{cpu => _, _}
+import tlb.{MMU, MMUTranslationRes}
+
 import scala.language.postfixOps
 
 class CPU extends Component {
@@ -35,9 +36,9 @@ class CPU extends Component {
   dcache.io.cpu <> dbus
 
   val icu  = new ICU
-  val du   = new DU
+  val du   = new DU  // double
   val ju   = new JU
-  val alu  = new ALU
+  val alu  = new ALU // double
   val dcu1 = new DCU1
   val dcu2 = new DCU2
   val hlu  = new HLU
@@ -153,9 +154,9 @@ class CPU extends Component {
 
   val WB = new Stage {
     val rfuC = new StageComponent {
-      rfu.io.write.valid := input(rfuWe)
-      rfu.io.write.index := input(rfuAddr)
-      rfu.io.write.data := input(rfuData)
+      rfu.io.w(0).valid := input(rfuWe)
+      rfu.io.w(0).index := input(rfuAddr)
+      rfu.io.w(0).data := input(rfuData)
     }
 
     input(pc)
@@ -363,8 +364,8 @@ class CPU extends Component {
 
     produced(rfuData) := stored(rfuRdSrc).mux(
       RFU_RD_SRC.alu -> produced(aluResultC).asBits,
-      RFU_RD_SRC.hi  -> (ME1.stored(hluHiWe) ? ME1.produced(hluHiData) | hlu.hi_v),
-      RFU_RD_SRC.lo  -> (ME1.stored(hluLoWe) ? ME1.produced(hluLoData) | hlu.lo_v),
+      RFU_RD_SRC.hi  -> hlu.hi_v,
+      RFU_RD_SRC.lo  -> hlu.lo_v,
       RFU_RD_SRC.cp0 -> cp0Read.output(rfuData),
       default        -> stored(rfuData)
     )
@@ -463,10 +464,10 @@ class CPU extends Component {
     }
 
     val rfuRead = new StageComponent {
-      rfu.io.ra.index := input(inst).rs
-      rfu.io.rb.index := input(inst).rt
-      output(rsValue) := rfu.io.ra.data
-      output(rtValue) := rfu.io.rb.data
+      rfu.io.r(0).index := input(inst).rs
+      rfu.io.r(1).index := input(inst).rt
+      output(rsValue) := rfu.io.r(0).data
+      output(rtValue) := rfu.io.r(1).data
     }
 
 //一旦一条指令output，那么可以更新prevBranch，表示这条output的指令是否是branch
@@ -493,8 +494,6 @@ class CPU extends Component {
       produced(rsValue) := ME1.produced(rfuData)
     } elsewhen (ME2.stored(rfuWe) && ME2.stored(rfuAddr) === stored(inst).rs) {
       produced(rsValue) := ME2.produced(rfuData)
-    } elsewhen (WB.stored(rfuWe) && WB.stored(rfuAddr) === stored(inst).rs) {
-      produced(rsValue) := WB.stored(rfuData)
     }
 
     when(EX.stored(rfuWe) && EX.stored(rfuAddr) === stored(inst).rt) {
@@ -503,8 +502,6 @@ class CPU extends Component {
       produced(rtValue) := ME1.produced(rfuData)
     } elsewhen (ME2.stored(rfuWe) && ME2.stored(rfuAddr) === stored(inst).rt) {
       produced(rtValue) := ME2.produced(rfuData)
-    } elsewhen (WB.stored(rfuWe) && WB.stored(rfuAddr) === stored(inst).rt) {
-      produced(rtValue) := WB.stored(rfuData)
     }
 
     output(rfuData) := B(input(pc) + 8)
@@ -626,9 +623,15 @@ class CPU extends Component {
   cp0.io.instOnInt.valid := !EX.is.empty
   cp0.io.instOnInt.bd := EX.bdValue
   cp0.io.instOnInt.pc := EX.stored(pc)
-  val stages = Seq(IF1, IF2, ID, EX, ME1, ME2, WB)
-  for ((prev, next) <- (stages zip stages.tail).reverse) {
-    prev connect next
+
+  val T1, T2, T3, T4, T5, T6, T7 = new Stage {}
+
+  val stages = Seq(T1, T2, T3, T4, T5, T6, T7) zip Seq(IF1, IF2, ID, EX, ME1, ME2, WB)
+
+  for ((prev, curr) <- (stages zip (stages tail)) reverse) {
+    val canPass = curr._1.can.input & curr._2.can.input
+    prev._1 connect (curr._1, canPass)
+    prev._2 connect (curr._2, canPass)
   }
 
   IF1.prevException := None
