@@ -68,10 +68,13 @@ class CPU extends Component {
   val phtV = Key(UInt(2 bits))
 
   val btbDataLine = Key(Bits(BTB.NUM_WAYS * BTB.ADDR_WIDTH bits))
+  val btbData     = Key(Bits(BTB.ADDR_WIDTH bits))
   val btbTagLine  = Key(Bits(BTB.NUM_WAYS * (1 + BTB.TAG_WIDTH) bits))
+  val btbTagLine_ = Key(Bits(BTB.NUM_WAYS * (1 + BTB.TAG_WIDTH) bits))
   val btbP        = Key(Bits(BTB.NUM_WAYS - 1 bits))
   val btbHit      = Key(Bool()) setEmptyValue False
   val btbSetP     = Key(Bits(BTB.NUM_WAYS - 1 bits))
+  val btbSetP_    = Key(Bits(BTB.NUM_WAYS - 1 bits))
 
   val isDJump  = Key(Bool()) setEmptyValue False
   val jumpCond = Key(JU_OP()) setEmptyValue JU_OP.f
@@ -211,7 +214,7 @@ class CPU extends Component {
       dbus.stage1.keepRData := !ME2.is.empty & !ME2.will.input
       dbus.stage1.paddr := input(dataMMURes).paddr
 
-      if (!ConstantVal.FINAL_MODE) {
+      if(!ConstantVal.FINAL_MODE) {
         output(memRe) := input(dataMMURes).paddr =/= U"32'h1faf_fff0" & input(memRe)
         output(memWe) := input(dataMMURes).paddr =/= U"32'h1faf_fff0" & input(memWe)
       }
@@ -234,13 +237,13 @@ class CPU extends Component {
     val cp0C = new StageComponent {
       val cp0WeLogic = new Area {
         val curr = new Bundle {
-          val we  = Bool
-          val rd  = UInt(5 bits)
+          val we = Bool
+          val rd = UInt(5 bits)
           val sel = UInt(3 bits)
         }
         val prev = new Bundle {
-          val we  = RegNext(curr.we)
-          val rd  = RegNext(curr.rd)
+          val we = RegNext(curr.we)
+          val rd = RegNext(curr.rd)
           val sel = RegNext(curr.sel)
         }
         when(will.output) {
@@ -335,8 +338,10 @@ class CPU extends Component {
         ((stored(phtV) === stored(phtV).maxValue) ? U(stored(phtV).maxValue) | (stored(phtV) + 1)) |
         ((stored(phtV) === stored(phtV).minValue) ? U(stored(phtV).minValue) | (stored(phtV) - 1))
 
+      output(jumpPC) := stored(pcPlus4) + 4
+
       when(stored(isDJump)) {
-        btb.io.w.en := !stored(btbHit)
+        btb.io.w.en := True
         btb.io.w.pEn := True
 
         bpu.io.w.bhtEn := True
@@ -344,14 +349,22 @@ class CPU extends Component {
 
         when(ju.jump) {
           output(jumpPC) := stored(jumpPC)
-          output(wantJump) := !stored(wantJump)
+          output(wantJump) := !stored(wantJump) |
+            (stored(jumpPC).asBits =/= (stored(btbData) ## BTB.ADDR_PADDING))
         } otherwise {
-          output(jumpPC) := stored(pcPlus4) + 4
           output(wantJump) := stored(wantJump)
         }
       } otherwise {
-        output(jumpPC) := U(stored(rsValue))
-        output(wantJump) := ju.jump
+        btb.io.w.tagLine := stored(btbTagLine_)
+        btb.io.w.p := stored(btbSetP_)
+
+        output(wantJump) := ju.jump | stored(wantJump)
+        when(ju.jump) { output(jumpPC) := U(stored(rsValue)) }
+
+        when(stored(btbHit)) { // 刷掉 btb
+          btb.io.w.en := True
+          btb.io.w.pEn := True
+        }
       }
     }
 
@@ -472,7 +485,13 @@ class CPU extends Component {
         wea,
         True ## stored(pc)(BTB.TAG_RANGE)
       )
+      output(btbTagLine_) := btb.tagMem.write(
+        stored(btbTagLine),
+        wea,
+        B(0, 1 + BTB.TAG_WIDTH bits)
+      )
       btb.getP(stored(btbP), wea, True, output(btbSetP))
+      btb.getP(stored(btbP), wea, False, output(btbSetP_))
     }
 
     val duC = new StageComponent {
@@ -584,21 +603,19 @@ class CPU extends Component {
       output(btbP) := btb.io.r.p
 
       val btbHitLine = Bits(BTB.NUM_WAYS bits)
-      val btbData    = Bits(BTB.ADDR_WIDTH bits)
 
       btb.getHitLineAndData(
         btb.io.r.tagLine,
         btb.io.r.dataLine,
         stored(pc)(BTB.ADDR_RANGE),
         btbHitLine,
-        btbData
+        output(btbData)
       )
 
       output(btbHit) := btbHitLine.orR
 
-      output(jumpPC) := U(btbData ## BTB.ADDR_PADDING)
-      // output(wantJump) := produced(phtV)(1) & output(btbHit)
-     output(wantJump) := False
+      output(jumpPC) := U(output(btbData) ## BTB.ADDR_PADDING)
+      output(wantJump) := produced(phtV)(1) & output(btbHit)
     }
 
     val assignJumpTask = RegNext(will.input) & produced(wantJump)
@@ -723,7 +740,7 @@ class CPU extends Component {
   IF1.input(pc).addAttribute("mark_debug", "true")
 
   IF2.decideJump.btbHitLine.addAttribute("mark_debug", "true")
-  IF2.decideJump.btbData.addAttribute("mark_debug", "true")
+  IF2.produced(btbData).addAttribute("mark_debug", "true")
   IF2.produced(btbTagLine).addAttribute("mark_debug", "true")
 
   ID.output(jumpCond).addAttribute("mark_debug", "true")
@@ -736,6 +753,7 @@ class CPU extends Component {
   WB.stored(rfuWe).addAttribute("mark_debug", "true")
   WB.stored(rfuAddr).addAttribute("mark_debug", "true")
   WB.stored(rfuData).addAttribute("mark_debug", "true")
+
 
 //
   ME1.stored(pc).addAttribute("mark_debug", "true")
