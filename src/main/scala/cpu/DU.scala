@@ -67,6 +67,7 @@ class DU extends Component {
     val me_type           = Utils.instantiateWhen(out(ME_TYPE), ConstantVal.FINAL_MODE)
 
     val fuck = out Bool () //例如特权指令，拉高后让后面的指令都不发射
+    val privilege = out Bool()  //是否是COP0特权指令
   }
 
   // wires
@@ -104,6 +105,7 @@ class DU extends Component {
   val exception = Key(Optional(ExcCode()))
   val eret      = Key(Bool)
   val fuck      = Key(Bool)
+  val privilege = Key(Bool)  //是否是COP0特权指令
 
   val tlbr, tlbw, tlbp = Key(Bool)
   val tlbIndexSrc      = Key(TLBIndexSrc())
@@ -149,6 +151,7 @@ class DU extends Component {
       default(conditionMov) to False
       default(compareOp) to CompareOp.EZ
       default(meType) to ME_TYPE.normal
+      default(privilege) to False
     }
 
     // Arithmetics
@@ -501,10 +504,12 @@ class DU extends Component {
         on(icacheInv) {
           set(invalidateICache) to True
           set(fuck) to True
+          set(privilege) to True
         }
         on(dcacheInv) {
           set(invalidateDCache) to True
           set(fuck) to True
+          set(privilege) to True
         }
       }
       on(JR_HB) {
@@ -513,6 +518,9 @@ class DU extends Component {
         set(juPcSrc) to JU_PC_SRC.rs
         set(fuck) to True
       }
+      // Privilege Instruction （暂时没有包括Cache指令，上面已经处理了Cache指令）
+      val priv = Set(ERET, TLBP, TLBR, TLBWI, TLBWR, MFC0, MTC0, WAIT)
+      for (inst <- priv) on(inst){set(privilege) to True}
       // Instruction that does nothing
       val useless = Set(SYNC, WAIT, PREF)
       for (inst <- useless) {
@@ -579,6 +587,7 @@ class DU extends Component {
     when(io.condition_mov) {
       io.rfu_we := False
     }
+    io.privilege := decoder.output(privilege)
   }
 }
 

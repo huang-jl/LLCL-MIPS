@@ -115,7 +115,8 @@ class CPU extends Component {
   val ifPaddr = Key(UInt(32 bits))
   val if2En   = Key(Bool) setEmptyValue False
 
-  val fuck = Key(Bool) setEmptyValue False //类似特权级的指令，会暂停整个流水线
+  val fuck      = Key(Bool) setEmptyValue False //类似特权级的指令，会暂停整个流水线
+  val privilege = Key(Bool) setEmptyValue False //是否是COP0特权指令
 
   val dataMMURes         = Key(new MMUTranslationRes(ConstantVal.FINAL_MODE)) //EX阶段查询数据TLB
   val tlbr               = Key(Bool) setEmptyValue (False)                    //ID解码
@@ -210,7 +211,7 @@ class CPU extends Component {
       dbus.stage1.keepRData := !ME2.is.empty & !ME2.will.input
       dbus.stage1.paddr := input(dataMMURes).paddr
 
-      if(!ConstantVal.FINAL_MODE) {
+      if (!ConstantVal.FINAL_MODE) {
         output(memRe) := input(dataMMURes).paddr =/= U"32'h1faf_fff0" & input(memRe)
         output(memWe) := input(dataMMURes).paddr =/= U"32'h1faf_fff0" & input(memWe)
       }
@@ -233,13 +234,13 @@ class CPU extends Component {
     val cp0C = new StageComponent {
       val cp0WeLogic = new Area {
         val curr = new Bundle {
-          val we = Bool
-          val rd = UInt(5 bits)
+          val we  = Bool
+          val rd  = UInt(5 bits)
           val sel = UInt(3 bits)
         }
         val prev = new Bundle {
-          val we = RegNext(curr.we)
-          val rd = RegNext(curr.rd)
+          val we  = RegNext(curr.we)
+          val rd  = RegNext(curr.rd)
           val sel = RegNext(curr.sel)
         }
         when(will.output) {
@@ -313,6 +314,10 @@ class CPU extends Component {
         cp0.io.tlbBus.tlbwr := True
         mmu.io.index := cp0.io.tlbBus.random //如果是写tlbwr那么用random
       }.otherwise(cp0.io.tlbBus.tlbwr := False)
+      // 权限检查：当遇到COP0寄存器 & 是用户态 & Status.cu0 === 0的时候发生异常
+      when(input(privilege) & cp0.io.machineState.userMode & !cp0.io.machineState.cu0) {
+        exceptionToRaise := ExcCode.copUnusable
+      }
     }
   }
 
@@ -506,6 +511,7 @@ class CPU extends Component {
         output(meType) := du.io.me_type
         output(compareOp) := du.io.compare_op
         output(conditionMov) := du.io.condition_mov
+        output(privilege) := du.io.privilege
       } else {
         output(invalidateICache) := False
         output(invalidateDCache) := False
@@ -591,7 +597,8 @@ class CPU extends Component {
       output(btbHit) := btbHitLine.orR
 
       output(jumpPC) := U(btbData ## BTB.ADDR_PADDING)
-      output(wantJump) := produced(phtV)(1) & output(btbHit)
+      // output(wantJump) := produced(phtV)(1) & output(btbHit)
+     output(wantJump) := False
     }
 
     val assignJumpTask = RegNext(will.input) & produced(wantJump)
@@ -729,7 +736,6 @@ class CPU extends Component {
   WB.stored(rfuWe).addAttribute("mark_debug", "true")
   WB.stored(rfuAddr).addAttribute("mark_debug", "true")
   WB.stored(rfuData).addAttribute("mark_debug", "true")
-
 
 //
   ME1.stored(pc).addAttribute("mark_debug", "true")

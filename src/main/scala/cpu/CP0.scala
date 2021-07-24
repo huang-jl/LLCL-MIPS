@@ -406,7 +406,9 @@ class ExceptionHandler(val regs: Cp0Reg, val exceptBus: ExceptionBus) extends Ar
   val erl       = regs.status.erl
   val excCode   = exceptBus.exception.excCode
   val instFetch = exceptBus.exception.instFetch
-  // Exception
+  /******************************
+   * Exception
+   ******************************/
   excCode.whenIsDefined { exc =>
     exl := 1
     //对于EPC和Casuse.BD仅在exl为0时设置
@@ -435,8 +437,12 @@ class ExceptionHandler(val regs: Cp0Reg, val exceptBus: ExceptionBus) extends Ar
         ? exceptBus.pc
         | exceptBus.vaddr)(31 downto 13).asBits
     }
+    // TODO 目前只实现了COP0，只会有COP0异常
+    when(exc === ExcCode.copUnusable) (regs.cause.ce := 0)
   }
-  // Interrupt
+  /******************************
+   * Interrupt
+   ******************************/
   val interrupts = (regs.cause.ipHW ## regs.cause.ipSW) & regs.status.im
   //Status.EXL = 1 | Status.ERL = 1 会禁止所有中断
   val intTaken = interrupts.orR && !exl.asBool & !erl.asBool & regs.status.ie.asBool

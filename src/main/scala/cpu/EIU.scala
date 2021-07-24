@@ -19,7 +19,7 @@ object EIU_RD_SEL extends SpinalEnum {
 }
 
 object ExcCode extends SpinalEnum {
-  val overflow, reservedInstruction,syscall, break, CopUnusable,
+  val overflow, reservedInstruction,syscall, break, copUnusable,
   storeAddrError, loadAddrError, storeTLBError, loadTLBError,
   tlbModError, trapError = newElement()
 
@@ -32,7 +32,7 @@ object ExcCode extends SpinalEnum {
     reservedInstruction   -> 0x0a,
     syscall  -> 0x08,
     break   -> 0x09,
-    CopUnusable  -> 0x0b,
+    copUnusable  -> 0x0b,
     overflow   -> 0x0c,
     trapError   -> 0x0d
   )
