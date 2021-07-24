@@ -290,7 +290,8 @@ class CPU extends Component {
       (refillException & (input(memRe) | input(memWe)))
 
     // 访存地址异常（更优先）
-    //访问权限不够的异常 或 Cache指令不允许引起地址异常的错误
+    //访问权限不够的异常 或 引起地址异常的错误
+    // Cache指令不允许引起异常
     when(
       input(dataMMURes).illegal |
         (!dcu1.io.output.addrValid & !input(invalidateDCache) & !input(invalidateICache))
@@ -712,30 +713,42 @@ class CPU extends Component {
     IF1.is.done := False
   }
 
-  IF2.stored(pc).addAttribute("mark_debug", "true")
-  ID.stored(inst).addAttribute("mark_debug", "true")
-  ME2.stored(pc).addAttribute("mark_debug", "true")
-  ME2.stored(dataMMURes).paddr.addAttribute("mark_debug", "true")
-  WB.stored(pc).addAttribute("mark_debug", "true")
+  IF1.input(pc).addAttribute("mark_debug", "true")
+
+  IF2.decideJump.btbHitLine.addAttribute("mark_debug", "true")
+  IF2.decideJump.btbData.addAttribute("mark_debug", "true")
+  IF2.produced(btbTagLine).addAttribute("mark_debug", "true")
+
+  ID.output(jumpCond).addAttribute("mark_debug", "true")
+
+  EX.stored(pc).addAttribute("mark_debug", "true")
+  EX.stored(inst).addAttribute("mark_debug", "true")
+  ju.op.addAttribute("mark_debug", "true")
+  ju.jump.addAttribute("mark_debug", "true")
+
   WB.stored(rfuWe).addAttribute("mark_debug", "true")
   WB.stored(rfuAddr).addAttribute("mark_debug", "true")
   WB.stored(rfuData).addAttribute("mark_debug", "true")
 
-  cp0.regs.cause.excCode.addAttribute("mark_debug", "true")
 
 //
-  dbus.stage2.read.addAttribute("mark_debug", "true")
-  dbus.stage2.write.addAttribute("mark_debug", "true")
-  dbus.stage2.stall.addAttribute("mark_debug", "true")
-  dbus.stage2.uncache.addAttribute("mark_debug", "true")
+  ME1.stored(pc).addAttribute("mark_debug", "true")
+  ME1.stored(memRe).addAttribute("mark_debug", "true")
+  ME1.stored(memWe).addAttribute("mark_debug", "true")
+  ME1.stored(memAddr).addAttribute("mark_debug", "true")
+  ME1.stored(dataMMURes).addAttribute("mark_debug", "true")
+  ME1.refillException.addAttribute("mark_debug", "true")
+  ME1.invalidException.addAttribute("mark_debug", "true")
+  ME1.modifiedException.addAttribute("mark_debug", "true")
   dbus.stage2.rdata.addAttribute("mark_debug", "true")
+  dbus.stage2.wdata.addAttribute("mark_debug", "true")
 
-  cp0.regs.status.exl.addAttribute("mark_debug", "true")
-  cp0.regs.status.erl.addAttribute("mark_debug", "true")
-  cp0.regs.compare.compare.addAttribute("mark_debug", "true")
-  cp0.regs.count.count.addAttribute("mark_debug", "true")
-  cp0.regs.cause.ipHW.addAttribute("mark_debug", "true")
-  cp0.regs.status.im.addAttribute("mark_debug", "true")
+  cp0.regs.status.addAttribute("mark_debug", "true")
+  cp0.regs.badVaddr.addAttribute("mark_debug", "true")
+  cp0.regs.epc.addAttribute("mark_debug", "true")
+  cp0.regs.cause.addAttribute("mark_debug", "true")
+  cp0.io.exceptionBus.exception.addAttribute("mark_debug", "true")
+  cp0.io.exceptionBus.jumpPc.addAttribute("mark_debug", "true")
 //
 //  io.uncacheAXI.aw.valid.addAttribute("mark_debug", "true")
 //  io.uncacheAXI.aw.ready.addAttribute("mark_debug", "true")

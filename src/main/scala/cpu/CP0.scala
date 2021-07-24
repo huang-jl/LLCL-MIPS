@@ -25,12 +25,11 @@ class ExceptionBus extends Bundle with IMasterSlave {
   val vaddr           = UInt(32 bits) //虚地址
   val pc              = UInt(32 bits)
   val bd              = Bool
-  val refillException = Bool
 
   val jumpPc = Optional(UInt(32 bits))
 
   override def asMaster(): Unit = {
-    out(exception, eret, vaddr, pc, bd, refillException)
+    out(exception, eret, vaddr, pc, bd)
     in(jumpPc)
   }
 }
@@ -367,7 +366,7 @@ class CP0 extends Component {
     }
   }
   //reset random when write Wired Reg
-  when(io.softwareWrite.valid & io.softwareWrite.addr === (6, 0)) {
+  when(io.softwareWrite.valid & io.softwareWrite.addr === regs.wired.addr) {
     regs.random.random := B(ConstantVal.TLBEntryNum - 1, TLBIndexWidth bits)
   }
 
@@ -379,8 +378,13 @@ class CP0 extends Component {
   }
 
   regs.cause.ipHW(0, 5 bits) := io.externalInterrupt
+  // Timer Interrupt
   if (ConstantVal.TimeInterruptEnable) {
-    regs.cause.ipHW(5) := count === regs.compare.compare
+    // 发生时钟中断就拉高ipHw(5)。当修改Compare寄存器时拉低ipHW(5)
+    when(count === regs.compare.compare)(regs.cause.ipHW(5) := True)
+    when(io.softwareWrite.addr === regs.compare.addr & io.softwareWrite.valid) {
+      regs.cause.ipHW(5) := False
+    }
   } else {
     regs.cause.ipHW(5) := False
   }
@@ -503,8 +507,8 @@ class TLBHandler(val regs: Cp0Reg, val tlbBus: TLBInterface) extends Area {
     when(random.random.andR)(random.random := regs.wired.wired)
   }
   //tlbBus signal
-  tlbBus.index := index("Index").asUInt
-  tlbBus.random := random("Random").asUInt
+  tlbBus.index := index.index.asUInt
+  tlbBus.random := random.random.asUInt
   //tlbp
   when(tlbBus.tlbp) {
     index.hardWrite(tlbBus.probeIndex)
