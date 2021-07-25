@@ -75,6 +75,7 @@ class CPU extends Component {
   val btbHit      = Key(Bool()) setEmptyValue False
   val btbSetP     = Key(Bits(BTB.NUM_WAYS - 1 bits))
   val btbSetP_    = Key(Bits(BTB.NUM_WAYS - 1 bits))
+  val btbHitLine  = Key(Bits(BTB.NUM_WAYS bits))
 
   val isDJump  = Key(Bool()) setEmptyValue False
   val jumpCond = Key(JU_OP()) setEmptyValue JU_OP.f
@@ -491,11 +492,11 @@ class CPU extends Component {
       )
       output(btbTagLine_) := btb.tagMem.write(
         stored(btbTagLine),
-        wea,
+        stored(btbHitLine),
         B(0, 1 + BTB.TAG_WIDTH bits)
       )
       btb.getP(stored(btbP), wea, True, output(btbSetP))
-      btb.getP(stored(btbP), wea, False, output(btbSetP_))
+      btb.getP(stored(btbP), stored(btbHitLine), False, output(btbSetP_))
     }
 
     val duC = new StageComponent {
@@ -606,20 +607,19 @@ class CPU extends Component {
       output(btbTagLine) := btb.io.r.tagLine
       output(btbP) := btb.io.r.p
 
-      val btbHitLine = Bits(BTB.NUM_WAYS bits)
-
       btb.getHitLineAndData(
         btb.io.r.tagLine,
         btb.io.r.dataLine,
         stored(pc)(BTB.ADDR_RANGE),
-        btbHitLine,
+        output(btbHitLine),
         output(btbData)
       )
 
-      output(btbHit) := btbHitLine.orR
+      output(btbHit) := output(btbHitLine).orR
 
       output(jumpPC) := U(output(btbData) ## BTB.ADDR_PADDING)
-      output(wantJump) := produced(phtV)(1) & output(btbHit)
+//      output(wantJump) := produced(phtV)(1) & output(btbHit)
+      output(wantJump) := False
     }
 
     val assignJumpTask = RegNext(will.input) & produced(wantJump)
@@ -746,11 +746,17 @@ class CPU extends Component {
   icache.icacheFSM.stateReg.addAttribute("mark_debug", "true")
 
   IF2.stored(pc).addAttribute("mark_debug", "true")
-  IF2.decideJump.btbHitLine.addAttribute("mark_debug", "true")
+  IF2.produced(btbHitLine)addAttribute("mark_debug", "true")
   IF2.produced(btbData).addAttribute("mark_debug", "true")
   IF2.produced(btbTagLine).addAttribute("mark_debug", "true")
   IF2.produced(wantJump).addAttribute("mark_debug", "true")
-//
+
+  btb.io.w.en.addAttribute("mark_debug", "true")
+  btb.io.w.addr.addAttribute("mark_debug", "true")
+  btb.io.w.tagLine.addAttribute("mark_debug", "true")
+  btb.io.w.pEn.addAttribute("mark_debug", "true")
+  btb.io.w.p.addAttribute("mark_debug", "true")
+  //
   ID.output(jumpCond).addAttribute("mark_debug", "true")
 
   EX.stored(pc).addAttribute("mark_debug", "true")
