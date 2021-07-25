@@ -235,29 +235,32 @@ class CPU extends Component {
     }
 
     val cp0C = new StageComponent {
-      val cp0WeLogic = new Area {
-        val curr = new Bundle {
-          val we = Bool
-          val rd = UInt(5 bits)
-          val sel = UInt(3 bits)
-        }
-        val prev = new Bundle {
-          val we = RegNext(curr.we)
-          val rd = RegNext(curr.rd)
-          val sel = RegNext(curr.sel)
-        }
-        when(will.output) {
-          curr.we := input(cp0We)
-          curr.rd := input(inst).rd
-          curr.sel := input(inst).sel
-        }.otherwise {
-          curr.assignAllByName(prev)
-        }
-      }
+//      val cp0WeLogic = new Area {
+//        val curr = new Bundle {
+//          val we = Bool
+//          val rd = UInt(5 bits)
+//          val sel = UInt(3 bits)
+//        }
+//        val prev = new Bundle {
+//          val we = RegNext(curr.we)
+//          val rd = RegNext(curr.rd)
+//          val sel = RegNext(curr.sel)
+//        }
+//        when(will.output) {
+//          curr.we := input(cp0We)
+//          curr.rd := input(inst).rd
+//          curr.sel := input(inst).sel
+//        }.otherwise {
+//          curr.assignAllByName(prev)
+//        }
+//      }
       //CP0 write
-      cp0.io.softwareWrite.valid := cp0WeLogic.curr.we & will.input
-      cp0.io.softwareWrite.addr.rd := cp0WeLogic.curr.rd
-      cp0.io.softwareWrite.addr.sel := cp0WeLogic.curr.sel
+//      cp0.io.softwareWrite.valid := cp0WeLogic.curr.we & will.input
+//      cp0.io.softwareWrite.addr.rd := cp0WeLogic.curr.rd
+//      cp0.io.softwareWrite.addr.sel := cp0WeLogic.curr.sel
+      cp0.io.softwareWrite.valid := input(cp0We)
+      cp0.io.softwareWrite.addr.rd := input(inst).rd
+      cp0.io.softwareWrite.addr.sel := input(inst).sel
       cp0.io.softwareWrite.data := input(rtValue)
 
       cp0.io.exceptionBus.exception.excCode := exception
@@ -266,6 +269,7 @@ class CPU extends Component {
       cp0.io.exceptionBus.vaddr := input(memAddr)
       cp0.io.exceptionBus.pc := input(pc)
       cp0.io.exceptionBus.bd := input(bd)
+      cp0.io.exceptionBus.valid := !is.empty
 
       cp0.io.externalInterrupt := io.externalInterrupt
     }
@@ -738,15 +742,23 @@ class CPU extends Component {
   }
 
   IF1.input(pc).addAttribute("mark_debug", "true")
+  ibus.stage2.stall.addAttribute("mark_debug", "true")
+  icache.icacheFSM.stateReg.addAttribute("mark_debug", "true")
 
+  IF2.stored(pc).addAttribute("mark_debug", "true")
   IF2.decideJump.btbHitLine.addAttribute("mark_debug", "true")
   IF2.produced(btbData).addAttribute("mark_debug", "true")
   IF2.produced(btbTagLine).addAttribute("mark_debug", "true")
-
+  IF2.produced(wantJump).addAttribute("mark_debug", "true")
+//
   ID.output(jumpCond).addAttribute("mark_debug", "true")
 
   EX.stored(pc).addAttribute("mark_debug", "true")
   EX.stored(inst).addAttribute("mark_debug", "true")
+  EX.stored(wantJump).addAttribute("mark_debug", "true")
+  EX.stored(jumpPC).addAttribute("mark_debug", "true")
+  EX.produced(wantJump).addAttribute("mark_debug", "true")
+
   ju.op.addAttribute("mark_debug", "true")
   ju.jump.addAttribute("mark_debug", "true")
 
@@ -764,6 +776,10 @@ class CPU extends Component {
   ME1.refillException.addAttribute("mark_debug", "true")
   ME1.invalidException.addAttribute("mark_debug", "true")
   ME1.modifiedException.addAttribute("mark_debug", "true")
+
+  ME2.stored(pc).addAttribute("mark_debug", "true")
+  dbus.stage2.stall.addAttribute("mark_debug", "true")
+  dcache.dcacheFSM.stateReg.addAttribute("mark_debug", "true")
   dbus.stage2.rdata.addAttribute("mark_debug", "true")
   dbus.stage2.wdata.addAttribute("mark_debug", "true")
 
@@ -772,7 +788,7 @@ class CPU extends Component {
   cp0.regs.epc.addAttribute("mark_debug", "true")
   cp0.regs.cause.addAttribute("mark_debug", "true")
   cp0.io.exceptionBus.exception.addAttribute("mark_debug", "true")
-  cp0.io.exceptionBus.jumpPc.addAttribute("mark_debug", "true")
+//  cp0.io.exceptionBus.jumpPc.addAttribute("mark_debug", "true")
 //
 //  io.uncacheAXI.aw.valid.addAttribute("mark_debug", "true")
 //  io.uncacheAXI.aw.ready.addAttribute("mark_debug", "true")

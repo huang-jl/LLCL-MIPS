@@ -25,11 +25,12 @@ class ExceptionBus extends Bundle with IMasterSlave {
   val vaddr           = UInt(32 bits) //虚地址
   val pc              = UInt(32 bits)
   val bd              = Bool
+  val valid           = Bool  //当前ME1阶段是否是有效指令，用于触发中断响应
 
   val jumpPc = Optional(UInt(32 bits))
 
   override def asMaster(): Unit = {
-    out(exception, eret, vaddr, pc, bd)
+    out(exception, eret, vaddr, pc, bd, valid)
     in(jumpPc)
   }
 }
@@ -445,7 +446,7 @@ class ExceptionHandler(val regs: Cp0Reg, val exceptBus: ExceptionBus) extends Ar
    ******************************/
   val interrupts = (regs.cause.ipHW ## regs.cause.ipSW) & regs.status.im
   //Status.EXL = 1 | Status.ERL = 1 会禁止所有中断
-  val intTaken = interrupts.orR && !exl.asBool & !erl.asBool & regs.status.ie.asBool
+  val intTaken = interrupts.orR && !exl.asBool & !erl.asBool & regs.status.ie.asBool & exceptBus.valid
 
   when(intTaken) {
     exl := 1
