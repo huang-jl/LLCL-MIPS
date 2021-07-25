@@ -357,9 +357,9 @@ class CPU extends Component {
     }
 
     val cp0Read = new StageComponent {
-      cp0.io.read.addr.rd := input(inst).rd
-      cp0.io.read.addr.sel := input(inst).sel
-      output(rfuData) := cp0.io.read.data
+      cp0.io.read(0).addr.rd := input(inst).rd
+      cp0.io.read(0).addr.sel := input(inst).sel
+      output(rfuData) := cp0.io.read(0).data
     }
 
     produced(rfuData) := stored(rfuRdSrc).mux(

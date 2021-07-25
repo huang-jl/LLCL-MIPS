@@ -5,7 +5,7 @@ import spinal.core._
 import spinal.lib._
 
 class ComponentStage extends Area {
-  val stored   = Record()
+  val stored   = Record().setAsReg()
   val output   = Record()
   val produced = Record()
 
@@ -20,6 +20,7 @@ class ComponentStage extends Area {
         case Some(v) =>
           value.init(v)
           when(!will.input & will.output) { value := v }
+        case None =>
       }
     }
   })

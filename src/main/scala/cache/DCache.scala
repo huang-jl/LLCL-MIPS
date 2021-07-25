@@ -33,7 +33,7 @@ class CPUDCacheInterface(config: CacheRamConfig) extends Bundle with IMasterSlav
 
   // dcache的invalidate不需要地址，因为地址就是stage2.paddr
   val invalidate = new Bundle {
-    val en = Bool
+    val en = Bool.default(False)
   }
 
   override def asMaster(): Unit = {

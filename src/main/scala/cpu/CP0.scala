@@ -426,7 +426,7 @@ class CP0 extends Component {
 
   val io = new Bundle {
     val softwareWrite = slave Flow (Write())
-    val read          = slave(Read())
+    val read          = Vec(slave(Read()), 2)
 
     val tlbBus = Utils.instantiateWhen(slave(new TLBInterface), ConstantVal.USE_TLB)
 //    val tlbBus = if (ConstantVal.USE_TLB) slave(new TLBInterface) else null //tlbBus
@@ -446,16 +446,16 @@ class CP0 extends Component {
 
   // Register constructions, read and write.
 
-  io.read.data := 0
+  io.read(0).data := 0
+  io.read(1).data := 0
 
   val regs = mutable.Map[String, Register]()
   for ((addr, description) <- Register.allDescriptions) {
     val reg = Register(description)
     regs(description.name) = reg
 
-    when(io.read.addr === addr) {
-      io.read.data := reg.value
-    }
+    when(io.read(0).addr === addr) { io.read(0).data := reg.value }
+    when(io.read(1).addr === addr) { io.read(1).data := reg.value }
     when(io.softwareWrite.valid && io.softwareWrite.addr === addr) {
       reg.softwareWrite(io.softwareWrite.data)
     }

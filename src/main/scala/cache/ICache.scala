@@ -26,8 +26,8 @@ class CPUICacheInterface(config: CacheRamConfig) extends Bundle with IMasterSlav
   }
 
   val invalidate = new Bundle {
-    val en   = Bool
-    val addr = UInt(32 bits)
+    val en   = Bool.default(False)
+    val addr = UInt(32 bits).default(0)
   }
 
   override def asMaster(): Unit = {
@@ -60,7 +60,7 @@ class ICache(config: CacheRamConfig) extends Component {
   val stage2 = new Area {
     val wordOffset: UInt = io.cpu.stage2.paddr.wordOffset
     val index: UInt      = io.cpu.stage2.paddr.index
-    val tag: Bits = io.cpu.stage2.paddr.cacheTag
+    val tag: Bits        = io.cpu.stage2.paddr.cacheTag
   }
 
   val cacheRam = new Area {

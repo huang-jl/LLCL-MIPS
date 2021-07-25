@@ -11,7 +11,7 @@ import scala.language.postfixOps
 /** @param useTLB 是否开启TLB转换
   * @note MMU进行地址翻译后得到的结果
   */
-class MMUTranslationRes(useTLB: Boolean) extends Bundle {
+case class MMUTranslationRes(useTLB: Boolean) extends Bundle {
   val paddr              = UInt(32 bits)
   val miss, dirty, valid = Bool
   val cached             = Bool

@@ -44,7 +44,7 @@ class MyCPUTop extends Component {
   )
 
   val clockingArea = new ClockingArea(aClockDomain) {
-    val cpu      = new CPU
+    val cpu      = new MultiIssueCPU
     val crossbar = CrossBarIP(3, 1) //3 x 1 AXI4 CrossBar
     CrossBarIP.connect(
       crossbar,
@@ -57,10 +57,10 @@ class MyCPUTop extends Component {
     io.wid := wid
 
     val wb = io.debug.wb
-    wb.rf.wen := B(4 bits, default -> cpu.WB.input(cpu.rfuWe).pull)
-    wb.rf.wdata := cpu.WB.input(cpu.rfuData).pull
-    wb.rf.wnum := cpu.WB.input(cpu.rfuAddr).pull
-    wb.pc := cpu.WB.input(cpu.pc).pull
+//    wb.rf.wen := B(4 bits, default -> cpu.WB.input(cpu.rfuWe).pull)
+//    wb.rf.wdata := cpu.WB.input(cpu.rfuData).pull
+//    wb.rf.wnum := cpu.WB.input(cpu.rfuAddr).pull
+//    wb.pc := cpu.WB.input(cpu.pc).pull
   }.setName("")
 
   noIoPrefix()
