@@ -274,7 +274,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     io.axi.ar.lock := 0
     io.axi.ar.cache := 0
     io.axi.ar.prot := 0
-    io.axi.ar.len := config.wordSize - 1
+    io.axi.ar.len := config.wordNum - 1
     io.axi.ar.size := U"3'b010" //2^2 = 4Bytes
     io.axi.ar.burst := B"2'b01" //INCR
     io.axi.ar.valid := False
@@ -286,7 +286,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     io.axi.aw.lock := 0
     io.axi.aw.cache := 0
     io.axi.aw.prot := 0
-    io.axi.aw.len := config.wordSize - 1
+    io.axi.aw.len := config.wordNum - 1
     io.axi.aw.size := U"3'b010" //2^2 = 4Bytes
     io.axi.aw.burst := B"2'b01" //INCR
     io.axi.aw.valid := False
@@ -358,8 +358,8 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   val writeMiss = Bool
   val recvBlock = Reg(new Block(config.blockSize)) init (Block.fromBits(B(0), config.blockSize))
   val counter = new Area {
-    val recv = Counter(0 until config.wordSize) //读内存的寄存器
-    val send = Counter(0 until config.wordSize) //写内存的计数器
+    val recv = Counter(0 until config.wordNum) //读内存的寄存器
+    val send = Counter(0 until config.wordNum) //写内存的计数器
     val inv  = Counter(0 to config.wayNum)      //刷新cache某个index时，用来的计算写回数的计数器
   }
 
@@ -474,7 +474,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     writeMem.whenIsActive {
       io.axi.w.valid := True
       io.axi.w.data := wb.data.banks(counter.send.value)
-      io.axi.w.last := (counter.send.value === config.wordSize - 1)
+      io.axi.w.last := (counter.send.value === config.wordNum - 1)
       when(io.axi.w.ready)(counter.send.increment())
       when(io.axi.w.ready & io.axi.w.last)(goto(waitAXIBValid))
     }
@@ -603,7 +603,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   //3.TODO 从fifo中命中的数据？
   writeData := recvBlock.asBits
   when(dcacheFSM.isActive(dcacheFSM.readMem)) {
-    writeData((config.wordSize - 1) << log2Up(32), 32 bits) := io.axi.r.data
+    writeData((config.wordNum - 1) << log2Up(32), 32 bits) := io.axi.r.data
   }.elsewhen(dcacheFSM.isActive(dcacheFSM.waitWb)) {
     writeData := wb.data.asBits //在waitWb阶段也可能写cache ram，此时命中正在写回内存的数据
   }.elsewhen(dcacheFSM.isActive(dcacheFSM.stateBoot)) {

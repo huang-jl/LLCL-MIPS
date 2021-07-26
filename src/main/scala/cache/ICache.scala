@@ -21,7 +21,7 @@ class CPUICacheInterface(config: CacheRamConfig) extends Bundle with IMasterSlav
   val stage2 = new Bundle {
     val en    = Bool          //如果stage1检测到异常，那么拉低该信号就不会再进行访存
     val paddr = UInt(32 bits) //用来进行tag比较
-    val rdata = Bits(32 bits) //返回读出来的数据
+    val rdata = Bits(64 bits) //返回读出来的数据
     val stall = Bool
   }
 
@@ -47,7 +47,7 @@ class ICache(config: CacheRamConfig) extends Component {
 
     def cacheTag: Bits = addr(config.offsetWidth + config.indexWidth, config.tagWidth bits).asBits
 
-    def wordOffset: UInt = addr(2, config.wordOffsetWidth bits)
+    def bankOffset: UInt = addr(log2Up(config.bankSize), config.bankOffsetWidth bits)
   }
 
   val io = new Bundle {
@@ -58,14 +58,14 @@ class ICache(config: CacheRamConfig) extends Component {
   }
   //解析Stage 2的物理地址
   val stage2 = new Area {
-    val wordOffset: UInt = io.cpu.stage2.paddr.wordOffset
+    val bankOffset: UInt = io.cpu.stage2.paddr.bankOffset
     val index: UInt      = io.cpu.stage2.paddr.index
     val tag: Bits        = io.cpu.stage2.paddr.cacheTag
   }
 
   val cacheRam = new Area {
-    val dataRamConfig    = BRamIPConfig(Block.getBitWidth(config.blockSize))
-    val depth: Int       = 4 * 1024 * 8 / Block.getBitWidth(config.blockSize)
+    val dataRamConfig    = BRamIPConfig(IBlock.getBitWidth(config.blockSize))
+    val depth: Int       = 4 * 1024 * 8 / IBlock.getBitWidth(config.blockSize)
     val tagBitWidth: Int = Meta.getBitWidth(config.tagWidth)
     val tagRamConfig     = BRamIPConfig(tagBitWidth, depth * tagBitWidth)
     val tags             = Array.fill(config.wayNum)(new SimpleDualPortBram(tagRamConfig))
@@ -100,7 +100,7 @@ class ICache(config: CacheRamConfig) extends Component {
     io.axi.ar.lock := 0
     io.axi.ar.cache := 0
     io.axi.ar.prot := 0
-    io.axi.ar.len := config.wordSize - 1
+    io.axi.ar.len := config.wordNum - 1
     io.axi.ar.size := U"3'b010" //2^2 = 4Bytes
     io.axi.ar.burst := B"2'b01" //INCR
     io.axi.ar.valid := False
@@ -141,7 +141,7 @@ class ICache(config: CacheRamConfig) extends Component {
   }
   // 读ram 和 LRU
   val cacheTags  = Vec(Meta(config.tagWidth), config.wayNum)
-  val cacheDatas = Vec(Block(config.blockSize), config.wayNum)
+  val cacheDatas = Vec(IBlock(config.blockSize), config.wayNum)
   for (i <- 0 until config.wayNum) {
     cacheTags(i).assignFromBits(cacheRam.tags(i).io.portB.dout)
     cacheDatas(i).assignFromBits(cacheRam.datas(i).io.portB.dout)
@@ -180,9 +180,9 @@ class ICache(config: CacheRamConfig) extends Component {
   val hit: Bool = hitPerWay.orR
 
   //把命中的数据拿出来并返回
-  val hitLine: Block = MuxOH(hitPerWay, for (i <- 0 until config.wayNum) yield cacheDatas(i))
+  val hitLine: IBlock = MuxOH(hitPerWay, for (i <- 0 until config.wayNum) yield cacheDatas(i))
   val hitTag: Meta   = MuxOH(hitPerWay, for (i <- 0 until config.wayNum) yield cacheTags(i))
-  io.cpu.stage2.rdata := hitLine(stage2.wordOffset)
+  io.cpu.stage2.rdata := hitLine(stage2.bankOffset)
   //更新LRU
   when(io.cpu.stage2.en & hit) {
     LRU.we := True
@@ -198,7 +198,7 @@ class ICache(config: CacheRamConfig) extends Component {
     cacheRam.datas(i).io.portA.din := writeData.asBits
   }
 
-  val counter = Counter(0 until config.wordSize) //从内存读入数据的计数器
+  val counter = Counter(0 until config.wordNum) //从内存读入数据的计数器
   val recvBlock =
     Reg(Block(config.blockSize)) init (Block.fromBits(B(0), config.blockSize)) //从内存中读出的一行的寄存器
 
@@ -236,7 +236,7 @@ class ICache(config: CacheRamConfig) extends Component {
           LRU.access := replace.wayIndex
         }
         //不命中则从writeData返回
-        io.cpu.stage2.rdata := writeData(stage2.wordOffset)
+        io.cpu.stage2.rdata := IBlock.fromBits(writeData.asBits, config.blockSize)(stage2.bankOffset)
         goto(stateBoot)
       }
     }
@@ -247,7 +247,7 @@ class ICache(config: CacheRamConfig) extends Component {
   writeMeta.valid := !io.cpu.invalidate.en
   writeData := recvBlock
   when(icacheFSM.isActive(icacheFSM.readMem)) {
-    writeData.banks(config.wordSize - 1) := io.axi.r.data
+    writeData.banks(config.wordNum - 1) := io.axi.r.data
   }
   //如果是invalidate指令，那么直接刷掉那一行（只需要刷tag）
   when(io.cpu.invalidate.en) {
@@ -257,11 +257,11 @@ class ICache(config: CacheRamConfig) extends Component {
     }
   }
   //如果没有enable，那么直接返回NOP
-  when(!io.cpu.stage2.en)(io.cpu.stage2.rdata := ConstantVal.INST_NOP.asBits)
+  when(!io.cpu.stage2.en)(io.cpu.stage2.rdata := ConstantVal.INST_NOP.asBits ## ConstantVal.INST_NOP.asBits)
 }
 
 object ICache {
   def main(args: Array[String]): Unit = {
-    SpinalVerilog(new ICache(CacheRamConfig(wayNum = 4))).printPruned()
+    SpinalVerilog(new ICache(CacheRamConfig(wayNum = 4, bankSize = 8))).printPruned()
   }
 }

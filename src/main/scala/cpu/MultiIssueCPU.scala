@@ -11,6 +11,7 @@ import Mips32InstImplicits._
 import tlb._
 
 import scala.collection.immutable.ListMap
+import scala.language.postfixOps
 
 object STAGES extends Enumeration {
   val IF1, IF2, ID, EXE, MEM1, MEM2, WB = Value
@@ -30,7 +31,7 @@ class MultiIssueCPU extends Component {
     val uncacheAXI        = master(Axi4(ConstantVal.AXI_BUS_CONFIG))
   }
   val icacheConfig =
-    CacheRamConfig(blockSize = ConstantVal.IcacheLineSize, wayNum = ConstantVal.IcacheWayNum)
+    CacheRamConfig(blockSize = ConstantVal.IcacheLineSize, wayNum = ConstantVal.IcacheWayNum, bankSize = 8)
   val dcacheConfig =
     CacheRamConfig(blockSize = ConstantVal.DcacheLineSize, wayNum = ConstantVal.DcacheWayNum)
   val icache = new ICache(icacheConfig)

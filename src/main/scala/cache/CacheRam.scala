@@ -5,6 +5,7 @@ import scala.language.postfixOps
 
 /** @param blockSize 数据块的大小, bytes
   * @param wayNum    路个数
+ *   @param bankSize 一个bank的大小（例如ICache双发射就是8）, bytes
   * @note ICache采用实Tag和虚Index，
   *       因此Cache一路大小必须小于等于一个页的大小。
   *       由于只支持4KiB的页，这里默认一路的大小为4KiB
@@ -13,7 +14,8 @@ import scala.language.postfixOps
 case class CacheRamConfig(
     blockSize: Int = 32,
     depth: Int = 4 * 1024 / 32,
-    wayNum: Int = 2
+    wayNum: Int = 2,
+    bankSize:Int = 4
 ) {
   def indexWidth: Int = log2Up(depth)
 
@@ -23,10 +25,16 @@ case class CacheRamConfig(
   def offsetWidth: Int = log2Up(blockSize)
 
   /** Cache Line的字偏移宽度 */
-  def wordOffsetWidth: Int = log2Up(wordSize)
+  def bankOffsetWidth: Int = log2Up(bankNum)
 
-  /** Cache Line的字个数 */
-  def wordSize: Int = blockSize / 4
+  /** Cache Line的bank个数 */
+  def bankNum: Int = blockSize / bankSize
+
+  /** Cache Line的word个数 */
+  def wordNum: Int = blockSize / 4
+
+  /** Cache Line的word个数 */
+  def wordOffsetWidth: Int = log2Up(wordNum)
 
   /** Cache Line的bit数 */
   def bitSize: Int = blockSize * 8
@@ -36,6 +44,30 @@ case class CacheRamConfig(
 }
 
 /** @param blockSize 一个数据块的大小:bytes
+ *  @note 仅针对Icache使用
+ */
+case class IBlock(blockSize: Int) extends Bundle {
+  val banks = Vec(Bits(64 bits), blockSize / 8)
+  def apply(addr: UInt): Bits = {
+    banks(addr)
+  }
+
+  def apply(idx: Int): Bits = {
+    banks(idx)
+  }
+}
+object IBlock {
+  def getBitWidth(blockSize: Int): Int = blockSize * 8
+
+  def fromBits(value: Bits, bz: Int): IBlock = {
+    val res = IBlock(bz)
+    res.assignFromBits(value.resize(res.getBitsWidth))
+    res
+  }
+}
+
+/** @param blockSize 一个数据块的大小:bytes
+ *  @note 比较通用，每个bank的大小为32bytes，可以用于AXI总线传输
   */
 case class Block(blockSize: Int) extends Bundle {
   val banks = Vec(Bits(32 bits), blockSize / 4)
