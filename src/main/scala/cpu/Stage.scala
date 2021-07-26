@@ -12,7 +12,7 @@ class Stage extends Area with ValCallbackRec {
 
   //
   val exceptionToRaise = Optional(EXCEPTION()) default None // User settable
-  val prevException    = Reg(Optional(EXCEPTION())) init None
+  val prevException    = Reg(Optional(EXCEPTION())) init None default None
   val exception        = Optional(EXCEPTION())
   exception := prevException orElse exceptionToRaise
 

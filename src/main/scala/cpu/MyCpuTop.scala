@@ -7,6 +7,7 @@ import spinal.core._
 import spinal.lib.{cpu => _, _}
 import spinal.lib.bus.amba4.axi._
 import scala.language.postfixOps
+import STAGES._
 
 case class DebugInterface() extends Bundle {
   val wb = new Bundle {
@@ -26,6 +27,7 @@ class MyCPUTop extends Component {
     val ext_int = in Bits (6 bits)
 
     val aclk    = in Bool ()
+    val daclk   = in Bool ()
     val aresetn = in Bool ()
 
     val axi = master(Axi4(ConstantVal.AXI_BUS_CONFIG))
@@ -55,13 +57,35 @@ class MyCPUTop extends Component {
     // 每次发出写请求时就寄存一次wid
     val wid = RegNextWhen(io.axi.aw.id, io.axi.aw.valid, U(0))
     io.wid := wid
+  }.setName("")
+
+  val ca = new ClockingArea(
+    ClockDomain(
+      io.daclk,
+      io.aresetn,
+      config = ClockDomainConfig(
+        resetActiveLevel = LOW
+      )
+    )
+  ) {
+    val sel = RegInit(False)
+    sel := !sel
+
+    val cpu = clockingArea.cpu
 
     val wb = io.debug.wb
-//    wb.rf.wen := B(4 bits, default -> cpu.WB.input(cpu.rfuWe).pull)
-//    wb.rf.wdata := cpu.WB.input(cpu.rfuData).pull
-//    wb.rf.wnum := cpu.WB.input(cpu.rfuAddr).pull
-//    wb.pc := cpu.WB.input(cpu.pc).pull
-  }.setName("")
+    when(sel) {
+      wb.rf.wen := B(4 bits, default -> cpu.p2(WB).stored(cpu.rfuWE).pull)
+      wb.rf.wdata := cpu.p2(WB).stored(cpu.rfuData).pull
+      wb.rf.wnum := cpu.p2(WB).stored(cpu.rfuIndex).pull
+      wb.pc := cpu.p2(WB).stored(cpu.pc).pull
+    } otherwise {
+      wb.rf.wen := B(4 bits, default -> cpu.p1(WB).stored(cpu.rfuWE).pull)
+      wb.rf.wdata := cpu.p1(WB).stored(cpu.rfuData).pull
+      wb.rf.wnum := cpu.p1(WB).stored(cpu.rfuIndex).pull
+      wb.pc := cpu.p1(WB).stored(cpu.pc).pull
+    }
+  }
 
   noIoPrefix()
 
