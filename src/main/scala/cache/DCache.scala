@@ -144,7 +144,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     * **********************
     */
   val LRU = new Area {
-    val mem        = new LRUManegr(config.wayNum, config.setSize)
+    val mem        = new LRUManegr(config.wayNum, config.setNum)
     val calculator = new LRUCalculator(config.wayNum)
     // LRU读端口
     mem.io.read.addr := stage1.index
@@ -222,8 +222,8 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     cacheRam.datas(i).io.portA.we := dataWE(i)
     cacheRam.datas(i).io.portA.addr := stage2.index
   }
-  val writeMeta = DMeta(config.tagWidth)    //要写入cache的Meta
-  val writeData = Bits(config.bitSize bits) //要写入cache的Block
+  val writeMeta = DMeta(config.tagWidth)   //要写入cache的Meta
+  val writeData = Bits(config.bitNum bits) //要写入cache的Block
   for (i <- 0 until config.wayNum) {
     cacheRam.tags(i).io.portA.din := writeMeta.asBits
     cacheRam.datas(i).io.portA.din := writeData.asBits
@@ -254,9 +254,13 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   }
 
   val wb = new Area {
-    val tag           = Reg(UInt(config.tagWidth bits)) init (0)
-    val index         = Reg(UInt(config.indexWidth bits)) init (0)
-    val data          = Reg(Block(config.blockSize)) init (Block.fromBits(0, config.blockSize))
+    val tag   = Reg(UInt(config.tagWidth bits)) init (0)
+    val index = Reg(UInt(config.indexWidth bits)) init (0)
+    val data = Reg(Block(config.blockSize)) init Block.fromBits(
+      B(0, config.bitNum bits),
+      config.blockSize,
+      4
+    )
     val writing: Bool = Bool //当前是否正在写回内存
     //正在写回内存的数据命中读请求
     val hit: Bool = tag === stage2.tag & index === stage2.index & writing
@@ -356,11 +360,15 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
    */
   val readMiss  = Bool
   val writeMiss = Bool
-  val recvBlock = Reg(new Block(config.blockSize)) init (Block.fromBits(B(0), config.blockSize))
+  val recvBlock = Reg(new Block(config.blockSize)) init Block.fromBits(
+    B(0, config.bitNum bits),
+    config.blockSize,
+    4
+  )
   val counter = new Area {
     val recv = Counter(0 until config.wordNum) //读内存的寄存器
     val send = Counter(0 until config.wordNum) //写内存的计数器
-    val inv  = Counter(0 to config.wayNum)      //刷新cache某个index时，用来的计算写回数的计数器
+    val inv  = Counter(0 to config.wayNum)     //刷新cache某个index时，用来的计算写回数的计数器
   }
 
   readMiss := !cache.hit & !stage1.fifo.hit & cache.read   //读缺失

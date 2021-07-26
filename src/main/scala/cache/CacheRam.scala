@@ -5,7 +5,7 @@ import scala.language.postfixOps
 
 /** @param blockSize 数据块的大小, bytes
   * @param wayNum    路个数
- *   @param bankSize 一个bank的大小（例如ICache双发射就是8）, bytes
+  *   @param bankSize 一个bank的大小（例如ICache双发射就是8）, bytes
   * @note ICache采用实Tag和虚Index，
   *       因此Cache一路大小必须小于等于一个页的大小。
   *       由于只支持4KiB的页，这里默认一路的大小为4KiB
@@ -15,7 +15,7 @@ case class CacheRamConfig(
     blockSize: Int = 32,
     depth: Int = 4 * 1024 / 32,
     wayNum: Int = 2,
-    bankSize:Int = 4
+    bankSize: Int = 4
 ) {
   def indexWidth: Int = log2Up(depth)
 
@@ -24,11 +24,11 @@ case class CacheRamConfig(
   /** Cache Line的字节偏移宽度 */
   def offsetWidth: Int = log2Up(blockSize)
 
-  /** Cache Line的字偏移宽度 */
-  def bankOffsetWidth: Int = log2Up(bankNum)
-
   /** Cache Line的bank个数 */
   def bankNum: Int = blockSize / bankSize
+
+  /** Cache Line的bank偏移宽度 */
+  def bankOffsetWidth: Int = log2Up(bankNum)
 
   /** Cache Line的word个数 */
   def wordNum: Int = blockSize / 4
@@ -37,56 +37,29 @@ case class CacheRamConfig(
   def wordOffsetWidth: Int = log2Up(wordNum)
 
   /** Cache Line的bit数 */
-  def bitSize: Int = blockSize * 8
+  def bitNum: Int = blockSize * 8
 
   /** Cache Line的组数 */
-  def setSize: Int = 1 << indexWidth
+  def setNum: Int = 1 << indexWidth
 }
 
 /** @param blockSize 一个数据块的大小:bytes
- *  @note 仅针对Icache使用
- */
-case class IBlock(blockSize: Int) extends Bundle {
-  val banks = Vec(Bits(64 bits), blockSize / 8)
-  def apply(addr: UInt): Bits = {
-    banks(addr)
-  }
-
-  def apply(idx: Int): Bits = {
-    banks(idx)
-  }
-}
-object IBlock {
-  def getBitWidth(blockSize: Int): Int = blockSize * 8
-
-  def fromBits(value: Bits, bz: Int): IBlock = {
-    val res = IBlock(bz)
-    res.assignFromBits(value.resize(res.getBitsWidth))
-    res
-  }
-}
-
-/** @param blockSize 一个数据块的大小:bytes
- *  @note 比较通用，每个bank的大小为32bytes，可以用于AXI总线传输
+  * @param bankSize 一个bank的大小:bytes
   */
-case class Block(blockSize: Int) extends Bundle {
-  val banks = Vec(Bits(32 bits), blockSize / 4)
+case class Block(blockSize: Int, bankSize: Int = 4) extends Bundle {
+  val banks = Vec(Bits(bankSize * 8 bits), blockSize / bankSize)
 
-  def apply(addr: UInt): Bits = {
-    banks(addr)
-  }
+  def apply(addr: UInt): Bits = banks(addr)
 
-  def apply(idx: Int): Bits = {
-    banks(idx)
-  }
+  def apply(idx: Int): Bits = banks(idx)
 }
 
 object Block {
   def getBitWidth(blockSize: Int): Int = blockSize * 8
 
-  def fromBits(value: Bits, bz: Int): Block = {
-    val res = Block(bz)
-    res.assignFromBits(value.resize(res.getBitsWidth))
+  def fromBits(value: Bits, blockSize: Int, bankSize: Int): Block = {
+    val res = Block(blockSize, bankSize)
+    res.assignFromBits(value)
     res
   }
 }
