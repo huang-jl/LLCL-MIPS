@@ -10,6 +10,8 @@ import bus.amba4.axi._
 import Mips32InstImplicits._
 import tlb._
 
+import scala.collection.immutable.ListMap
+
 object STAGES extends Enumeration {
   val IF1, IF2, ID, EXE, MEM1, MEM2, WB = Value
 }
@@ -213,7 +215,7 @@ class MultiIssueCPU extends Component {
       }
     }
 
-    p = p :+ Map(
+    p = p :+ ListMap(
       ID   -> id,
       EXE  -> exe,
       MEM1 -> mem1,
@@ -224,162 +226,6 @@ class MultiIssueCPU extends Component {
 
   val p1 = p(0)
   val p2 = p(1)
-
-  // 维护 delay slot 信号
-  p1(ID).addComponent(new StageComponent {
-    val dsReg = RegInit(False)
-    when(p1(ID).will.output) { dsReg := p2(ID).produced(isJump) }
-    when(p1(ID).want.flush) { dsReg := False }
-    output(inSlot) := dsReg
-  })
-  p2(EXE).addComponent(new StageComponent {
-    val dsReg = RegInit(False)
-    when(p2(EXE).will.output | p2(EXE).assign.flush) { dsReg := False }
-    when(p1(EXE).will.input) { dsReg := p1(ID).produced(isJump) }
-    output(inSlot) := dsReg
-  })
-  //
-
-  /**/
-  val decideJump = new ComponentStage {
-    ju.op := stored(jumpCond)
-    ju.a := stored(rsValue).asSInt
-    ju.b := stored(rtValue).asSInt
-
-    output(jumpPC) := stored(isDJump) ? stored(jumpPC) | U(stored(rsValue))
-  }
-  /**/
-
-  val if2 = new Stage {
-    val fetchInst = new StageComponent {
-      ibus.stage2.paddr := input(paddr)
-      ibus.stage2.en := input(ibusStage2En)
-      output(inst) := ibus.stage2.rdata
-    }
-
-    is.done := !ibus.stage2.stall
-    can.flush := !ibus.stage2.stall
-  }
-  val if1 = new Stage {
-    val writePC = new StageComponent {
-      val pcReg = RegInit(INIT_PC)
-      output(pc) := pcReg
-
-      val jumpTask = Task(ju.jump, decideJump.produced(jumpPC), will.output)
-
-      when(will.output) {
-        pcReg := (pcReg(31 downto 3) + 1) @@ U"000"
-        when(jumpTask.has) { pcReg := jumpTask.value }
-      }
-    }
-
-    val fetchInst = new StageComponent {
-      icu.io.offset := writePC.pcReg(1 downto 0)
-
-      ibus.stage1.read := True
-      ibus.stage1.index := writePC.pcReg(icacheConfig.offsetWidth, icacheConfig.indexWidth bits)
-      ibus.stage1.keepRData := !if2.will.input
-
-      mmu.io.instVaddr := writePC.pcReg(31 downto 3) @@ U"000"
-      output(paddr) := mmu.io.instRes.paddr
-      output(ibusStage2En) := True
-
-      exceptionToRaise := None
-      output(excOnFetch) := False
-      when(!icu.io.addrValid) {
-        exceptionToRaise := EXCEPTION.AdEL
-        output(excOnFetch) := True
-        output(ibusStage2En) := False
-      }
-    }
-  }
-
-  val accessMem2 = new ComponentStage {
-    dcu2.io.input.byteEnable := stored(memBE)
-    dcu2.io.input.extend := stored(memEx)
-    dcu2.io.input.wdata := stored(rtValue)
-    dcu2.io.input.rdata := dbus.stage2.rdata
-
-    dbus.stage2.read := stored(memRE)
-    dbus.stage2.write := stored(memWE)
-    dbus.stage2.paddr := stored(mmuRes).paddr
-    dbus.stage2.byteEnable := stored(memBE)
-    dbus.stage2.wdata := dcu2.io.output.wdata
-    dbus.stage2.uncache := !stored(mmuRes).cached
-  }
-  val accessMem1 = new ComponentStage {
-    val mmuRes = RegNextWhen(mmu.io.dataRes, will.input)
-
-    dcu1.io.input.paddr := mmuRes.paddr
-    dcu1.io.input.byteEnable := stored(memBEType)
-    output(memBE) := dcu1.io.output.byteEnable
-
-    dbus.stage1.keepRData := !accessMem2.will.input
-    dbus.stage1.paddr := mmuRes.paddr
-  }
-  accessMem1.send(accessMem2)
-
-  for (i <- 1 downto 0) {
-    condWhen(i == 0, p(i)(ID).produced(isJump)) {
-      decideJump.will.input := p(i)(EXE).will.input
-      decideJump.receive(p(i)(ID))
-    }
-
-    condWhen(i == 0, p(i)(EXE).stored(useMem)) {
-      mmu.io.dataVaddr := p(i)(EXE).produced(memAddr)
-
-      accessMem1.will.input := p(i)(MEM1).will.input & p(i)(EXE).exception.isEmpty
-      accessMem1.receive(p(i)(EXE))
-    }
-    condWhen(i == 0, p(i)(MEM1).stored(useMem)) {
-      accessMem1.will.output := p(i)(MEM1).will.output
-      accessMem2.will.input := p(i)(MEM2).will.input
-    }
-    condWhen(i == 0, p(i)(MEM2).stored(useMem)) {
-      accessMem2.will.output := p(i)(MEM2).will.output
-    }
-
-    condWhen(i == 0, p(i)(MEM1).produced(modifyCP0)) {
-      cp0.io.softwareWrite.valid := p(i)(MEM1).stored(cp0WE)
-      cp0.io.softwareWrite.addr.rd := p(i)(MEM1).stored(inst).rd
-      cp0.io.softwareWrite.addr.sel := p(i)(MEM1).stored(inst).sel
-      cp0.io.softwareWrite.data := p(i)(MEM1).stored(rtValue)
-
-      cp0.io.exceptionInput.exception := p(i)(MEM1).exception
-      cp0.io.exceptionInput.eret := p(i)(MEM1).stored(eret)
-      cp0.io.exceptionInput.memAddr := p(i)(MEM1).stored(memAddr)
-      cp0.io.exceptionInput.pc := p(i)(MEM1).stored(pc)
-      cp0.io.exceptionInput.bd := p(i)(MEM1).stored(inSlot)
-      cp0.io.exceptionInput.instFetch := p(i)(MEM1).stored(excOnFetch)
-
-      cp0.io.externalInterrupt := io.externalInterrupt
-    }
-  }
-  /**/
-
-  /**/
-  for (i <- 0 to 1) {
-    condWhen(i == 1, p(i)(MEM1).produced(hiWE)) {
-      hlu.hi_we := p(i)(MEM1).stored(hiWE)
-      hlu.new_hi := p(i)(MEM1).stored(newHi)
-    }
-    condWhen(i == 1, p(i)(MEM1).produced(loWE)) {
-      hlu.lo_we := p(i)(MEM1).stored(loWE)
-      hlu.new_lo := p(i)(MEM1).stored(newLo)
-    }
-  }
-  /**/
-
-  /* 处理跳转的一些情况 */
-  val p2IDFlushNextInst = // 第 2 流水线的 ID 阶段可能需要作废下一条进入的指令
-    SimpleTask(p2(EXE).stored(isJump) & ju.jump, p2(ID).will.output | p2(ID).assign.flush)
-  /* TODO p1(ID).stored(pc) := if2.produced(pc) */
-  /* TODO p1(ID).prevException := if2.exception */
-  /* TODO p2(ID).stored(pc) := if2.produced(pc)(31 downto 3) @@ U"1" @@ if2.produced(pc)(1 downto 0) */
-  /* TODO p2(ID).prevException := if2.exception */
-  when(p1(ID).stored(pc)(2)) { p1(ID).assign.flush := True }  // 跳转到奇数地址
-  when(p2IDFlushNextInst.has) { p2(ID).assign.flush := True } // flush 下一条进入的指令
-  /**/
 
   /* 处理 ID 阶段的 reg 前传 */
   for (i <- 0 to 1) {
@@ -456,6 +302,162 @@ class MultiIssueCPU extends Component {
       )
     })
   }
+  /**/
+
+  // 维护 delay slot 信号
+  p1(ID).addComponent(new StageComponent {
+    val dsReg = RegInit(False)
+    when(p1(ID).will.output) { dsReg := p2(ID).produced(isJump) }
+    when(p1(ID).want.flush) { dsReg := False }
+    output(inSlot) := dsReg
+  })
+  p2(EXE).addComponent(new StageComponent {
+    val dsReg = RegInit(False)
+    when(p2(EXE).will.output | p2(EXE).assign.flush) { dsReg := False }
+    when(p1(EXE).will.input) { dsReg := p1(ID).produced(isJump) }
+    output(inSlot) := dsReg
+  })
+  //
+
+  /**/
+  val decideJump = new ComponentStage {
+    ju.op := stored(jumpCond)
+    ju.a := stored(rsValue).asSInt
+    ju.b := stored(rtValue).asSInt
+
+    output(jumpPC) := stored(isDJump) ? stored(jumpPC) | U(stored(rsValue))
+  }
+  /**/
+
+  val if2 = new Stage {
+    val fetchInst = new StageComponent {
+      ibus.stage2.paddr := input(paddr)
+      ibus.stage2.en := input(ibusStage2En)
+      output(twoInsts) := ibus.stage2.rdata
+    }
+
+    is.done := !ibus.stage2.stall
+    can.flush := !ibus.stage2.stall
+  }
+  val if1 = new Stage {
+    val writePC = new StageComponent {
+      val pcReg = RegInit(INIT_PC)
+      output(pc) := pcReg
+
+      val jumpTask = Task(ju.jump, decideJump.produced(jumpPC), will.output)
+
+      when(will.output) {
+        pcReg := (pcReg(31 downto 3) + 1) @@ U"000"
+        when(jumpTask.has) { pcReg := jumpTask.value }
+      }
+    }
+
+    val fetchInst = new StageComponent {
+      icu.io.offset := writePC.pcReg(1 downto 0)
+
+      ibus.stage1.read := True
+      ibus.stage1.index := writePC.pcReg(icacheConfig.offsetWidth, icacheConfig.indexWidth bits)
+      ibus.stage1.keepRData := !if2.will.input
+
+      mmu.io.instVaddr := writePC.pcReg(31 downto 3) @@ U"000"
+      output(paddr) := mmu.io.instRes.paddr
+      output(ibusStage2En) := True
+
+      exceptionToRaise := None
+      output(excOnFetch) := False
+      when(!icu.io.addrValid) {
+        exceptionToRaise := EXCEPTION.AdEL
+        output(excOnFetch) := True
+        output(ibusStage2En) := False
+      }
+    }
+  }
+
+  val accessMem2 = new ComponentStage {
+    dcu2.io.input.byteEnable := stored(memBE)
+    dcu2.io.input.extend := stored(memEx)
+    dcu2.io.input.wdata := stored(rtValue)
+    dcu2.io.input.rdata := dbus.stage2.rdata
+
+    dbus.stage2.read := stored(memRE)
+    dbus.stage2.write := stored(memWE)
+    dbus.stage2.paddr := stored(mmuRes).paddr
+    dbus.stage2.byteEnable := stored(memBE)
+    dbus.stage2.wdata := dcu2.io.output.wdata
+    dbus.stage2.uncache := !stored(mmuRes).cached
+  }
+  val accessMem1 = new ComponentStage {
+    output(mmuRes) := RegNextWhen(mmu.io.dataRes, will.input)
+
+    dcu1.io.input.paddr := output(mmuRes).paddr
+    dcu1.io.input.byteEnable := stored(memBEType)
+    output(memBE) := dcu1.io.output.byteEnable
+
+    dbus.stage1.keepRData := !accessMem2.will.input
+    dbus.stage1.paddr := output(mmuRes).paddr
+  }
+  accessMem1.send(accessMem2)
+
+  for (i <- 1 downto 0) {
+    condWhen(i == 0, p(i)(ID).produced(isJump)) {
+      decideJump.will.input := p(i)(EXE).will.input
+      decideJump.receive(p(i)(ID))
+    }
+
+    condWhen(i == 0, p(i)(EXE).stored(useMem)) {
+      mmu.io.dataVaddr := p(i)(EXE).produced(memAddr)
+
+      accessMem1.will.input := p(i)(MEM1).will.input & p(i)(EXE).exception.isEmpty
+      accessMem1.receive(p(i)(EXE))
+    }
+    condWhen(i == 0, p(i)(MEM1).stored(useMem)) {
+      accessMem1.will.output := p(i)(MEM1).will.output
+      accessMem2.will.input := p(i)(MEM2).will.input
+    }
+    condWhen(i == 0, p(i)(MEM2).stored(useMem)) {
+      accessMem2.will.output := p(i)(MEM2).will.output
+    }
+
+    condWhen(i == 0, p(i)(MEM1).produced(modifyCP0)) {
+      cp0.io.softwareWrite.valid := p(i)(MEM1).stored(cp0WE)
+      cp0.io.softwareWrite.addr.rd := p(i)(MEM1).stored(inst).rd
+      cp0.io.softwareWrite.addr.sel := p(i)(MEM1).stored(inst).sel
+      cp0.io.softwareWrite.data := p(i)(MEM1).stored(rtValue)
+
+      cp0.io.exceptionInput.exception := p(i)(MEM1).exception
+      cp0.io.exceptionInput.eret := p(i)(MEM1).stored(eret)
+      cp0.io.exceptionInput.memAddr := p(i)(MEM1).stored(memAddr)
+      cp0.io.exceptionInput.pc := p(i)(MEM1).stored(pc)
+      cp0.io.exceptionInput.bd := p(i)(MEM1).stored(inSlot)
+      cp0.io.exceptionInput.instFetch := p(i)(MEM1).stored(excOnFetch)
+
+      cp0.io.externalInterrupt := io.externalInterrupt
+    }
+  }
+  /**/
+
+  /**/
+  for (i <- 0 to 1) {
+    condWhen(i == 1, p(i)(MEM1).produced(hiWE)) {
+      hlu.hi_we := p(i)(MEM1).stored(hiWE)
+      hlu.new_hi := p(i)(MEM1).stored(newHi)
+    }
+    condWhen(i == 1, p(i)(MEM1).produced(loWE)) {
+      hlu.lo_we := p(i)(MEM1).stored(loWE)
+      hlu.new_lo := p(i)(MEM1).stored(newLo)
+    }
+  }
+  /**/
+
+  /* 处理跳转的一些情况 */
+  val p2IDFlushNextInst = // 第 2 流水线的 ID 阶段可能需要作废下一条进入的指令
+    SimpleTask(p2(EXE).stored(isJump) & ju.jump, p2(ID).will.output | p2(ID).assign.flush)
+  /* TODO p1(ID).stored(pc) := if2.produced(pc) */
+  /* TODO p1(ID).prevException := if2.exception */
+  /* TODO p2(ID).stored(pc) := if2.produced(pc)(31 downto 3) @@ U"1" @@ if2.produced(pc)(1 downto 0) */
+  /* TODO p2(ID).prevException := if2.exception */
+  when(p1(ID).stored(pc)(2)) { p1(ID).assign.flush := True }  // 跳转到奇数地址
+  when(p2IDFlushNextInst.has) { p2(ID).assign.flush := True } // flush 下一条进入的指令
   /**/
 
   /* 给出控制信号 */

@@ -33,6 +33,7 @@ class ComponentStage extends Area {
 
   def send(that: ComponentStage): Unit = {
     that.stored.keys.foreach { case key =>
+      produced(key)
       when(that.will.input) { that.stored(key) := produced(key) }
     }
   }
@@ -43,6 +44,7 @@ class ComponentStage extends Area {
   }
   def receive(that: Stage): Unit = {
     stored.keys.foreach { case key =>
+      that.produced(key)
       when(will.input) { stored(key) := that.produced(key) }
     }
   }

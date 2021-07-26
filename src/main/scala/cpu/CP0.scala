@@ -438,9 +438,9 @@ class CP0 extends Component {
     val interruptOnNextInst = out Bool ()
 
     val instOnInt = new Bundle {
-      val valid = in Bool ()
-      val bd    = in Bool ()
-      val pc    = in UInt (32 bits)
+      val valid = in Bool () default False
+      val bd    = in Bool () default False
+      val pc    = in UInt (32 bits) default 0
     }
   }
 
