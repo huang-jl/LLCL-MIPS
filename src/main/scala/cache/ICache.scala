@@ -64,8 +64,8 @@ class ICache(config: CacheRamConfig) extends Component {
   }
 
   val cacheRam = new Area {
-    val dataRamConfig    = BRamIPConfig(IBlock.getBitWidth(config.blockSize))
-    val depth: Int       = 4 * 1024 * 8 / IBlock.getBitWidth(config.blockSize)
+    val dataRamConfig    = BRamIPConfig(Block.getBitWidth(config.blockSize))
+    val depth: Int       = 4 * 1024 * 8 / Block.getBitWidth(config.blockSize)
     val tagBitWidth: Int = Meta.getBitWidth(config.tagWidth)
     val tagRamConfig     = BRamIPConfig(tagBitWidth, depth * tagBitWidth)
     val tags             = Array.fill(config.wayNum)(new SimpleDualPortBram(tagRamConfig))
@@ -73,7 +73,7 @@ class ICache(config: CacheRamConfig) extends Component {
   }
 
   val LRU = new Area {
-    val mem        = new LRUManegr(config.wayNum, config.setSize)
+    val mem        = new LRUManegr(config.wayNum, config.setNum)
     val calculator = new LRUCalculator(config.wayNum)
     // LRU读端口
     mem.io.read.addr := io.cpu.stage1.index
@@ -141,7 +141,7 @@ class ICache(config: CacheRamConfig) extends Component {
   }
   // 读ram 和 LRU
   val cacheTags  = Vec(Meta(config.tagWidth), config.wayNum)
-  val cacheDatas = Vec(IBlock(config.blockSize), config.wayNum)
+  val cacheDatas = Vec(Block(config.blockSize, config.bankSize), config.wayNum)
   for (i <- 0 until config.wayNum) {
     cacheTags(i).assignFromBits(cacheRam.tags(i).io.portB.dout)
     cacheDatas(i).assignFromBits(cacheRam.datas(i).io.portB.dout)
@@ -180,7 +180,7 @@ class ICache(config: CacheRamConfig) extends Component {
   val hit: Bool = hitPerWay.orR
 
   //把命中的数据拿出来并返回
-  val hitLine: IBlock = MuxOH(hitPerWay, for (i <- 0 until config.wayNum) yield cacheDatas(i))
+  val hitLine: Block = MuxOH(hitPerWay, for (i <- 0 until config.wayNum) yield cacheDatas(i))
   val hitTag: Meta   = MuxOH(hitPerWay, for (i <- 0 until config.wayNum) yield cacheTags(i))
   io.cpu.stage2.rdata := hitLine(stage2.bankOffset)
   //更新LRU
@@ -200,7 +200,11 @@ class ICache(config: CacheRamConfig) extends Component {
 
   val counter = Counter(0 until config.wordNum) //从内存读入数据的计数器
   val recvBlock =
-    Reg(Block(config.blockSize)) init (Block.fromBits(B(0), config.blockSize)) //从内存中读出的一行的寄存器
+    Reg(Block(config.blockSize)) init Block.fromBits(
+      B(0, config.bitNum bits),
+      config.blockSize,
+      4
+    ) //从内存中读出的一行的寄存器
 
   io.cpu.stage2.stall := True
   val icacheFSM = new StateMachine {
@@ -236,7 +240,7 @@ class ICache(config: CacheRamConfig) extends Component {
           LRU.access := replace.wayIndex
         }
         //不命中则从writeData返回
-        io.cpu.stage2.rdata := IBlock.fromBits(writeData.asBits, config.blockSize)(stage2.bankOffset)
+        io.cpu.stage2.rdata := Block.fromBits(writeData.asBits, config.blockSize, config.bankSize)(stage2.bankOffset)
         goto(stateBoot)
       }
     }
@@ -257,7 +261,9 @@ class ICache(config: CacheRamConfig) extends Component {
     }
   }
   //如果没有enable，那么直接返回NOP
-  when(!io.cpu.stage2.en)(io.cpu.stage2.rdata := ConstantVal.INST_NOP.asBits ## ConstantVal.INST_NOP.asBits)
+  when(!io.cpu.stage2.en)(
+    io.cpu.stage2.rdata := ConstantVal.INST_NOP.asBits ## ConstantVal.INST_NOP.asBits
+  )
 }
 
 object ICache {
