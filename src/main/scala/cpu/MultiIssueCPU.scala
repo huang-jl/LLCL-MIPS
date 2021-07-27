@@ -54,18 +54,18 @@ class MultiIssueCPU extends Component {
   val twoInsts     = Key(Bits(2 * 32 bits))
   val inst         = Key(Mips32Inst())
   val eret         = Key(Bool()).setEmptyValue(False)
-  val isJump       = Key(Bool())
+  val isJump       = Key(Bool()).setEmptyValue(False)
   val isDJump      = Key(Bool())
   val jumpCond     = Key(JU_OP()).setEmptyValue(JU_OP.f)
   val jumpPC       = Key(UInt(32 bits))
   val inSlot       = Key(Bool())
-  val useMem       = Key(Bool())
+  val useMem       = Key(Bool()).setEmptyValue(False)
   val modifyCP0    = Key(Bool())
   val useRs        = Key(Bool())
   val useRt        = Key(Bool())
   val rsValue      = Key(Bits(32 bits))
   val rtValue      = Key(Bits(32 bits))
-  val aluOp        = Key(ALU_OP())
+  val aluOp        = Key(ALU_OP()).setEmptyValue(ALU_OP.sll())
   val aluASrc      = Key(ALU_A_SRC())
   val aluBSrc      = Key(ALU_B_SRC())
   val aluC         = Key(UInt(32 bits))
@@ -288,11 +288,15 @@ class MultiIssueCPU extends Component {
         when(stage.stored(rfuWE)) {
           when(stage.stored(rfuIndex) === self.produced(inst).rs) {
             output(rsValue) := stage.produced(rfuData)
-            when(self.produced(useRs) & stage.stored(memRE) & !stage.is.done) { self.is.done := False }
+            when(self.produced(useRs) & stage.stored(memRE) & !stage.is.done) {
+              self.is.done := False
+            }
           }
           when(stage.stored(rfuIndex) === self.produced(inst).rt) {
             output(rtValue) := stage.produced(rfuData)
-            when(self.produced(useRt) & stage.stored(memRE) & !stage.is.done) { self.is.done := False }
+            when(self.produced(useRt) & stage.stored(memRE) & !stage.is.done) {
+              self.is.done := False
+            }
           }
         }
       }
@@ -473,7 +477,10 @@ class MultiIssueCPU extends Component {
 
   /* 处理跳转的一些情况 */
   val p2IDFlushNextInst = // 第 2 流水线的 ID 阶段可能需要作废下一条进入的指令
-    SimpleTask(p2(EXE).stored(isJump) & ju.jump, p2(ID).will.output | p2(ID).assign.flush)
+    SimpleTask(
+      RegNext(p2(EXE).will.input) & p2(EXE).stored(isJump) & ju.jump,
+      p2(ID).will.output | p2(ID).assign.flush
+    )
   when(p1(ID).stored(pc)(2)) { p1(ID).assign.flush := True }                     // 跳转到奇数地址
   when(p2IDFlushNextInst.has & !p2(ID).is.empty) { p2(ID).assign.flush := True } // flush 下一条进入的指令
   /**/
@@ -495,6 +502,8 @@ class MultiIssueCPU extends Component {
       if2.assign.flush := True
     }
   }
+
+  when(!p1(EXE).is.done) { p2(EXE).is.done := False }
   /**/
 
   /* 连接各个阶段 */
