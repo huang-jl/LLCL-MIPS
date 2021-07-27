@@ -51,7 +51,7 @@ class MultiIssueCPU extends Component {
   val paddr        = Key(UInt(32 bits))
   val excOnFetch   = Key(Bool())
   val ibusStage2En = Key(Bool()).setEmptyValue(False)
-  val twoInsts     = Key(Bits(2 * 32 bits))
+  val twoInsts     = Key(Bits(2 * 32 bits)).setEmptyValue(ConstantVal.INST_NOP ## ConstantVal.INST_NOP)
   val inst         = Key(Mips32Inst())
   val eret         = Key(Bool()).setEmptyValue(False)
   val isJump       = Key(Bool()).setEmptyValue(False)
@@ -115,7 +115,7 @@ class MultiIssueCPU extends Component {
       produced(pc)
 
       val writeReg = new StageComponent {
-        rfu.io.w(i).valid := input(rfuWE)
+        rfu.io.w(i).valid := !!!(rfuWE)
         rfu.io.w(i).index := input(rfuIndex)
         rfu.io.w(i).data := input(rfuData)
       }
@@ -140,7 +140,7 @@ class MultiIssueCPU extends Component {
       setName(s"exe_${i}")
 
       val calc = new StageComponent {
-        alu.io.input.op := input(aluOp)
+        alu.io.input.op := !!!(aluOp)
         alu.io.input.a := input(aluASrc).mux(
           ALU_A_SRC.rs -> input(rsValue).asUInt,
           ALU_A_SRC.sa -> input(inst).sa.resize(32)
@@ -185,7 +185,7 @@ class MultiIssueCPU extends Component {
     val id = new Stage {
       setName(s"id_${i}")
 
-      output(inst) := bitsToInst(stored(twoInsts)(i * 32, 32 bits))
+      output(inst) := bitsToInst(!!!(twoInsts)(i * 32, 32 bits))
 
       val readPC = new StageComponent {
         if (i == 0) { output(pc) := input(pc) }
@@ -255,12 +255,8 @@ class MultiIssueCPU extends Component {
       lo := hlu.lo_v
       if (i == 1) {
         val stage = p1(EXE)
-        when(stage.stored(hiWE)) {
-          hi := stage.produced(newHi)
-        }
-        when(stage.stored(loWE)) {
-          lo := stage.produced(newLo)
-        }
+        when(stage.!!!(hiWE)) { hi := stage.produced(newHi) }
+        when(stage.!!!(loWE)) { lo := stage.produced(newLo) }
       }
 
       output(rfuData) := input(rfuSrc).mux(
@@ -285,7 +281,7 @@ class MultiIssueCPU extends Component {
 
       for (j <- 0 to 1) {
         val stage = p(j)(MEM2)
-        when(stage.stored(rfuWE)) {
+        when(stage.!!!(rfuWE)) {
           when(stage.stored(rfuIndex) === self.produced(inst).rs) {
             output(rsValue) := stage.produced(rfuData)
             when(self.produced(useRs) & stage.stored(memRE) & !stage.is.done) {
@@ -303,7 +299,7 @@ class MultiIssueCPU extends Component {
       for (j <- Seq(MEM1, EXE)) {
         for (k <- 0 to 1) {
           val stage = p(k)(j)
-          when(stage.stored(rfuWE)) {
+          when(stage.!!!(rfuWE)) {
             when(stage.stored(rfuIndex) === self.produced(inst).rs) {
               output(rsValue) := stage.produced(rfuData)
               when(self.produced(useRs) & stage.stored(memRE)) { self.is.done := False }
@@ -318,7 +314,7 @@ class MultiIssueCPU extends Component {
       if (i == 1) {
         val stage = p1(ID)
         when(
-          !stage.is.empty & stage.produced(rfuWE) &
+          stage.produced(rfuWE) &
             (stage.produced(rfuIndex) === self.produced(inst).rs & self.produced(useRs) |
               stage.produced(rfuIndex) === self.produced(inst).rt & self.produced(useRt))
         ) { self.is.done := False }
@@ -344,7 +340,7 @@ class MultiIssueCPU extends Component {
 
   /**/
   val decideJump = new ComponentStage {
-    ju.op := stored(jumpCond)
+    ju.op := !!!(jumpCond)
     ju.a := stored(rsValue).asSInt
     ju.b := stored(rtValue).asSInt
 
@@ -355,7 +351,7 @@ class MultiIssueCPU extends Component {
   val if2 = new Stage {
     val fetchInst = new StageComponent {
       ibus.stage2.paddr := input(paddr)
-      ibus.stage2.en := input(ibusStage2En)
+      ibus.stage2.en := !!!(ibusStage2En)
       output(twoInsts) := ibus.stage2.rdata
     }
 
@@ -402,8 +398,8 @@ class MultiIssueCPU extends Component {
     dcu2.io.input.wdata := stored(rtValue)
     dcu2.io.input.rdata := dbus.stage2.rdata
 
-    dbus.stage2.read := stored(memRE)
-    dbus.stage2.write := stored(memWE)
+    dbus.stage2.read := !!!(memRE)
+    dbus.stage2.write := !!!(memWE)
     dbus.stage2.paddr := stored(mmuRes).paddr
     dbus.stage2.byteEnable := stored(memBE)
     dbus.stage2.wdata := dcu2.io.output.wdata
@@ -419,28 +415,33 @@ class MultiIssueCPU extends Component {
     dbus.stage1.keepRData := !accessMem2.will.input
     dbus.stage1.paddr := output(mmuRes).paddr
   }
+
+  decideJump.interConnect()
+
+  accessMem2.interConnect()
   accessMem1.send(accessMem2)
+  accessMem1.interConnect()
 
   for (i <- 1 downto 0) {
-    condWhen(i == 0, !p(i)(ID).is.empty & p(i)(ID).produced(isJump)) {
+    condWhen(i == 0, p(i)(ID).produced(isJump)) {
       decideJump.will.input := p(i)(EXE).will.input
       decideJump.receive(p(i)(ID))
     }
-    condWhen(i == 0, p(i)(EXE).stored(isJump)) {
+    condWhen(i == 0, p(i)(EXE).!!!(isJump)) {
       decideJump.will.output := p(i)(EXE).will.output
     }
 
-    condWhen(i == 0, p(i)(EXE).stored(useMem)) {
+    condWhen(i == 0, p(i)(EXE).!!!(useMem)) {
       mmu.io.dataVaddr := p(i)(EXE).produced(memAddr)
 
       accessMem1.will.input := p(i)(MEM1).will.input & p(i)(EXE).exception.isEmpty
       accessMem1.receive(p(i)(EXE))
     }
-    condWhen(i == 0, p(i)(MEM1).stored(useMem)) {
+    condWhen(i == 0, p(i)(MEM1).!!!(useMem)) {
       accessMem1.will.output := p(i)(MEM1).will.output
       accessMem2.will.input := p(i)(MEM2).will.input
     }
-    condWhen(i == 0, p(i)(MEM2).stored(useMem)) {
+    condWhen(i == 0, p(i)(MEM2).!!!(useMem)) {
       accessMem2.will.output := p(i)(MEM2).will.output
     }
 
@@ -486,13 +487,10 @@ class MultiIssueCPU extends Component {
   /**/
 
   /* 给出控制信号 */
-  when(
-    !p1(ID).is.empty & p1(ID).produced(useMem) &
-      !p2(ID).is.empty & p2(ID).produced(useMem)
-  ) { p2(ID).is.done := False }
+  when(p1(ID).produced(useMem) & p2(ID).produced(useMem)) { p2(ID).is.done := False }
   when(ju.jump) {
     if1.assign.flush := True
-    when(p1(EXE).stored(isJump)) {
+    when(p1(EXE).!!!(isJump)) {
       if2.assign.flush := True
       when(!p2(EXE).is.empty) {
         p1(ID).assign.flush := True
@@ -510,10 +508,18 @@ class MultiIssueCPU extends Component {
   val seq = (if2, if2) +: p1.values.zip(p2.values).toSeq
   for ((curr, next) <- seq.zip(seq.tail).reverse) {
     val canPass = next._1.can.input & next._2.can.input
+
+    next._1.interConnect()
     curr._1.connect(next._1, canPass)
+
+    next._2.interConnect()
     curr._2.connect(next._2, canPass)
   }
+
+  if2.interConnect()
+
   if1.connect(if2, if2.can.input)
+  if1.interConnect()
   /**/
 }
 

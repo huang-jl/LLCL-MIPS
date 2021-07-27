@@ -1,8 +1,8 @@
 package cpu
 
+import cpu.Utils._
 import lib._
 import spinal.core._
-import spinal.lib._
 
 class ComponentStage extends Area {
   val stored   = Record().setAsReg()
@@ -14,38 +14,38 @@ class ComponentStage extends Area {
     val output = Bool()
   }
 
-  stored.whenAddedKey(new Record.AddedKeyCallback {
-    override def apply[T <: Data](key: Key[T], value: T): Unit = {
-      key.emptyValue match {
-        case Some(v) =>
-          value.init(v)
-          when(!will.input & will.output) { value := v }
-        case None =>
+  def interConnect(): Unit = {
+    /**/
+    produced.keys.foreach { case key =>
+      if (!hasAssignment(produced(key))) {
+        if (output.contains(key)) { produced(key) := output(key) }
+        else { produced(key) := stored(key) }
       }
     }
-  })
-  produced.whenAddedKey(new Record.AddedKeyCallback {
-    override def apply[T <: Data](key: Key[T], value: T): Unit = {
-      if (output.contains(key)) { value := output(key) }
-      else { value := stored(key) }
-    }
-  })
+    /**/
+  }
 
   def send(that: ComponentStage): Unit = {
-    that.stored.keys.foreach { case key =>
-      produced(key)
-      when(that.will.input) { that.stored(key) := produced(key) }
-    }
-  }
-  def send(that: Stage): Unit = {
-    produced.keys.foreach { case key =>
-      when(that.will.input) { that.stored(key) := produced(key) }
+    when(that.will.input) {
+      that.stored.keys.foreach { case key => that.stored(key) := produced(key) }
     }
   }
   def receive(that: Stage): Unit = {
-    stored.keys.foreach { case key =>
-      that.produced(key)
-      when(will.input) { stored(key) := that.produced(key) }
+    when(will.input) {
+      stored.keys.foreach { case key => stored(key) := that.produced(key) }
     }
+  }
+
+  def clearWhenEmpty[T <: Data](key: Key[T]): Unit = {
+    if (!hasInit(stored(key))) {
+      stored(key).init(key.emptyValue.get)
+      when(will.output & !will.input) {
+        stored(key) := key.emptyValue.get
+      }
+    }
+  }
+  def !!![T <: Data](key: Key[T]): T = {
+    clearWhenEmpty(key)
+    stored(key)
   }
 }

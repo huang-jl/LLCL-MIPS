@@ -1,6 +1,7 @@
 package cpu
 
-import lib.{Key, Optional, Record}
+import cpu.Utils._
+import lib._
 import spinal.core._
 
 class Stage extends Area with ValCallbackRec {
@@ -66,39 +67,22 @@ class Stage extends Area with ValCallbackRec {
     }
   }
 
-  stored.whenAddedKey(new Record.AddedKeyCallback {
-    def apply[T <: Data](key: Key[T], value: T) = atTheBeginning {
-      value.setAsReg()
-
-      key.emptyValue match {
-        case Some(v) =>
-          value init v
-          when(will.output && (!will.input || prevException.nonEmpty)) { value := v }
-        case None =>
+  def interConnect(): Unit = {
+    /**/
+    produced.keys.foreach { case key =>
+      if (!hasAssignment(produced(key))) {
+        if (output.contains(key)) { produced(key) := output(key) }
+        else { produced(key) := stored(key) }
       }
     }
-  })
-
-  input.whenAddedKey(new Record.AddedKeyCallback {
-    def apply[T <: Data](key: Key[T], value: T) = atTheBeginning {
-      value := stored(key)
-    }
-  })
-
-  output.whenAddedKey(new Record.AddedKeyCallback {
-    def apply[T <: Data](key: Key[T], value: T) = atTheBeginning {
-      produced(key) := value
-    }
-  })
-
-  produced.whenAddedKey(new Record.AddedKeyCallback {
-    def apply[T <: Data](key: Key[T], value: T) = atTheBeginning {
-      value.allowOverride
-      if (!(output contains key)) {
-        value := stored(key)
+    /**/
+    input.keys.foreach { case key =>
+      if (!hasAssignment(input(key))) {
+        input(key) := stored(key)
       }
     }
-  })
+    /**/
+  }
 
   // Called at initialization of StageComponent.
   def addComponent(component: StageComponent) = {
@@ -146,6 +130,19 @@ class Stage extends Area with ValCallbackRec {
     body
     swapContext.appendBack()
     currentScope.pop()
+  }
+
+  def clearWhenEmpty[T <: Data](key: Key[T]): Unit = {
+    if (!hasInit(stored(key))) {
+      stored(key).init(key.emptyValue.get)
+      when(will.output & (!will.input | prevException.nonEmpty)) {
+        stored(key) := key.emptyValue.get
+      }
+    }
+  }
+  def !!![T <: Data](key: Key[T]): T = {
+    clearWhenEmpty(key)
+    stored(key)
   }
 }
 

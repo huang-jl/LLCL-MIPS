@@ -3,6 +3,19 @@ package cpu
 import spinal.core._
 
 package object Utils {
+  def hasAssignment(d: Data): Boolean = {
+    d match {
+      case b: BaseType => b.hasAssignement
+      case o           => o.flatten.forall(b => b.hasAssignement)
+    }
+  }
+  def hasInit(d: Data): Boolean = {
+    d match {
+      case b: BaseType => b.hasInit
+      case o           => o.flatten.forall(b => b.hasInit)
+    }
+  }
+
   def signExtend(b: Bits, length: Int = 32) = b.asSInt.resize(length).asBits
 
   def zeroExtend(b: Bits, length: Int = 32) = b.asUInt.resize(length).asBits
@@ -25,7 +38,7 @@ package object Utils {
 
   /** 用于初始化CP0寄存器的 */
   implicit class IntToFixedLengthBinaryString(value: Int) {
-    def toBinaryString(length:Int):String = {
+    def toBinaryString(length: Int): String = {
       val str = Integer.toBinaryString(value)
       assert(length >= str.length)
       if (length > str.length) {
