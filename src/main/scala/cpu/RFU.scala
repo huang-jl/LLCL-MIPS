@@ -30,14 +30,15 @@ class RFU(numW: Int = 1, numR: Int = 2) extends Component {
     val r = Vec(slave(RegRead()), numR)
   }
 
-  val mem = Mem(Seq.fill(32)(B"32'0"))
+  val mem = Vec(Reg(Bits(32 bits)), 32)
+  mem(0).init(0)
 
   for (i <- 0 until numW) {
-    mem.write(io.w(i).index, io.w(i).data, io.w(i).valid)
+    when(io.w(i).valid) { mem(io.w(i).index) := io.w(i).data }
   }
 
   for (i <- 0 until numR) {
-    io.r(i).data := mem.readAsync(io.r(i).index, writeFirst)
+    io.r(i).data := mem(io.r(i).index)
     for (j <- 0 until numW) {
       when(io.w(j).valid & io.w(j).index === io.r(i).index) {
         io.r(i).data := io.w(j).data
