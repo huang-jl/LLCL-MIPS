@@ -137,18 +137,18 @@ class DU extends Component {
     default(fuck) to False
 
     // Arithmetics
-    val saShifts = Map(
+    val saShifts = Map( // useRt rfuWE
       SLL -> ALU_OP.sll,
       SRL -> ALU_OP.srl,
       SRA -> ALU_OP.sra
     )
-    val multDivs = Map(
+    val multDivs = Map( // useRs useRt hiWE loWE
       DIV   -> ALU_OP.div,
       DIVU  -> ALU_OP.divu,
       MULT  -> ALU_OP.mult,
       MULTU -> ALU_OP.multu
     )
-    val RTypeArithmetics = Map(
+    val RTypeArithmetics = Map( // useRs useRt rfuWE
       ADD  -> ALU_OP.add,
       ADDU -> ALU_OP.addu,
       SUB  -> ALU_OP.sub,
@@ -156,12 +156,12 @@ class DU extends Component {
       SLT  -> ALU_OP.slt,
       SLTU -> ALU_OP.sltu,
       MUL  -> ALU_OP.mul
-    ) ++ Map(
+    ) ++ Map( // useRs useRt rfuWE
       AND -> ALU_OP.and,
       NOR -> ALU_OP.nor,
       OR  -> ALU_OP.or,
       XOR -> ALU_OP.xor
-    ) ++ Map(
+    ) ++ Map( // useRs useRt rfuWE
       SLLV -> ALU_OP.sll,
       SRLV -> ALU_OP.srl,
       SRAV -> ALU_OP.sra
@@ -197,7 +197,7 @@ class DU extends Component {
       }
     }
 
-    val ITypeArithmetics = Map(
+    val ITypeArithmetics = Map( // useRs rfuWE
       ADDI  -> ALU_OP.add,
       ADDIU -> ALU_OP.addu,
       SLTI  -> ALU_OP.slt,
@@ -205,7 +205,7 @@ class DU extends Component {
       ANDI  -> ALU_OP.and,
       ORI   -> ALU_OP.or,
       XORI  -> ALU_OP.xor
-    ) ++ Map(
+    ) ++ Map( // rfuWE
       LUI -> ALU_OP.lu
     )
 
@@ -226,11 +226,11 @@ class DU extends Component {
     }
 
     // Branches and jumps
-    val rtBranches = Map(
+    val rtBranches = Map( // useRs useRt
       BEQ -> JU_OP.e,
       BNE -> JU_OP.noe
     )
-    val branches = Map(
+    val branches = Map( // useRs
       BGEZ   -> JU_OP.gez,
       BLTZ   -> JU_OP.lz,
       BGEZAL -> JU_OP.gez,
@@ -253,7 +253,7 @@ class DU extends Component {
       }
     }
 
-    val registerJumps = Set(JR, JALR)
+    val registerJumps = Set(JR, JALR) // useRs
     for (inst <- registerJumps) {
       on(inst) {
         set(useRs) to True
@@ -269,7 +269,7 @@ class DU extends Component {
       }
     }
 
-    val linkingJumpsAndBranches = Set(BGEZAL, BLTZAL, JAL, JALR)
+    val linkingJumpsAndBranches = Set(BGEZAL, BLTZAL, JAL, JALR) // rfuWE
     for (inst <- linkingJumpsAndBranches) {
       on(inst) {
         set(rfuRd) to RFU_RD.ra
@@ -278,38 +278,38 @@ class DU extends Component {
     }
 
     // M(FT)(HI/LO)
-    on(MFHI) {
+    on(MFHI) { // rfuWE
       set(rfuRd) to RFU_RD.rd
       set(rfuRdSrc) to RFU_RD_SRC.hi
     }
-    on(MFLO) {
+    on(MFLO) { // rfuWE
       set(rfuRd) to RFU_RD.rd
       set(rfuRdSrc) to RFU_RD_SRC.lo
     }
-    on(MTHI) {
+    on(MTHI) { // useRs hiWE
       set(hluHiWe) to True
       set(hluHiSrc) to HLU_SRC.rs
       set(useRs) to True
     }
-    on(MTLO) {
+    on(MTLO) { // useRs loWE
       set(hluLoWe) to True
       set(hluLoSrc) to HLU_SRC.rs
       set(useRs) to True
     }
 
     // Traps
-    on(SYSCALL) {
+    on(SYSCALL) { // TODO stall id
       set(exception) to Optional.some(EXCEPTION.Sys())
     }
-    on(BREAK) {
+    on(BREAK) { // TODO stall id
       set(exception) to Optional.some(EXCEPTION.Bp())
     }
-    on(ERET) {
+    on(ERET) { // TODO stall id
       set(eret) to True
     }
 
     // Load & Store
-    val loads = Map(
+    val loads = Map( // useRs memRE rfuWE
       LB  -> (MU_EX.s, U"00"),
       LBU -> (MU_EX.u, U"00"),
       LH  -> (MU_EX.s, U"01"),
@@ -328,7 +328,7 @@ class DU extends Component {
       }
     }
 
-    val stores = Map(
+    val stores = Map( // useRs useRt memWE
       SB -> U"00",
       SH -> U"01",
       SW -> U"11"
@@ -338,15 +338,16 @@ class DU extends Component {
         set(dcuWe) to True
         set(dcuBe) to be
         set(useRs) to True //手册中对应的是base而不是rs
+        set(useRt) to True
       }
     }
 
     // Privileged
-    on(MTC0) {
+    on(MTC0) { // cp0WE modifyCP0
       set(cp0We) to True
       set(useRt) to True
     }
-    on(MFC0) {
+    on(MFC0) { // cp0RE rfuWE
       set(cp0Re) to True
       set(rfuRd) to RFU_RD.rt
       set(rfuRdSrc) to RFU_RD_SRC.cp0
