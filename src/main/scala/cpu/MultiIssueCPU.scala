@@ -134,13 +134,6 @@ class MultiIssueCPU extends Component {
     val mem1 = new Stage {
       setName(s"mem1_${i}")
 
-      output(hiWE) := stored(hiWE) & !want.flush
-      output(loWE) := stored(loWE) & !want.flush
-
-      val calcModifyCP0 = new StageComponent {
-        output(modifyCP0) := !!!(modifyCP0) | exception.isDefined
-      }
-
       !!!(memRE)
       !!!(memWE)
       exceptionToRaise := None
@@ -258,32 +251,6 @@ class MultiIssueCPU extends Component {
   val p1 = p(0)
   val p2 = p(1)
 
-  /* 处理 exe 阶段的 hlu 前传 */
-  for (i <- 0 to 1) {
-    val self = p(i)(EXE)
-    self.addComponent(new StageComponent {
-      val hi = Bits(32 bits)
-      val lo = Bits(32 bits)
-
-      hi := hlu.hi_v
-      lo := hlu.lo_v
-      if (i == 1) {
-        val stage = p1(EXE)
-        when(stage.!!!(hiWE)) { hi := stage.produced(newHi) }
-        when(stage.!!!(loWE)) { lo := stage.produced(newLo) }
-      }
-
-      output(rfuData) := input(rfuSrc).mux(
-        RFU_RD_SRC.alu -> B(self.produced(aluC)),
-        RFU_RD_SRC.hi  -> hi,
-        RFU_RD_SRC.lo  -> lo,
-        RFU_RD_SRC.cp0 -> cp0.io.read(i).data,
-        default        -> input(rfuData)
-      )
-    })
-  }
-  /**/
-
   // 维护 delay slot 信号
   p1(ID).addComponent(new StageComponent {
     val dsReg = RegInit(False)
@@ -394,49 +361,6 @@ class MultiIssueCPU extends Component {
     condWhen(i == 0, p(i)(EXE).!!!(isJump)) {
       decideJump.will.output := p(i)(EXE).will.output
     }
-
-    condWhen(i == 0, p(i)(EXE).!!!(useMem)) {
-      mmu.io.dataVaddr := p(i)(EXE).produced(memAddr)
-
-      accessMem1.will.input := p(i)(MEM1).will.input & p(i)(EXE).exception.isEmpty
-      accessMem1.receive(p(i)(EXE))
-    }
-    condWhen(i == 0, p(i)(MEM1).!!!(useMem)) {
-      accessMem1.will.output := p(i)(MEM1).will.output
-      accessMem2.will.input := p(i)(MEM2).will.input
-    }
-    condWhen(i == 0, p(i)(MEM2).!!!(useMem)) {
-      accessMem2.will.output := p(i)(MEM2).will.output
-    }
-
-    condWhen(i == 0, p(i)(MEM1).produced(modifyCP0)) {
-      cp0.io.softwareWrite.valid := p(i)(MEM1).!!!(cp0WE)
-      cp0.io.softwareWrite.addr.rd := p(i)(MEM1).stored(inst).rd
-      cp0.io.softwareWrite.addr.sel := p(i)(MEM1).stored(inst).sel
-      cp0.io.softwareWrite.data := p(i)(MEM1).stored(rtValue)
-
-      cp0.io.exceptionInput.exception := p(i)(MEM1).exception
-      cp0.io.exceptionInput.eret := p(i)(MEM1).stored(eret)
-      cp0.io.exceptionInput.memAddr := p(i)(MEM1).stored(memAddr)
-      cp0.io.exceptionInput.pc := p(i)(MEM1).stored(pc)
-      cp0.io.exceptionInput.bd := p(i)(MEM1).stored(inSlot)
-      cp0.io.exceptionInput.instFetch := p(i)(MEM1).stored(excOnFetch)
-
-      cp0.io.externalInterrupt := io.externalInterrupt
-    }
-  }
-  /**/
-
-  /**/
-  for (i <- 0 to 1) {
-    condWhen(i == 1, p(i)(MEM1).produced(hiWE)) {
-      hlu.hi_we := p(i)(MEM1).stored(hiWE)
-      hlu.new_hi := p(i)(MEM1).stored(newHi)
-    }
-    condWhen(i == 1, p(i)(MEM1).produced(loWE)) {
-      hlu.lo_we := p(i)(MEM1).stored(loWE)
-      hlu.new_lo := p(i)(MEM1).stored(newLo)
-    }
   }
   /**/
 
@@ -451,7 +375,6 @@ class MultiIssueCPU extends Component {
   /**/
 
   /* 给出控制信号 */
-  when(p1(ID).produced(useMem) & p2(ID).produced(useMem)) { p2(ID).is.done := False }
 
   when(decideJump.assignJump) {
     if1.assign.flush := True
@@ -466,24 +389,9 @@ class MultiIssueCPU extends Component {
     }
   }
 
-  when(!p1(EXE).is.done) { p2(EXE).is.done := False }
   /**/
 
   /* CP0 相关控制 */
-  when(p1(EXE).!!!(cp0RE) & (p1(MEM1).!!!(modifyCP0) | p2(MEM1).!!!(modifyCP0))) {
-    p1(EXE).is.done := False
-  }
-  when(
-    p2(EXE).!!!(cp0RE) &
-      (p1(MEM1).!!!(modifyCP0) | p2(MEM1).!!!(modifyCP0) | p1(EXE).!!!(modifyCP0))
-  ) {
-    p2(EXE).is.done := False
-  }
-
-  when(p2(MEM1).produced(modifyCP0) & p1(MEM1).produced(modifyCP0)) {
-    p2(MEM1).is.done := False
-  }
-
   when(cp0.io.jumpPc.isDefined) {
     if1.assign.flush := True
     if2.assign.flush := True
@@ -566,11 +474,118 @@ class MultiIssueCPU extends Component {
   /**/
 
   /* 关注点 hlu 读写前传 */
+  for (i <- 0 to 1) {
+    p(i)(MEM1).!!!(hiWE)
+    p(i)(MEM1).!!!(loWE)
+    condWhen(i == 1, p(i)(MEM1).produced(hiWE)) {
+      hlu.hi_we := p(i)(MEM1).stored(hiWE)
+      hlu.new_hi := p(i)(MEM1).stored(newHi)
+    }
+    condWhen(i == 1, p(i)(MEM1).produced(loWE)) {
+      hlu.lo_we := p(i)(MEM1).stored(loWE)
+      hlu.new_lo := p(i)(MEM1).stored(newLo)
+    }
+  }
+
+  for (i <- 0 to 1) {
+    val self = p(i)(EXE)
+    self.addComponent(new StageComponent {
+      val hi = Bits(32 bits)
+      val lo = Bits(32 bits)
+
+      hi := hlu.hi_v
+      lo := hlu.lo_v
+      if (i == 1) {
+        val stage = p1(EXE)
+        when(stage.!!!(hiWE)) { hi := stage.produced(newHi) }
+        when(stage.!!!(loWE)) { lo := stage.produced(newLo) }
+      }
+
+      output(rfuData) := input(rfuSrc).mux(
+        RFU_RD_SRC.alu -> B(self.produced(aluC)),
+        RFU_RD_SRC.hi  -> hi,
+        RFU_RD_SRC.lo  -> lo,
+        RFU_RD_SRC.cp0 -> cp0.io.read(i).data,
+        default        -> input(rfuData)
+      )
+    })
+  }
+  /**/
+
   /* 关注点 cp0 读写前传 */
-  /* 关注点 2 号流水线不能超过 1 号流水线 */
-  when(!p1(ID).is.done) {
+  when(p1(EXE).!!!(cp0RE) & (p1(MEM1).!!!(modifyCP0) | p2(MEM1).!!!(modifyCP0))) {
+    p1(EXE).is.done := False
+  }
+  when(
+    p2(EXE).!!!(cp0RE) &
+      (p1(MEM1).!!!(modifyCP0) | p2(MEM1).!!!(modifyCP0) | p1(EXE).!!!(modifyCP0))
+  ) {
+    p2(EXE).is.done := False
+  }
+  /**/
+
+  /* 关注点 mem 处理 */
+  for (i <- 1 downto 0) {
+    condWhen(i == 0, p(i)(EXE).!!!(useMem)) {
+      mmu.io.dataVaddr := p(i)(EXE).produced(memAddr)
+
+      accessMem1.will.input := p(i)(MEM1).will.input & p(i)(EXE).exception.isEmpty
+      accessMem1.receive(p(i)(EXE))
+    }
+    condWhen(i == 0, p(i)(MEM1).!!!(useMem)) {
+      accessMem1.will.output := p(i)(MEM1).will.output
+      accessMem2.will.input := p(i)(MEM2).will.input
+    }
+    condWhen(i == 0, p(i)(MEM2).!!!(useMem)) {
+      accessMem2.will.output := p(i)(MEM2).will.output
+    }
+  }
+
+  when(p1(ID).produced(useMem) & p2(ID).produced(useMem)) {
     p2(ID).is.done := False
   }
+  /**/
+
+  /* 关注点 cp0 处理 */
+  for (i <- 1 downto 0) {
+    val self = p(i)(MEM1)
+    self.addComponent(new StageComponent {
+      output(modifyCP0) := self.!!!(modifyCP0) | self.exception.isDefined
+    })
+
+    self.!!!(cp0WE)
+    self.!!!(eret)
+    condWhen(i == 0, self.produced(modifyCP0)) {
+      cp0.io.softwareWrite.valid := self.stored(cp0WE)
+      cp0.io.softwareWrite.addr.rd := self.stored(inst).rd
+      cp0.io.softwareWrite.addr.sel := self.stored(inst).sel
+      cp0.io.softwareWrite.data := self.stored(rtValue)
+
+      cp0.io.exceptionInput.exception := self.exception
+      cp0.io.exceptionInput.eret := self.stored(eret)
+      cp0.io.exceptionInput.memAddr := self.stored(memAddr)
+      cp0.io.exceptionInput.pc := self.stored(pc)
+      cp0.io.exceptionInput.bd := self.stored(inSlot)
+      cp0.io.exceptionInput.instFetch := self.stored(excOnFetch)
+    }
+  }
+  cp0.io.externalInterrupt := io.externalInterrupt
+
+  when(p1(MEM1).produced(modifyCP0) & p2(MEM1).produced(modifyCP0)) {
+    p2(MEM1).is.done := False
+  }
+  /**/
+
+  /* 关注点 异常相关 */
+  p2(MEM1).addComponent(new StageComponent {
+    output(hiWE) := p1(MEM1).exception.isEmpty & p2(MEM1).!!!(hiWE)
+    output(loWE) := p1(MEM1).exception.isEmpty & p2(MEM1).!!!(loWE)
+  })
+  /**/
+
+  /* 关注点 2 号流水线不能超过 1 号流水线 */
+  when(!p1(ID).is.done) { p2(ID).is.done := False }
+  when(!p1(EXE).is.done) { p2(EXE).is.done := False }
   /**/
 
   /* 连接各个阶段 */
