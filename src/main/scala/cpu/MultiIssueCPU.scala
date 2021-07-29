@@ -251,21 +251,6 @@ class MultiIssueCPU extends Component {
   val p1 = p(0)
   val p2 = p(1)
 
-  // 维护 delay slot 信号
-  p1(ID).addComponent(new StageComponent {
-    val dsReg = RegInit(False)
-    when(p1(ID).will.output | p1(ID).assign.flush) { dsReg := False }
-    when(p2(EXE).will.input) { dsReg := p2(ID).produced(isJump) }
-    output(inSlot) := dsReg
-  })
-  p2(EXE).addComponent(new StageComponent {
-    val dsReg = RegInit(False)
-    when(p2(EXE).will.output | p2(EXE).assign.flush) { dsReg := False }
-    when(p1(EXE).will.input) { dsReg := p1(ID).produced(isJump) }
-    output(inSlot) := dsReg
-  })
-  //
-
   /**/
   val decideJump = new ComponentStage {
     val assignJump = RegNext(will.input) & ju.jump
@@ -364,16 +349,6 @@ class MultiIssueCPU extends Component {
   }
   /**/
 
-  /* 处理跳转的一些情况 */
-  val p2IDFlushNextInst = // 第 2 流水线的 ID 阶段可能需要作废下一条进入的指令
-    SimpleTask(
-      decideJump.assignJump & p2(EXE).!!!(isJump),
-      p2(ID).will.output | p2(ID).assign.flush
-    )
-  when(p1(ID).stored(pc)(2)) { p1(ID).assign.flush := True }                     // 跳转到奇数地址
-  when(p2IDFlushNextInst.has & !p2(ID).is.empty) { p2(ID).assign.flush := True } // flush 下一条进入的指令
-  /**/
-
   /* 给出控制信号 */
 
   when(decideJump.assignJump) {
@@ -406,7 +381,7 @@ class MultiIssueCPU extends Component {
   }
 
   cp0.io.instOnInt.valid := !p1(EXE).is.empty
-  cp0.io.instOnInt.bd := p1(EXE).stored(inSlot)
+  cp0.io.instOnInt.bd := p1(EXE).produced(inSlot)
   cp0.io.instOnInt.pc := p1(EXE).stored(pc)
   /**/
 
@@ -574,6 +549,29 @@ class MultiIssueCPU extends Component {
   when(p1(MEM1).produced(modifyCP0) & p2(MEM1).produced(modifyCP0)) {
     p2(MEM1).is.done := False
   }
+  /**/
+
+  /* 关注点 跳转相关 */
+  when(p1(ID).stored(pc)(2)) { p1(ID).assign.flush := True }
+
+  val p2IDFlushNextInst = SimpleTask(
+    p2(EXE).!!!(isJump) & decideJump.assignJump,
+    p2(ID).will.flush
+  )
+  when(p2IDFlushNextInst.has & !p2(ID).is.empty) { p2(ID).assign.flush := True }
+
+  p1(EXE).addComponent(new StageComponent {
+    val dsReg = RegInit(False)
+    when(p1(EXE).will.output | p1(EXE).assign.flush) { dsReg := False }
+    when(p2(EXE).will.output & p2(EXE).!!!(isJump)) { dsReg := True }
+    output(inSlot) := dsReg
+  })
+  p2(EXE).addComponent(new StageComponent {
+    val dsReg = RegInit(False)
+    when(p2(EXE).will.output | p2(EXE).assign.flush) { dsReg := False }
+    when(p1(EXE).will.input & p1(ID).produced(isJump)) { dsReg := True }
+    output(inSlot) := dsReg
+  })
   /**/
 
   /* 关注点 异常相关 */
