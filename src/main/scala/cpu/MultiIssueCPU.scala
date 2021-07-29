@@ -284,59 +284,6 @@ class MultiIssueCPU extends Component {
   }
   /**/
 
-  /* 处理 id 阶段的 reg 前传 */
-  for (i <- 0 to 1) {
-    val self = p(i)(ID)
-    self.addComponent(new StageComponent {
-      rfu.io.r(i).index := self.produced(inst).rs
-      output(rsValue) := rfu.io.r(i).data
-      rfu.io.r(2 + i).index := self.produced(inst).rt
-      output(rtValue) := rfu.io.r(2 + i).data
-
-      for (j <- 0 to 1) {
-        val stage = p(j)(MEM2)
-        when(stage.!!!(rfuWE)) {
-          when(stage.stored(rfuIndex) === self.produced(inst).rs) {
-            output(rsValue) := stage.produced(rfuData)
-            when(self.produced(useRs) & stage.stored(memRE) & !stage.is.done) {
-              self.is.done := False
-            }
-          }
-          when(stage.stored(rfuIndex) === self.produced(inst).rt) {
-            output(rtValue) := stage.produced(rfuData)
-            when(self.produced(useRt) & stage.stored(memRE) & !stage.is.done) {
-              self.is.done := False
-            }
-          }
-        }
-      }
-      for (j <- Seq(MEM1, EXE)) {
-        for (k <- 0 to 1) {
-          val stage = p(k)(j)
-          when(stage.!!!(rfuWE)) {
-            when(stage.stored(rfuIndex) === self.produced(inst).rs) {
-              output(rsValue) := stage.produced(rfuData)
-              when(self.produced(useRs) & stage.stored(memRE)) { self.is.done := False }
-            }
-            when(stage.stored(rfuIndex) === self.produced(inst).rt) {
-              output(rtValue) := stage.produced(rfuData)
-              when(self.produced(useRt) & stage.stored(memRE)) { self.is.done := False }
-            }
-          }
-        }
-      }
-      if (i == 1) {
-        val stage = p1(ID)
-        when(
-          stage.produced(rfuWE) &
-            (stage.produced(rfuIndex) === self.produced(inst).rs & self.produced(useRs) |
-              stage.produced(rfuIndex) === self.produced(inst).rt & self.produced(useRt))
-        ) { self.is.done := False }
-      }
-    })
-  }
-  /**/
-
   // 维护 delay slot 信号
   p1(ID).addComponent(new StageComponent {
     val dsReg = RegInit(False)
@@ -555,6 +502,77 @@ class MultiIssueCPU extends Component {
   cp0.io.instOnInt.pc := p1(EXE).stored(pc)
   /**/
 
+  /* 关注点 rfu 读写前传 */
+  for (i <- 0 to 1) {
+    val self = p(i)(ID)
+    self.addComponent(new StageComponent {
+      rfu.io.r(i).index := self.produced(inst).rs
+      rfu.io.r(2 + i).index := self.produced(inst).rt
+      output(rsValue) := rfu.io.r(i).data
+      output(rtValue) := rfu.io.r(2 + i).data
+
+      for (j <- 0 to 1) {
+        val stage = p(j)(MEM2)
+        when(stage.!!!(rfuWE)) {
+          when(stage.stored(rfuIndex) === self.produced(inst).rs) {
+            output(rsValue) := stage.produced(rfuData)
+            when(self.produced(useRs) & !stage.is.done) {
+              self.is.done := False
+            }
+          }
+          when(stage.stored(rfuIndex) === self.produced(inst).rt) {
+            output(rtValue) := stage.produced(rfuData)
+            when(self.produced(useRt) & !stage.is.done) {
+              self.is.done := False
+            }
+          }
+        }
+      }
+
+      for (j <- Seq(MEM1, EXE)) {
+        for (k <- 0 to 1) {
+          val stage = p(k)(j)
+          when(stage.!!!(rfuWE)) {
+            when(stage.stored(rfuIndex) === self.produced(inst).rs) {
+              output(rsValue) := stage.produced(rfuData)
+              when(self.produced(useRs) & stage.stored(memRE)) {
+                self.is.done := False
+              }
+            }
+            when(stage.stored(rfuIndex) === self.produced(inst).rt) {
+              output(rtValue) := stage.produced(rfuData)
+              when(self.produced(useRt) & stage.stored(memRE)) {
+                self.is.done := False
+              }
+            }
+          }
+        }
+      }
+
+      if (i == 1) {
+        val stage = p1(ID)
+        stage.!!!(twoInsts)
+        when(stage.produced(rfuWE)) {
+          when(stage.produced(rfuIndex) === self.produced(inst).rs & self.produced(useRs)) {
+            self.is.done := False
+          }
+          when(stage.produced(rfuIndex) === self.produced(inst).rt & self.produced(useRt)) {
+            self.is.done := False
+          }
+        }
+      }
+    })
+  }
+  /**/
+
+  /* 关注点 hlu 读写前传 */
+  /* 关注点 cp0 读写前传 */
+  /* 关注点 2 号流水线不能超过 1 号流水线 */
+  when(!p1(ID).is.done) {
+    p2(ID).is.done := False
+  }
+  /**/
+
   /* 连接各个阶段 */
   val seq = (if2, if2) +: p1.values.zip(p2.values).toSeq
   for ((curr, next) <- seq.zip(seq.tail).reverse) {
@@ -572,8 +590,6 @@ class MultiIssueCPU extends Component {
   if1.connect(if2, if2.can.input)
   if1.interConnect()
   /**/
-
-  /* TODO 调整 decoder */
 }
 
 object MultiIssueCPU {
