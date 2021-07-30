@@ -6,6 +6,7 @@ import scala.language.postfixOps
 class Config {}
 
 object Config {
+  def NOP     = B"32'0"
   def INIT_PC = U"hBFC00000"
 
   val ADDR_WIDTH = 32

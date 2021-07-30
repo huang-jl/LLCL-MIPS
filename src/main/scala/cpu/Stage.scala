@@ -72,7 +72,7 @@ class Stage extends Area with ValCallbackRec {
     produced.keys.foreach { case key =>
       if (!hasAssignment(produced(key))) {
         if (output.contains(key)) { produced(key) := output(key) }
-        else { produced(key) := stored(key) }
+        else { produced(key) := input(key) }
       }
     }
     /**/
