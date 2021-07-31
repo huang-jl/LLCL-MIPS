@@ -453,27 +453,28 @@ class MultiIssueCPU extends Component {
   /**/
 
   /* 关注点 hlu 读写前传 */
+  val hi_v = B(hlu.hi_v)
+  val lo_v = B(hlu.lo_v)
   for (i <- 0 to 1) {
-    p(i)(MEM1).!!!(hiWE)
-    p(i)(MEM1).!!!(loWE)
-    condWhen(i == 1, p(i)(MEM1).produced(hiWE)) {
-      hlu.hi_we := p(i)(MEM1).stored(hiWE)
-      hlu.new_hi := p(i)(MEM1).stored(newHi)
+    val self = p(i)(MEM1)
+    when(self.!!!(hiWE)) { hi_v := self.stored(newHi) }
+    when(self.!!!(loWE)) { lo_v := self.stored(newLo) }
+
+    condWhen(i == 1, self.produced(hiWE)) {
+      hlu.hi_we := self.stored(hiWE)
+      hlu.new_hi := self.stored(newHi)
     }
-    condWhen(i == 1, p(i)(MEM1).produced(loWE)) {
-      hlu.lo_we := p(i)(MEM1).stored(loWE)
-      hlu.new_lo := p(i)(MEM1).stored(newLo)
+    condWhen(i == 1, self.produced(loWE)) {
+      hlu.lo_we := self.stored(loWE)
+      hlu.new_lo := self.stored(newLo)
     }
   }
 
   for (i <- 0 to 1) {
     val self = p(i)(EXE)
     self.addComponent(new StageComponent {
-      val hi = Bits(32 bits)
-      val lo = Bits(32 bits)
-
-      hi := hlu.hi_v
-      lo := hlu.lo_v
+      val hi = B(hi_v)
+      val lo = B(lo_v)
       if (i == 1) {
         val stage = p1(EXE)
         when(stage.!!!(hiWE)) { hi := stage.produced(newHi) }
