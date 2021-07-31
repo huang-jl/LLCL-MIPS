@@ -568,7 +568,7 @@ class MultiIssueCPU extends Component {
   p1(EXE).addComponent(new StageComponent {
     val dsReg = RegInit(False)
     when(p1(EXE).will.output | p1(EXE).assign.flush) { dsReg := False }
-    when(p2(EXE).will.output & p2(EXE).!!!(isJump)) { dsReg := True }
+    when(p2(MEM1).will.input & p2(EXE).!!!(isJump)) { dsReg := True }
     output(inSlot) := dsReg
   })
   p2(EXE).addComponent(new StageComponent {
