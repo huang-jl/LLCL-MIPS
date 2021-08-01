@@ -15,8 +15,8 @@ class HLU extends Component {
   val new_lo = in Bits (32 bits)
   val lo_v   = out Bits (32 bits)
 
-  hi_v := hi_we ? new_hi | RegNextWhen(new_hi, hi_we)
-  lo_v := lo_we ? new_lo | RegNextWhen(new_lo, lo_we)
+  hi_v := RegNextWhen(new_hi, hi_we)
+  lo_v := RegNextWhen(new_lo, lo_we)
 }
 
 object HLU {

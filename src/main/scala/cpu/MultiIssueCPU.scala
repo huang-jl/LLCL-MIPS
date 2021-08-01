@@ -398,20 +398,19 @@ class MultiIssueCPU extends Component {
       output(rsValue) := rfu.io.r(i).data
       output(rtValue) := rfu.io.r(2 + i).data
 
+      val rsNotDone = False
+      val rtNotDone = False
+
       for (j <- 0 to 1) {
         val stage = p(j)(MEM2)
         when(stage.!!!(rfuWE)) {
           when(stage.stored(rfuIndex) === input(inst).rs) {
             output(rsValue) := stage.produced(rfuData)
-            when(self.produced(useRs) & !stage.is.done) {
-              self.is.done := False
-            }
+            rsNotDone := !stage.is.done
           }
           when(stage.stored(rfuIndex) === input(inst).rt) {
             output(rtValue) := stage.produced(rfuData)
-            when(self.produced(useRt) & !stage.is.done) {
-              self.is.done := False
-            }
+            rtNotDone := !stage.is.done
           }
         }
       }
@@ -422,15 +421,11 @@ class MultiIssueCPU extends Component {
           when(stage.!!!(rfuWE)) {
             when(stage.stored(rfuIndex) === input(inst).rs) {
               output(rsValue) := stage.produced(rfuData)
-              when(self.produced(useRs) & stage.stored(memRE)) {
-                self.is.done := False
-              }
+              rsNotDone := stage.stored(memRE)
             }
             when(stage.stored(rfuIndex) === input(inst).rt) {
               output(rtValue) := stage.produced(rfuData)
-              when(self.produced(useRt) & stage.stored(memRE)) {
-                self.is.done := False
-              }
+              rtNotDone := stage.stored(memRE)
             }
           }
         }
@@ -440,40 +435,45 @@ class MultiIssueCPU extends Component {
         val stage = p1(ID)
         stage.!!!(inst1)
         when(stage.produced(rfuWE)) {
-          when(stage.produced(rfuIndex) === input(inst).rs & self.produced(useRs)) {
-            self.is.done := False
+          when(stage.produced(rfuIndex) === input(inst).rs) {
+            rsNotDone := True
           }
-          when(stage.produced(rfuIndex) === input(inst).rt & self.produced(useRt)) {
-            self.is.done := False
+          when(stage.produced(rfuIndex) === input(inst).rt) {
+            rtNotDone := True
           }
         }
+      }
+
+      when(self.produced(useRs) & rsNotDone | self.produced(useRt) & rtNotDone) {
+        self.is.done := False
       }
     })
   }
   /**/
 
   /* 关注点 hlu 读写前传 */
+  val hi_v = B(hlu.hi_v)
+  val lo_v = B(hlu.lo_v)
   for (i <- 0 to 1) {
-    p(i)(MEM1).!!!(hiWE)
-    p(i)(MEM1).!!!(loWE)
-    condWhen(i == 1, p(i)(MEM1).produced(hiWE)) {
-      hlu.hi_we := p(i)(MEM1).stored(hiWE)
-      hlu.new_hi := p(i)(MEM1).stored(newHi)
+    val self = p(i)(MEM1)
+    when(self.!!!(hiWE)) { hi_v := self.stored(newHi) }
+    when(self.!!!(loWE)) { lo_v := self.stored(newLo) }
+
+    condWhen(i == 1, self.produced(hiWE)) {
+      hlu.hi_we := self.stored(hiWE)
+      hlu.new_hi := self.stored(newHi)
     }
-    condWhen(i == 1, p(i)(MEM1).produced(loWE)) {
-      hlu.lo_we := p(i)(MEM1).stored(loWE)
-      hlu.new_lo := p(i)(MEM1).stored(newLo)
+    condWhen(i == 1, self.produced(loWE)) {
+      hlu.lo_we := self.stored(loWE)
+      hlu.new_lo := self.stored(newLo)
     }
   }
 
   for (i <- 0 to 1) {
     val self = p(i)(EXE)
     self.addComponent(new StageComponent {
-      val hi = Bits(32 bits)
-      val lo = Bits(32 bits)
-
-      hi := hlu.hi_v
-      lo := hlu.lo_v
+      val hi = B(hi_v)
+      val lo = B(lo_v)
       if (i == 1) {
         val stage = p1(EXE)
         when(stage.!!!(hiWE)) { hi := stage.produced(newHi) }
@@ -567,7 +567,7 @@ class MultiIssueCPU extends Component {
   p1(EXE).addComponent(new StageComponent {
     val dsReg = RegInit(False)
     when(p1(EXE).will.output | p1(EXE).assign.flush) { dsReg := False }
-    when(p2(EXE).will.output & p2(EXE).!!!(isJump)) { dsReg := True }
+    when(p2(MEM1).will.input & p2(EXE).!!!(isJump)) { dsReg := True }
     output(inSlot) := dsReg
   })
   p2(EXE).addComponent(new StageComponent {
