@@ -398,20 +398,19 @@ class MultiIssueCPU extends Component {
       output(rsValue) := rfu.io.r(i).data
       output(rtValue) := rfu.io.r(2 + i).data
 
+      val rsNotDone = False
+      val rtNotDone = False
+
       for (j <- 0 to 1) {
         val stage = p(j)(MEM2)
         when(stage.!!!(rfuWE)) {
           when(stage.stored(rfuIndex) === input(inst).rs) {
             output(rsValue) := stage.produced(rfuData)
-            when(self.produced(useRs) & !stage.is.done) {
-              self.is.done := False
-            }
+            rsNotDone := !stage.is.done
           }
           when(stage.stored(rfuIndex) === input(inst).rt) {
             output(rtValue) := stage.produced(rfuData)
-            when(self.produced(useRt) & !stage.is.done) {
-              self.is.done := False
-            }
+            rtNotDone := !stage.is.done
           }
         }
       }
@@ -422,15 +421,11 @@ class MultiIssueCPU extends Component {
           when(stage.!!!(rfuWE)) {
             when(stage.stored(rfuIndex) === input(inst).rs) {
               output(rsValue) := stage.produced(rfuData)
-              when(self.produced(useRs) & stage.stored(memRE)) {
-                self.is.done := False
-              }
+              rsNotDone := stage.stored(memRE)
             }
             when(stage.stored(rfuIndex) === input(inst).rt) {
               output(rtValue) := stage.produced(rfuData)
-              when(self.produced(useRt) & stage.stored(memRE)) {
-                self.is.done := False
-              }
+              rtNotDone := stage.stored(memRE)
             }
           }
         }
@@ -440,13 +435,17 @@ class MultiIssueCPU extends Component {
         val stage = p1(ID)
         stage.!!!(inst1)
         when(stage.produced(rfuWE)) {
-          when(stage.produced(rfuIndex) === input(inst).rs & self.produced(useRs)) {
-            self.is.done := False
+          when(stage.produced(rfuIndex) === input(inst).rs) {
+            rsNotDone := True
           }
-          when(stage.produced(rfuIndex) === input(inst).rt & self.produced(useRt)) {
-            self.is.done := False
+          when(stage.produced(rfuIndex) === input(inst).rt) {
+            rtNotDone := True
           }
         }
+      }
+
+      when(self.produced(useRs) & rsNotDone | self.produced(useRt) & rtNotDone) {
+        self.is.done := False
       }
     })
   }
