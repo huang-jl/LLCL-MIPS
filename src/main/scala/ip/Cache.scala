@@ -12,112 +12,85 @@ class SDPRAM(numEntries: Int, numWays: Int, indexWidth: Int, entryWidth: Int) ex
   memGeneric.READ_DATA_WIDTH_B = numWays * entryWidth
   memGeneric.READ_LATENCY_B = 1
   memGeneric.WRITE_DATA_WIDTH_A = numWays * entryWidth
-  memGeneric.WRITE_MODE_B = "read_first"
+  memGeneric.WRITE_MODE_B = "write_first"
   val mem = new xpm_memory_sdpram(memGeneric)
 
   val io = new Bundle {
     val ena   = in Bool ()
     val addra = in UInt (indexWidth bits)
-    val dina  = in Bits (numWays * entryWidth bits)
+    val dina  = in Vec (Bits(entryWidth bits), numWays)
 
     val enb   = in Bool ()
     val addrb = in UInt (indexWidth bits)
-    val doutb = out Bits (numWays * entryWidth bits)
+    val doutb = out Vec (Bits(entryWidth bits), numWays)
   }
 
-  val prevEna   = RegNext(mem.io.ena)
-  val prevAddra = RegNext(mem.io.addra)
   val prevDina  = RegNext(mem.io.dina)
-
-  val currAddrb = out(RegNext(mem.io.addrb))
+  val currAddrb = RegNext(mem.io.addrb)
+  val conflict  = RegNext(io.ena & (io.addra === currAddrb))
 
   mem.io.ena := io.ena
   mem.io.addra := io.addra
-  mem.io.dina := io.dina
+  mem.io.dina := B(io.dina)
   mem.io.wea := B"1"
 
   mem.io.enb := True
   mem.io.addrb := io.enb ? io.addrb | currAddrb
-  io.doutb := (io.ena & currAddrb === io.addra) ?
-    io.dina | ((prevEna & currAddrb === prevAddra) ? prevDina | mem.io.doutb)
-
-  def write(input: Bits, we: Bits, data: Bits): Bits = {
-    val output = Bits(input.getBitsWidth bits)
-    output := input
-    output(0, entryWidth bits) := data
-    for (i <- 1 until numWays) {
-      when(we(i)) {
-        output := input
-        output(i * entryWidth, entryWidth bits) := data
-      }
-    }
-    output
-  }
+  io.doutb.assignFromBits(conflict ? prevDina | mem.io.doutb)
 }
 
 class Cache(
     numEntries: Int,
     numWays: Int,
-    addrWidth: Int,
-    indexOffset: Int,
     indexWidth: Int,
-    tagOffset: Int,
-    tagWidth: Int,
+    metaWidth: Int,
     dataWidth: Int
 ) extends Component {
   val dataMem = new SDPRAM(numEntries, numWays, indexWidth, dataWidth)
-  val tagMem  = new SDPRAM(numEntries, numWays, indexWidth, 1 + tagWidth)
+  val metaMem = new SDPRAM(numEntries, numWays, indexWidth, metaWidth)
   val pMem    = Mem(Bits(numWays - 1 bits), numEntries / numWays) randBoot
-  // Vec(Reg(Bits(numWays - 1 bits)) randBoot, numEntries / numWays)
-  //  tagMem.prevEna.setAsComb := dataMem.prevEna
-  //  tagMem.prevAddra.setAsComb := dataMem.prevAddra
-  //  tagMem.currAddrb.setAsComb := dataMem.currAddrb
 
   val io = new Bundle {
     val w = new Bundle {
       val en       = in Bool ()
-      val addr     = in UInt (addrWidth bits)
-      val dataLine = in Bits (numWays * dataWidth bits)
-      val tagLine  = in Bits (numWays * (1 + tagWidth) bits)
+      val index    = in UInt (indexWidth bits)
+      val dataLine = in Vec (Bits(dataWidth bits), numWays)
+      val metaLine = in Vec (Bits(metaWidth bits), numWays)
 
       val pEn = in Bool ()
       val p   = in Bits (numWays - 1 bits)
     }
     val r = new Bundle {
       val en       = in Bool ()
-      val addr     = in UInt (addrWidth bits)
-      val dataLine = out Bits (numWays * dataWidth bits)
-      val tagLine  = out Bits (numWays * (1 + tagWidth) bits)
+      val index    = in UInt (indexWidth bits)
+      val dataLine = out Vec (Bits(dataWidth bits), numWays)
+      val metaLine = out Vec (Bits(metaWidth bits), numWays)
 
       val p = out Bits (numWays - 1 bits)
     }
   }
 
-  val wIndex = io.w.addr(indexOffset, indexWidth bits)
-  val rIndex = io.r.addr(indexOffset, indexWidth bits)
-
   //
   dataMem.io.ena := io.w.en
-  dataMem.io.addra := wIndex
+  dataMem.io.addra := io.w.index
   dataMem.io.dina := io.w.dataLine
 
   dataMem.io.enb := io.r.en
-  dataMem.io.addrb := rIndex
+  dataMem.io.addrb := io.r.index
   io.r.dataLine := dataMem.io.doutb
 
   //
-  tagMem.io.ena := io.w.en
-  tagMem.io.addra := wIndex
-  tagMem.io.dina := io.w.tagLine
+  metaMem.io.ena := io.w.en
+  metaMem.io.addra := io.w.index
+  metaMem.io.dina := io.w.metaLine
 
-  tagMem.io.enb := io.r.en
-  tagMem.io.addrb := rIndex
-  io.r.tagLine := tagMem.io.doutb
+  metaMem.io.enb := io.r.en
+  metaMem.io.addrb := io.r.index
+  io.r.metaLine := metaMem.io.doutb
 
   //
-  io.r.p := (io.w.pEn & tagMem.currAddrb === wIndex) ?
-    io.w.p | pMem.readAsync(dataMem.currAddrb, writeFirst)
-  pMem.write(wIndex, io.w.p, io.w.pEn)
+  io.r.p := pMem(io.r.index)
+  when(io.w.pEn) { pMem(io.w.index) := io.w.p }
 
   //
   def plru(p: Bits, i: Int = 1, v: Bool = True): Bits = {
@@ -146,16 +119,10 @@ class Cache(
       we(i % numWays)
     }
   }
+}
 
-  def getHitLineAndData(tagLine: Bits, dataLine: Bits, addr: UInt, hitLine: Bits, data: Bits) {
-    for (i <- 0 until numWays) {
-      hitLine(i) :=
-        tagLine(i * (1 + tagWidth), 1 + tagWidth bits) === True ## addr(tagOffset, tagWidth bits)
-    }
-
-    data := dataLine(0, dataWidth bits)
-    for (i <- 1 until numWays) {
-      when(hitLine(i)) { data := dataLine(i * dataWidth, dataWidth bits) }
-    }
+object Cache {
+  def main(args: Array[String]): Unit = {
+    SpinalVerilog(new Cache(4096, 4, 10, 10, 10))
   }
 }
