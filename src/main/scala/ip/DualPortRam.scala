@@ -55,23 +55,8 @@ class DualPortBram(config: BRamIPConfig) extends Component {
   mem.io.enb := True
   mem.io.dinb := io.portB.din
   mem.io.web := io.portB.we.asBits
-
-  // Cache第一阶段会使用portB读；第二阶段会使用portA写
-  // 下面是进行前传需要的寄存器
-  val prevWriteA = RegNext(io.portA.we) init False
-  val prevAddrA  = RegNext(io.portA.addr) init 0
-  val prevWDataA = RegNext(io.portA.din) init 0
-  // 当前周期读出的dout对应的地址
-  val currAddrB = RegNext(mem.io.addrb) init 0
-
-  mem.io.addrb := io.portB.en ? io.portB.addr | currAddrB
-
-  when(prevWriteA & prevAddrA === currAddrB) {
-    // 需要进行前传
-    io.portB.dout := prevWDataA
-  }.otherwise {
-    io.portB.dout := mem.io.doutb
-  }
+  mem.io.addrb := io.portB.addr
+  io.portB.dout := mem.io.doutb
 }
 
 /** @param dataWidth 数据宽度，单位是bit
@@ -119,15 +104,17 @@ class DualPortLutram(config: LutRamIPConfig) extends Component {
   mem.io.enb := True
   mem.io.addrb := io.portB.addr
 
+  io.portB.dout := mem.io.doutb
+
 //  val prevAddrb = RegNext(mem.io.addrb) init 0
 //  mem.io.addrb := io.portB.en ? io.portB.addr | prevAddrb
 
-  when(io.portA.we & io.portA.addr === io.portB.addr) {
-    // 内置跨端口的写优先
-    io.portB.dout := io.portA.din
-  }.otherwise {
-    io.portB.dout := mem.io.doutb
-  }
+//  when(io.portA.we & io.portA.addr === io.portB.addr) {
+//    // 内置跨端口的写优先
+//    io.portB.dout := io.portA.din
+//  }.otherwise {
+//    io.portB.dout := mem.io.doutb
+//  }
 }
 
 /** @note A端口只写，B端口只读，已经内置前传
@@ -158,23 +145,9 @@ class SimpleDualPortBram(config: BRamIPConfig) extends Component {
   mem.io.wea := io.portA.we.asBits
   // B
   mem.io.enb := True
-
-  // Cache第一阶段会使用portB读；第二阶段会使用portA写
-  // 下面是进行前传需要的寄存器
-  val prevWriteA = RegNext(io.portA.we) init False
-  val prevAddrA  = RegNext(io.portA.addr) init 0
-  val prevWDataA = RegNext(io.portA.din) init 0
-  // 当前周期读出的dout对应的地址
   val currAddrB = RegNext(mem.io.addrb) init 0
-
   mem.io.addrb := io.portB.en ? io.portB.addr | currAddrB
-
-  when(prevWriteA & prevAddrA === currAddrB) {
-    // 需要进行前传
-    io.portB.dout := prevWDataA
-  }.otherwise {
-    io.portB.dout := mem.io.doutb
-  }
+  io.portB.dout := mem.io.doutb
 }
 
 ///** @param dataWidth 数据宽度，单位是bit

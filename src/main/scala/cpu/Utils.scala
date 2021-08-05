@@ -1,6 +1,7 @@
 package cpu
 
 import spinal.core._
+import scala.language.postfixOps
 
 package object Utils {
   def hasAssignment(d: Data): Boolean = {
@@ -22,6 +23,10 @@ package object Utils {
 
   def instantiateWhen[T <: Data](data: => T, when: Boolean): T = {
     if (when) data else null.asInstanceOf[T]
+  }
+
+  def instantiateWhen[T <: SpinalEnum](data: => SpinalEnumElement[T], when: Boolean): SpinalEnumElement[T] = {
+    if (when) data else null.asInstanceOf[SpinalEnumElement[T]]
   }
 
   def equalAny[T <: Data](left: T, right: T*): Bool = {
@@ -46,6 +51,47 @@ package object Utils {
       } else {
         str
       }
+    }
+  }
+
+  object VAddr {
+    def isUncachedSection(vaddr: UInt): Bool = {
+      vaddr(29, 3 bits) === U"3'b101"
+    }
+
+    def isUnmappedSection(vaddr: UInt): Bool = {
+      vaddr(30, 2 bits) === U"2'b10"
+    }
+
+    def isKseg0(vaddr: UInt): Bool = {
+      vaddr(29, 3 bits) === U"100"
+    }
+
+    def isKseg1(vaddr: UInt): Bool = {
+      vaddr(29, 3 bits) === U"101"
+    }
+
+    def isUseg(vaddr: UInt): Bool = {
+      vaddr(31).asUInt === U"0"
+    }
+
+    def isUncached(vaddr: UInt, cacheAttr: Bits, K0: Bits, ERL: Bool): Bool = {
+      //Uncache的情况：
+      //1. 落在Uncached区域(kseg1)
+      //2. 在mapped区域并且tlb的cacheAttr为2
+      //3. 在kseg0并且此时CP0.Config.K0 = 2
+      //4. 在kuseg并且此时CP0.Status.ERL = 1
+      isUncachedSection(vaddr) |
+        (!isUnmappedSection(vaddr) & cacheAttr === 2) |
+        (isKseg0(vaddr) & K0 === 2) |
+        (isUseg(vaddr) & ERL)
+    }
+
+    def isUnmapped(vaddr: UInt, ERL: Bool): Bool = {
+      //Unmapped的情况
+      //1. 在Unmapped区域
+      //2. 在Kuseg并且CP0.Status.ERL = 1
+      isUnmappedSection(vaddr) | (isUseg(vaddr) & ERL)
     }
   }
 }

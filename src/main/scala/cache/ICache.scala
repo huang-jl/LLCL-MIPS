@@ -1,7 +1,7 @@
 package cache
 
 import cpu.defs.ConstantVal
-import ip.{SimpleDualPortBram, BRamIPConfig}
+import ip._
 import spinal.core._
 import spinal.lib._
 import spinal.lib.fsm._
@@ -12,7 +12,7 @@ class CPUICacheInterface(config: CacheRamConfig) extends Bundle with IMasterSlav
   val stage1 = new Bundle {
     val read      = Bool                         //是否读
     val index     = UInt(config.indexWidth bits) //从地址中截取出虚索引
-    val keepRData = Bool                         //当前周期拉高这个信号，那么后面会保持**当前输入**index所读出的值
+//    val keepRData = Bool                         //当前周期拉高这个信号，那么后面会保持**当前输入**index所读出的值
     //    val cacheTags = Vec(Meta(config.tagWidth), config.wayNum) //读出来的各路tag
     //    val cacheDatas = Vec(Block(config.blockSize), config.wayNum)  //读出来的各路数据
     //    val replaceIndex = UInt(log2Up(config.wayNum) bits) //LRU读出来要替换的路编号
@@ -31,7 +31,7 @@ class CPUICacheInterface(config: CacheRamConfig) extends Bundle with IMasterSlav
   }
 
   override def asMaster(): Unit = {
-    out(stage1.read, stage1.index, stage1.keepRData, stage2.paddr, stage2.en, invalidate)
+    out(stage1.read, stage1.index, stage2.paddr, stage2.en, invalidate)
     in(stage2.rdata, stage2.stall)
   }
 }
@@ -64,30 +64,14 @@ class ICache(config: CacheRamConfig) extends Component {
   }
 
   val cacheRam = new Area {
-    val dataRamConfig    = BRamIPConfig(Block.getBitWidth(config.blockSize))
-    val depth: Int       = 4 * 1024 * 8 / Block.getBitWidth(config.blockSize)
+    val dataRamConfig = BRamIPConfig(
+      Block.getBitWidth(config.blockSize),
+    )
+    val depth: Int       = dataRamConfig.depth
     val tagBitWidth: Int = Meta.getBitWidth(config.tagWidth)
-    val tagRamConfig     = BRamIPConfig(tagBitWidth, depth * tagBitWidth)
-    val tags             = Array.fill(config.wayNum)(new SimpleDualPortBram(tagRamConfig))
-    val datas            = Array.fill(config.wayNum)(new SimpleDualPortBram(dataRamConfig))
-  }
-
-  val LRU = new Area {
-    val mem        = new LRUManegr(config.wayNum, config.setNum)
-    val calculator = new LRUCalculator(config.wayNum)
-    // LRU读端口
-    mem.io.read.addr := io.cpu.stage1.index
-    //如果需要保持住当前阶段读出的值（比如EX.stall住了），那么直接保持replaceAddr
-    val rindex = RegNextWhen(
-      calculator.leastRecentUsedIndex(mem.io.read.data),
-      !io.cpu.stage1.keepRData
-    ) init 0
-    // LRU写端口
-    val access = U(0, log2Up(config.wayNum) bits)
-    val we     = False //默认为False
-    mem.io.write.access := access
-    mem.io.write.en := we
-    mem.io.write.addr := stage2.index
+    val tagRamConfig = BRamIPConfig(tagBitWidth, depth * tagBitWidth)
+    val tags  = Array.fill(config.wayNum)(new SimpleDualPortBram(tagRamConfig))
+    val datas = Array.fill(config.wayNum)(new SimpleDualPortBram(dataRamConfig))
   }
 
   val axiDefault = new Area {
@@ -131,20 +115,27 @@ class ICache(config: CacheRamConfig) extends Component {
     * *********************************
     */
   //only drive portB for read
-//  val keepRData  = RegNext(io.cpu.stage1.keepRData) init (False)
-  for (i <- 0 until config.wayNum) {
-    cacheRam.tags(i).io.portB.en := !io.cpu.stage1.keepRData
-    cacheRam.tags(i).io.portB.addr := io.cpu.stage1.index
-
-    cacheRam.datas(i).io.portB.en := !io.cpu.stage1.keepRData
-    cacheRam.datas(i).io.portB.addr := io.cpu.stage1.index
+  // 读ram
+  val read = new Bundle {
+    val tags = Vec(Meta(config.tagWidth), config.wayNum)
+    val datas = Vec(Block(config.blockSize, config.bankSize), config.wayNum)
+    val addr = UInt(config.indexWidth bits)
+    addr := io.cpu.stage1.index
+    for (i <- 0 until config.wayNum) {
+      tags(i).assignFromBits(cacheRam.tags(i).io.portB.dout)
+      datas(i).assignFromBits(cacheRam.datas(i).io.portB.dout)
+    }
   }
-  // 读ram 和 LRU
-  val cacheTags  = Vec(Meta(config.tagWidth), config.wayNum)
-  val cacheDatas = Vec(Block(config.blockSize, config.bankSize), config.wayNum)
   for (i <- 0 until config.wayNum) {
-    cacheTags(i).assignFromBits(cacheRam.tags(i).io.portB.dout)
-    cacheDatas(i).assignFromBits(cacheRam.datas(i).io.portB.dout)
+    cacheRam.tags(i).io.portB.en := True
+    cacheRam.tags(i).io.portB.addr := read.addr
+//    cacheRam.tags(i).io.portB.we := False
+//    cacheRam.tags(i).io.portB.din.assignDontCare()
+
+    cacheRam.datas(i).io.portB.en := True
+    cacheRam.datas(i).io.portB.addr := read.addr
+//    cacheRam.datas(i).io.portB.we := False
+//    cacheRam.datas(i).io.portB.din.assignDontCare()
   }
 
   /** *********************************
@@ -152,64 +143,71 @@ class ICache(config: CacheRamConfig) extends Component {
     * *********************************
     */
 
+  val LRU = new Area {
+    val mem = new LRUManegr(config.wayNum, config.setNum)
+    // LRU写端口
+    val access = UInt(log2Up(config.wayNum) bits)
+    val we     = False //默认为False
+    mem.write.access := access
+    mem.write.en := we
+    mem.write.addr := stage2.index
+  }
+
+  // LRU不必担心同时读写一个地址的问题，因为真正使用LRU计算替换地址
+  // 是在readMem的末尾阶段，此时不可能写LRU
   val replace = new Area {
-    val wayIndex = UInt(log2Up(config.wayNum) bits)
-    wayIndex := LRU.rindex
+    val wayIndex = LRU.mem.latestWayIndex(stage2.index)
     for (i <- 0 until config.wayNum) {
-      when(!cacheTags(i).valid)(wayIndex := i) //如果有未使用的cache line，优先替换它
+      when(!read.tags(i).valid)(wayIndex := i) //如果有未使用的cache line，优先替换它
     }
   }
 
+  //判断是否命中cache，并得到要返回的值
+  io.cpu.stage2.rdata := ConstantVal.INST_NOP.asBits ## ConstantVal.INST_NOP.asBits
+  val hit = False
+  val hitIndex  = U(0, log2Up(config.wayNum) bits)
+  for (i <- 0 until config.wayNum) {
+    when((read.tags(i).tag === stage2.tag) & read.tags(i).valid) {
+      hit := True
+      hitIndex := i
+      io.cpu.stage2.rdata := read.datas(i)(stage2.bankOffset)
+    }
+  }
+
+  //更新LRU
+  LRU.access := hitIndex
+  when(io.cpu.stage2.en & hit) (LRU.we := True)
+
   //only drive portA for write
-  val tagWe  = B(0, config.wayNum bits)
-  val dataWe = B(0, config.wayNum bits)
+  val write = new Bundle {
+    val en = B(0, config.wayNum bits)
+    val meta = Meta(config.tagWidth)
+    val data = Block(config.blockSize)
+    val addr = UInt(config.indexWidth bits)
+    addr := stage2.index
+  }
   for (i <- 0 until config.wayNum) {
     cacheRam.tags(i).io.portA.en := True
-    cacheRam.tags(i).io.portA.we := tagWe(i)
-    cacheRam.tags(i).io.portA.addr := stage2.index
+    cacheRam.tags(i).io.portA.we := write.en(i)
+    cacheRam.tags(i).io.portA.addr := write.addr
+    cacheRam.tags(i).io.portA.din := write.meta.asBits
 
     cacheRam.datas(i).io.portA.en := True
-    cacheRam.datas(i).io.portA.we := dataWe(i)
-    cacheRam.datas(i).io.portA.addr := stage2.index
-  }
-  //判断是否命中cache
-  val hitPerWay = Bits(config.wayNum bits) //每一路是否命中
-  for (i <- 0 until config.wayNum) {
-    hitPerWay(i) := (cacheTags(i).tag === stage2.tag) & cacheTags(i).valid
-  }
-  val hit: Bool = hitPerWay.orR
-
-  //把命中的数据拿出来并返回
-  val hitLine: Block = MuxOH(hitPerWay, for (i <- 0 until config.wayNum) yield cacheDatas(i))
-  val hitTag: Meta   = MuxOH(hitPerWay, for (i <- 0 until config.wayNum) yield cacheTags(i))
-  io.cpu.stage2.rdata := hitLine(stage2.bankOffset)
-  //更新LRU
-  when(io.cpu.stage2.en & hit) {
-    LRU.we := True
-    LRU.access := OHToUInt(hitPerWay)
+    cacheRam.datas(i).io.portA.we := write.en(i)
+    cacheRam.datas(i).io.portA.addr := write.addr
+    cacheRam.datas(i).io.portA.din := write.data.asBits
   }
 
   //不命中处理：访存，并且写Cache Ram
-  //这里使用Updating是为了寄存当前周期写入的值，从而让下一周期能够前传
-  val writeMeta = Meta(config.tagWidth)
-  val writeData = Block(config.blockSize)
-  for (i <- 0 until config.wayNum) {
-    cacheRam.tags(i).io.portA.din := writeMeta.asBits
-    cacheRam.datas(i).io.portA.din := writeData.asBits
-  }
-
   val counter = Counter(0 until config.wordNum) //从内存读入数据的计数器
-  val recvBlock =
-    Reg(Block(config.blockSize)) init Block.fromBits(
-      B(0, config.bitNum bits),
-      config.blockSize,
-      4
-    ) //从内存中读出的一行的寄存器
+  val recvBlock = Reg(Block(config.blockSize)) //从内存中读出的一行的寄存器
 
   io.cpu.stage2.stall := True
   val icacheFSM = new StateMachine {
     val waitAXIReady = new State
     val readMem      = new State
+    val refill       = new State
+    val finish       = new State
     setEntry(stateBoot)
     disableAutoStart()
 
@@ -232,38 +230,38 @@ class ICache(config: CacheRamConfig) extends Component {
         recvBlock.banks(counter.value) := io.axi.r.data
       }
       when(io.axi.r.valid & io.axi.r.last) {
-        tagWe(replace.wayIndex) := True
-        dataWe(replace.wayIndex) := True
+        write.en(replace.wayIndex) := True
         // 重写Cache的时候也需要更新LRU
         when(io.cpu.stage2.en) {
           LRU.we := True
           LRU.access := replace.wayIndex
         }
         //不命中则从writeData返回
-        io.cpu.stage2.rdata := Block.fromBits(writeData.asBits, config.blockSize, config.bankSize)(stage2.bankOffset)
-        goto(stateBoot)
+        goto(refill)
       }
     }
+
+    refill.whenIsActive {
+      read.addr := stage2.index
+      goto(finish)
+    }
+    finish.whenIsActive(goto(stateBoot))
   }
 
   //写回cache ram的数据
-  writeMeta.tag := stage2.tag
-  writeMeta.valid := !io.cpu.invalidate.en
-  writeData := recvBlock
-  when(icacheFSM.isActive(icacheFSM.readMem)) {
-    writeData.banks(config.wordNum - 1) := io.axi.r.data
+  write.meta.tag := stage2.tag
+  write.meta.valid := !io.cpu.invalidate.en
+  for(i <- 0 until config.wordNum - 1) {
+    write.data(i) := recvBlock(i)
   }
-  //如果是invalidate指令，那么直接刷掉那一行（只需要刷tag）
+  write.data(config.wordNum - 1) := io.axi.r.data
+  //如果是invalidate指令，那么直接刷掉那一行
   when(io.cpu.invalidate.en) {
     for (i <- 0 until config.wayNum) {
-      tagWe(i) := True
+      write.en(i) := True
       cacheRam.tags(i).io.portA.addr := io.cpu.invalidate.addr.index
     }
   }
-  //如果没有enable，那么直接返回NOP
-  when(!io.cpu.stage2.en)(
-    io.cpu.stage2.rdata := ConstantVal.INST_NOP.asBits ## ConstantVal.INST_NOP.asBits
-  )
 }
 
 object ICache {

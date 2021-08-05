@@ -12,9 +12,9 @@ class Stage extends Area with ValCallbackRec {
   val produced = Record()            // stage output
 
   //
-  val exceptionToRaise = Optional(EXCEPTION()) default None // User settable
-  val prevException    = Reg(Optional(EXCEPTION())) init None default None
-  val exception        = Optional(EXCEPTION())
+  val exceptionToRaise = Optional(ExcCode()) default None // User settable
+  val prevException    = Reg(Optional(ExcCode())) init None default None
+  val exception        = Optional(ExcCode())
   exception := prevException orElse exceptionToRaise
 
   //

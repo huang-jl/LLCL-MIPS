@@ -11,6 +11,7 @@ import Mips32InstImplicits._
 import tlb._
 
 import scala.collection.immutable.ListMap
+import scala.language.postfixOps
 
 object STAGES extends Enumeration {
   val IF1, IF2, ID, EXE, MEM1, MEM2, WB = Value
@@ -51,8 +52,12 @@ class MultiIssueCPU extends Component {
   val paddr        = Key(UInt(32 bits))
   val excOnFetch   = Key(Bool())
   val ibusStage2En = Key(Bool()).setEmptyValue(False)
+  val pc1          = Key(UInt(32 bits))
+  val pc2          = Key(UInt(32 bits))
   val inst1        = Key(Mips32Inst()).setEmptyValue(NOP)
   val inst2        = Key(Mips32Inst()).setEmptyValue(NOP)
+  val inst1Valid   = Key(Bool)
+  val inst2Valid   = Key(Bool)
   val inst         = Key(Mips32Inst())
   val eret         = Key(Bool()).setEmptyValue(False)
   val isJump       = Key(Bool()).setEmptyValue(False)
@@ -90,9 +95,11 @@ class MultiIssueCPU extends Component {
   val rfuSrc       = Key(RFU_RD_SRC())
   val rfuData      = Key(Bits(32 bits))
 
-  val mmuRes = Key(new MMUTranslationRes(ConstantVal.USE_TLB))
+  val mmuRes = Key(MMUTranslationRes(ConstantVal.FINAL_MODE))
 
-  val mmu  = new MMU(useTLB = ConstantVal.USE_TLB)
+  val tlbRefillException = Key(Bool) //是否是TLB缺失异常（影响异常处理地址）
+
+  val mmu  = new MMU
   val icu  = new ICU
   val ju   = new JU
   val dcu1 = new DCU1
@@ -139,8 +146,8 @@ class MultiIssueCPU extends Component {
       !!!(memWE)
       exceptionToRaise := None
       when(!dcu1.io.output.addrValid) {
-        when(stored(memRE)) { exceptionToRaise := EXCEPTION.AdEL }
-        when(stored(memWE)) { exceptionToRaise := EXCEPTION.AdES }
+        when(stored(memRE)) { exceptionToRaise := ExcCode.loadAddrError }
+        when(stored(memWE)) { exceptionToRaise := ExcCode.storeAddrError }
       }
     }
     val exe = new Stage {
@@ -194,10 +201,13 @@ class MultiIssueCPU extends Component {
 
       if (i == 0) {
         input(inst) := stored(inst1)
-        input(pc) := stored(pc)
+        input(pc) := stored(pc1)
+        when(!stored(inst1Valid))(assign.flush := True)
       } else {
         input(inst) := stored(inst2)
-        input(pc) := stored(pc)(31 downto 3) @@ U"1" @@ stored(pc)(1 downto 0)
+//        input(pc) := stored(pc)(31 downto 3) @@ U"1" @@ stored(pc)(1 downto 0)
+        input(pc) := stored(pc2)
+        when(!stored(inst2Valid))(assign.flush := True)
       }
 
       val decode = new StageComponent {
@@ -265,51 +275,73 @@ class MultiIssueCPU extends Component {
   }
   /**/
 
-  val if2 = new Stage {
-    val fetchInst = new StageComponent {
-      ibus.stage2.paddr := input(paddr)
-      ibus.stage2.en := !!!(ibusStage2En)
+//  val if2 = new Stage {
+//    val fetchInst = new StageComponent {
+//      ibus.stage2.paddr := input(paddr)
+//      ibus.stage2.en := !!!(ibusStage2En)
+//
+//      output(inst1) := ibus.stage2.rdata(0, 32 bits)
+//      output(inst2) := ibus.stage2.rdata(32, 32 bits)
+//    }
+//
+//    is.done := !ibus.stage2.stall
+//    can.flush := !ibus.stage2.stall
+//  }
+//  val if1 = new Stage {
+//    val writePC = new StageComponent {
+//      val pcReg = RegInit(INIT_PC)
+//      output(pc) := pcReg
+//
+//      val jumpTask = Task(decideJump.assignJump, decideJump.produced(jumpPC), will.output)
+//
+//      when(will.output) {
+//        pcReg := (pcReg(31 downto 3) + 1) @@ U"000"
+//        when(jumpTask.has) { pcReg := jumpTask.value }
+//        when(cp0.io.exceptionBus.jumpPc.isDefined) { pcReg := cp0.io.exceptionBus.jumpPc.value }
+//      }
+//    }
+//
+//    val fetchInst = new StageComponent {
+//      icu.io.offset := writePC.pcReg(1 downto 0)
+//
+//      ibus.stage1.read := True
+//      ibus.stage1.index := writePC.pcReg(icacheConfig.offsetWidth, icacheConfig.indexWidth bits)
+////      ibus.stage1.keepRData := !if2.will.input
+//
+//      mmu.io.instVaddr := writePC.pcReg(31 downto 3) @@ U"000"
+//      output(paddr) := mmu.io.instRes.paddr
+//      output(ibusStage2En) := True
+//
+//      exceptionToRaise := None
+//      output(excOnFetch) := False
+//      when(!icu.io.addrValid) {
+//        exceptionToRaise := ExcCode.loadAddrError
+//        output(excOnFetch) := True
+//        output(ibusStage2En) := False
+//      }
+//    }
+//  }
+  val IF = new Stage {
+    val fetchInst = new FetchInst(icacheConfig)
+    fetchInst.io.jump.valid := decideJump.assignJump
+    fetchInst.io.jump.payload := decideJump.produced(jumpPC)
+    fetchInst.io.except.valid := cp0.io.exceptionBus.jumpPc.isDefined
+    fetchInst.io.except.payload := cp0.io.exceptionBus.jumpPc.value
+    mmu.io.instVaddr := fetchInst.io.vaddr
+    fetchInst.io.mmuRes := mmu.io.instRes
+    fetchInst.io.fetch := p(0)(ID).can.input & p(1)(ID).can.input
+    produced(inst1) := fetchInst.io.inst(0).inst
+    produced(inst2) := fetchInst.io.inst(1).inst
+    produced(pc1) := fetchInst.io.inst(0).pc
+    produced(pc2) := fetchInst.io.inst(1).pc
+    produced(inst1Valid) := fetchInst.io.inst(0).valid
+    produced(inst2Valid) := fetchInst.io.inst(1).valid
+    produced(tlbRefillException) := fetchInst.io.exception.refillException
+    produced(excOnFetch) := fetchInst.io.exception.code.isDefined
 
-      output(inst1) := ibus.stage2.rdata(0, 32 bits)
-      output(inst2) := ibus.stage2.rdata(32, 32 bits)
-    }
+    exceptionToRaise := fetchInst.io.exception.code
 
-    is.done := !ibus.stage2.stall
-    can.flush := !ibus.stage2.stall
-  }
-  val if1 = new Stage {
-    val writePC = new StageComponent {
-      val pcReg = RegInit(INIT_PC)
-      output(pc) := pcReg
-
-      val jumpTask = Task(decideJump.assignJump, decideJump.produced(jumpPC), will.output)
-
-      when(will.output) {
-        pcReg := (pcReg(31 downto 3) + 1) @@ U"000"
-        when(jumpTask.has) { pcReg := jumpTask.value }
-        when(cp0.io.jumpPc.isDefined) { pcReg := cp0.io.jumpPc.value }
-      }
-    }
-
-    val fetchInst = new StageComponent {
-      icu.io.offset := writePC.pcReg(1 downto 0)
-
-      ibus.stage1.read := True
-      ibus.stage1.index := writePC.pcReg(icacheConfig.offsetWidth, icacheConfig.indexWidth bits)
-      ibus.stage1.keepRData := !if2.will.input
-
-      mmu.io.instVaddr := writePC.pcReg(31 downto 3) @@ U"000"
-      output(paddr) := mmu.io.instRes.paddr
-      output(ibusStage2En) := True
-
-      exceptionToRaise := None
-      output(excOnFetch) := False
-      when(!icu.io.addrValid) {
-        exceptionToRaise := EXCEPTION.AdEL
-        output(excOnFetch) := True
-        output(ibusStage2En) := False
-      }
-    }
+    ibus <> fetchInst.io.ibus
   }
 
   val accessMem2 = new ComponentStage {
@@ -356,24 +388,25 @@ class MultiIssueCPU extends Component {
   /* 给出控制信号 */
 
   when(decideJump.assignJump) {
-    if1.assign.flush := True
+//    if1.assign.flush := True
     when(p1(EXE).!!!(isJump)) {
-      if2.assign.flush := True
+//      if2.assign.flush := True
       when(!p2(EXE).is.empty) {
         p1(ID).assign.flush := True
         p2(ID).assign.flush := True
       }
-    } elsewhen !p1(ID).is.empty {
-      if2.assign.flush := True
     }
+//    elsewhen !p1(ID).is.empty {
+//      if2.assign.flush := True
+//    }
   }
 
   /**/
 
   /* CP0 相关控制 */
-  when(cp0.io.jumpPc.isDefined) {
-    if1.assign.flush := True
-    if2.assign.flush := True
+  when(cp0.io.exceptionBus.jumpPc.isDefined) {
+//    if1.assign.flush := True
+//    if2.assign.flush := True
     p1(ID).assign.flush := True
     p2(ID).assign.flush := True
     p1(EXE).assign.flush := True
@@ -384,9 +417,9 @@ class MultiIssueCPU extends Component {
     }
   }
 
-  cp0.io.instOnInt.valid := !p1(EXE).is.empty
-  cp0.io.instOnInt.bd := p1(EXE).produced(inSlot)
-  cp0.io.instOnInt.pc := p1(EXE).stored(pc)
+//  cp0.io.instOnInt.valid := !p1(EXE).is.empty
+//  cp0.io.instOnInt.bd := p1(EXE).produced(inSlot)
+//  cp0.io.instOnInt.pc := p1(EXE).stored(pc)
   /**/
 
   /* 关注点 rfu 读写前传 */
@@ -540,15 +573,17 @@ class MultiIssueCPU extends Component {
       cp0.io.softwareWrite.addr.sel := self.stored(inst).sel
       cp0.io.softwareWrite.data := self.stored(rtValue)
 
-      cp0.io.exceptionInput.exception := self.exception
-      cp0.io.exceptionInput.eret := self.stored(eret)
-      cp0.io.exceptionInput.memAddr := self.stored(memAddr)
-      cp0.io.exceptionInput.pc := self.stored(pc)
-      cp0.io.exceptionInput.bd := self.stored(inSlot)
-      cp0.io.exceptionInput.instFetch := self.stored(excOnFetch)
+      cp0.io.exceptionBus.exception.excCode := self.exception
+      cp0.io.exceptionBus.exception.instFetch := self.stored(excOnFetch)
+      cp0.io.exceptionBus.exception.tlbRefill := self.stored(tlbRefillException)
+      cp0.io.exceptionBus.eret := self.stored(eret)
+      cp0.io.exceptionBus.vaddr := self.stored(memAddr)
+      cp0.io.exceptionBus.pc := self.stored(pc)
+      cp0.io.exceptionBus.bd := self.stored(inSlot)
+      cp0.io.exceptionBus.valid := !self.is.empty
     }
   }
-  cp0.io.externalInterrupt := io.externalInterrupt
+  cp0.io.externalInterrupt := io.externalInterrupt(0, 5 bits)
 
   when(p1(MEM1).produced(modifyCP0) & p2(MEM1).produced(modifyCP0)) {
     p2(MEM1).is.done := False
@@ -556,7 +591,7 @@ class MultiIssueCPU extends Component {
   /**/
 
   /* 关注点 跳转相关 */
-  when(p1(ID).stored(pc)(2)) { p1(ID).assign.flush := True }
+//  when(p1(ID).stored(pc)(2)) { p1(ID).assign.flush := True }
 
   val p2IDFlushNextInst = SimpleTask(
     p2(EXE).!!!(isJump) & decideJump.assignJump,
@@ -591,7 +626,7 @@ class MultiIssueCPU extends Component {
   /**/
 
   /* 连接各个阶段 */
-  val seq = (if2, if2) +: p1.values.zip(p2.values).toSeq
+  val seq = (IF, IF) +: p1.values.zip(p2.values).toSeq
   for ((curr, next) <- seq.zip(seq.tail).reverse) {
     val canPass = next._1.can.input & next._2.can.input
 
@@ -602,10 +637,10 @@ class MultiIssueCPU extends Component {
     curr._2.connect(next._2, canPass)
   }
 
-  if2.interConnect()
-
-  if1.connect(if2, if2.can.input)
-  if1.interConnect()
+//  if2.interConnect()
+//
+//  if1.connect(if2, if2.can.input)
+//  if1.interConnect()
   /**/
 }
 

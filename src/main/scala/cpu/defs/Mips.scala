@@ -36,7 +36,7 @@ case class Mips32Inst() extends Bundle {
   def co          = bits(Fields.co)
   def sel         = bits(Fields.sel).asUInt
 
-  def cacheOp     = bits(Fields.cacheOp)
+  def cacheOp = bits(Fields.cacheOp)
 }
 
 object Mips32InstImplicits {
@@ -110,8 +110,8 @@ object InstructionSpec {
   private def special(fn: String, sa: String = "00000") =
     RType(op = "000000", fn = fn, sa = sa)
 
-  private def special2(fn: String, sa: String = "00000") =
-    RType(op = "011100", fn = fn, sa = sa)
+  private def special2(fn: String) =
+    RType(op = "011100", fn = fn, sa = "00000")
 
   private def regimm(rt: String) = IType(op = "000001", rt = rt)
 
@@ -129,7 +129,7 @@ object InstructionSpec {
     if (fillZeros) spec.force(24 downto 6, "0" * 19) else spec
   }
 
-  private def CACHE(cacheOp:String) =
+  private def CACHE(cacheOp: String) =
     InstructionSpec()
       .force(Fields.op, "101111")
       .force(Fields.cacheOp, cacheOp)
@@ -146,9 +146,9 @@ object InstructionSpec {
   val SLTIU = IType(op = "001011")
   val DIV   = special(fn = "011010").forceZero(Fields.rd)
   val DIVU  = special(fn = "011011").forceZero(Fields.rd)
-  val MUL   = special2(fn = "000010")
   val MULT  = special(fn = "011000").forceZero(Fields.rd)
   val MULTU = special(fn = "011001").forceZero(Fields.rd)
+  val MUL   = special2(fn = "000010")
 
   val AND  = special(fn = "100100")
   val ANDI = IType(op = "001100")
@@ -208,14 +208,57 @@ object InstructionSpec {
   val MFC0 = cop0(rs = "00000")
   val MTC0 = cop0(rs = "00100")
 
+  // Used only when ConstantVal.FINAL_MODE = true
   val TLBP  = cop0co(fn = "001000") //probe tlb for matching entry
   val TLBR  = cop0co(fn = "000001") //read indexed tlb entry
   val TLBWI = cop0co(fn = "000010") //write tlb entry indexed by Index CP0 Reg
-  val TLBWR = cop0co(fn = "000110") //writte tlb entry indexed by Random CP0 Reg
+  val TLBWR = cop0co(fn = "000110") //write tlb entry indexed by Random CP0 Reg
 
-  // Used only when ConstantVal.FINAL_MODE = true
+  val CLO = special2(fn = "100001")
+  val CLZ = special2(fn = "100000")
+
+  val MOVN = special(fn = "001011")
+  val MOVZ = special(fn = "001010")
+
+  val TEQ  = special(fn = "110100", sa = "-----")
+  val TNE  = special(fn = "110110", sa = "-----")
+  val TGE  = special(fn = "110000", sa = "-----")
+  val TGEU = special(fn = "110001", sa = "-----")
+  val TLT  = special(fn = "110010", sa = "-----")
+  val TLTU = special(fn = "110011", sa = "-----")
+
+  val TEQI  = regimm(rt = "01100")
+  val TNEI  = regimm(rt = "01110")
+  val TGEI  = regimm(rt = "01000")
+  val TGEIU = regimm(rt = "01001")
+  val TLTI  = regimm(rt = "01010")
+  val TLTIU = regimm(rt = "01011")
+
+  val MADD  = special2(fn = "000000")
+  val MADDU = special2(fn = "000001")
+  val MSUB  = special2(fn = "000100")
+  val MSUBU = special2(fn = "000101")
+
   val ICacheIndexInvalidate = CACHE("00000")
-  val ICacheHitInvalidate = CACHE("10000")
+  val ICacheHitInvalidate   = CACHE("10000")
   val DCacheIndexInvalidate = CACHE("00001")
-  val DCacheHitInvalidate = CACHE("10101")
+  val DCacheHitInvalidate   = CACHE("10101")
+
+  val LWL = IType("100010")
+  val LWR = IType("100110")
+  val SWL = IType("101010")
+  val SWR = IType("101110")
+
+  val JR_HB = special(fn = "001000")
+    .forceZero(Fields.rt)
+    .forceZero(Fields.rd)
+    .force(10, "1")
+    .forceZero(9 downto 6)
+
+  val PREF = IType("110011")
+  val SYNC = special(fn = "001111")
+    .forceZero(Fields.rs)
+    .forceZero(Fields.rt)
+    .forceZero(Fields.rd)
+  val WAIT = cop0co(fn = "100000", fillZeros = false)
 }

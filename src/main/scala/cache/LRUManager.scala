@@ -71,18 +71,11 @@ case class LRUCalculator(wayNum: Int) {
 
   private def updateWay2(access: Bits, status: Bits): Bits = {
     assert(access.getBitsWidth == 1 && status.getBitsWidth == 1)
-//    status(0) := access(0)
     access(0).asBits
   }
 
   private def updateWay4(access: Bits, status: Bits): Bits = {
     assert(access.getBitsWidth == 2 && status.getBitsWidth == 3)
-//    status(0) := access(1)
-//    when(access(1)) {
-//      status(2) := access(0)
-//    }.otherwise {
-//      status(1) := access(0)
-//    }
     val res = Bits(3 bits)
     when(access(1)) {
       res := access(0) ## status(1) ## access(1)
@@ -101,22 +94,6 @@ case class LRUCalculator(wayNum: Int) {
       res := status(6 downto 4) ## updateWay4(access(1 downto 0), status(3 downto 1)) ## access(2)
     }
     res
-//    status(0) := access(2)
-//    when(access(2)) {
-//      status(2) := access(1)
-//      when(access(1)) {
-//        status(6) := access(0)
-//      }.otherwise {
-//        status(5) := access(0)
-//      }
-//    }.otherwise {
-//      status(1) := access(1)
-//      when(access(1)) {
-//        status(4) := access(0)
-//      }.otherwise {
-//        status(3) := access(0)
-//      }
-//    }
   }
 
   def updateStatus(access: UInt, status: Bits): Bits = {
@@ -136,28 +113,27 @@ case class LRUCalculator(wayNum: Int) {
   * @setSize 有多少项
   * @note 每一项对应一个cache的set，一个端口读，一个端口写，并且内置数据前传
   */
-class LRUManegr(wayNum: Int, setSize: Int) extends Component {
+class LRUManegr(wayNum: Int, setSize: Int) extends Area {
   val width: Int = LRUCalculator.statusLength(wayNum)
   val calculator = new LRUCalculator(wayNum)
-  val io = new Bundle {
-    val read = new Bundle {
-      val addr = in UInt (log2Up(setSize) bits)
-      val data = out Bits (width bits)
-    }
-    val write = new Bundle {
-      val addr   = in UInt (log2Up(setSize) bits)
-      val access = in UInt (log2Up(wayNum) bits) // 最近访问的编号
-      val en     = in Bool ()                    //写使能
-    }
+
+  val write = new Bundle {
+    val addr   = UInt (log2Up(setSize) bits)
+    val access = UInt (log2Up(wayNum) bits) // 最近访问的编号
+    val en     = Bool ()                    //写使能
   }
+
   val data  = Vec(Reg(Bits(width bits)) init 0, setSize)
-  val wdata = calculator.updateStatus(io.write.access, data(io.write.addr))
-  when(io.write.en & io.write.addr === io.read.addr) {
-    io.read.data := wdata
-  }.otherwise {
-    io.read.data := data(io.read.addr)
+  val wdata = calculator.updateStatus(write.access, data(write.addr))
+  when(write.en) {
+    data(write.addr) := wdata
   }
-  when(io.write.en) {
-    data(io.write.addr) := wdata
+
+  def latestWayIndex(readAddr: UInt): UInt = {
+    val addrWidth: Int = log2Up(setSize)
+    assert(readAddr.getBitsWidth == addrWidth)
+    val res = UInt(log2Up(wayNum) bits)
+    res := calculator.leastRecentUsedIndex(data(readAddr))
+    res
   }
 }

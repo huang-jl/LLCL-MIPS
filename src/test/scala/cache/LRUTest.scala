@@ -14,13 +14,11 @@ class LRUTest(wayNum: Int = 8) extends Component {
     val next   = out UInt (log2Up(wayNum) bits)
   }
   val manager    = new LRUManegr(wayNum, 1)
-  val calculator = new LRUCalculator(wayNum)
-  manager.io.write.en := io.update
-  manager.io.write.access := io.access
-  manager.io.write.addr := 0
+  manager.write.en := io.update
+  manager.write.access := io.access
+  manager.write.addr := 0
 
-  manager.io.read.addr := 0
-  io.next := calculator.leastRecentUsedIndex(manager.io.read.data)
+  io.next := manager.latestWayIndex(0)
 }
 
 object LRUTest {

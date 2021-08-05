@@ -59,7 +59,7 @@ object Block {
 
   def fromBits(value: Bits, blockSize: Int, bankSize: Int): Block = {
     val res = Block(blockSize, bankSize)
-    res.assignFromBits(value)
+    res.assignFromBits(value.resize(getBitWidth(blockSize)))
     res
   }
 }

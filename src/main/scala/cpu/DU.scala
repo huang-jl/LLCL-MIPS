@@ -1,11 +1,11 @@
 package cpu
 
 import defs.InstructionSpec._
-import defs.Mips32Inst
+import defs.{ConstantVal, InstructionSpec, Mips32Inst}
 import defs.Mips32InstImplicits._
-import defs.ConstantVal
 import lib.{Decoder, Key, NotConsidered, Optional}
 import spinal.core._
+
 import scala.language.postfixOps
 
 class DU extends Component {
@@ -43,25 +43,30 @@ class DU extends Component {
     val use_rs = out Bool ()
     val use_rt = out Bool ()
 
-    val exception = out(Optional(EXCEPTION()))
+    val exception = out(Optional(ExcCode()))
     val eret      = out Bool ()
 
     //tlb相关
     //读tlb到CP0
-    val tlbr = Utils.instantiateWhen(out(Bool), ConstantVal.USE_TLB)
+    val tlbr = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
     //CP0写到tlb
-    val tlbw = Utils.instantiateWhen(out(Bool), ConstantVal.USE_TLB)
+    val tlbw = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
     //probe tlb
-    val tlbp = Utils.instantiateWhen(out(Bool), ConstantVal.USE_TLB)
+    val tlbp = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
     //tlbw index src
     val tlbIndexSrc =
-      Utils.instantiateWhen(out(TLBIndexSrc()), ConstantVal.USE_TLB)
+      Utils.instantiateWhen(out(TLBIndexSrc()), ConstantVal.FINAL_MODE)
 
     // 仅在开启FINAL_MODE后使用的
-    val invalidateDCache = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
-    val invalidateICache = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
+    val invalidate_dcache = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
+    val invalidate_icache = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
+    val is_trap           = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
+    val condition_mov     = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
+    val compare_op        = Utils.instantiateWhen(out(CompareOp), ConstantVal.FINAL_MODE)
+    val me_type           = Utils.instantiateWhen(out(ME_TYPE), ConstantVal.FINAL_MODE)
 
     val fuck = out Bool () //例如特权指令，拉高后让后面的指令都不发射
+    val privilege = out Bool()  //是否是COP0特权指令
   }
 
   // wires
@@ -96,14 +101,19 @@ class DU extends Component {
 
   val useRs, useRt = Key(Bool)
 
-  val exception = Key(Optional(EXCEPTION()))
+  val exception = Key(Optional(ExcCode()))
   val eret      = Key(Bool)
+  val fuck      = Key(Bool)
+  val privilege = Key(Bool)  //是否是COP0特权指令
 
   val tlbr, tlbw, tlbp = Key(Bool)
   val tlbIndexSrc      = Key(TLBIndexSrc())
   val invalidateICache = Key(Bool)
   val invalidateDCache = Key(Bool)
-  val fuck             = Key(Bool)
+  val isTrap           = Key(Bool)
+  val conditionMov     = Key(Bool)
+  val compareOp        = Key(CompareOp())
+  val meType           = Key(ME_TYPE())
 
   val decoder = new Decoder(32 bits, enableNotConsidered = true) {
     //下面是默认值，避免出现Latch
@@ -126,15 +136,22 @@ class DU extends Component {
     default(juPcSrc) to JU_PC_SRC.rs
     default(useRs) to False
     default(useRt) to False
-    default(exception) to Optional.noneOf(EXCEPTION())
+    default(exception) to Optional.noneOf(ExcCode())
     default(eret) to False
-    default(tlbr) to False
-    default(tlbw) to False
-    default(tlbp) to False
-    default(tlbIndexSrc) to TLBIndexSrc.Index
-    default(invalidateICache) to False
-    default(invalidateDCache) to False
     default(fuck) to False
+    if (ConstantVal.FINAL_MODE) {
+      default(tlbr) to False
+      default(tlbw) to False
+      default(tlbp) to False
+      default(tlbIndexSrc) to TLBIndexSrc.Index
+      default(invalidateICache) to False
+      default(invalidateDCache) to False
+      default(isTrap) to False
+      default(conditionMov) to False
+      default(compareOp) to CompareOp.EZ
+      default(meType) to ME_TYPE.normal
+      default(privilege) to False
+    }
 
     // Arithmetics
     val saShifts = Map( // useRt rfuWE
@@ -299,10 +316,10 @@ class DU extends Component {
 
     // Traps
     on(SYSCALL) { // TODO stall id
-      set(exception) to Optional.some(EXCEPTION.Sys())
+      set(exception) to Optional.some(ExcCode.syscall())
     }
     on(BREAK) { // TODO stall id
-      set(exception) to Optional.some(EXCEPTION.Bp())
+      set(exception) to Optional.some(ExcCode.break())
     }
     on(ERET) { // TODO stall id
       set(eret) to True
@@ -353,8 +370,87 @@ class DU extends Component {
       set(rfuRdSrc) to RFU_RD_SRC.cp0
     }
 
-    //TLB
-    if (ConstantVal.USE_TLB) {
+    if (ConstantVal.FINAL_MODE) {
+      val unalignedLoad = Map(
+        LWL -> ME_TYPE.lwl,
+        LWR -> ME_TYPE.lwr,
+      )
+      for((inst, ty) <- unalignedLoad) {
+        on(inst) {
+          set(dcuRe) to True
+          set(rfuRd) to RFU_RD.rt
+          set(rfuRdSrc) to RFU_RD_SRC.mu
+          set(dcuBe) to U"11"
+          set(useRs) to True //手册中对应的是base而不是rs
+          set(meType) to ty
+        }
+      }
+      val unalignedStore = Map(
+        SWL -> ME_TYPE.swl,
+        SWR -> ME_TYPE.swr
+      )
+      for((inst, ty) <- unalignedStore) {
+        on(inst) {
+          set(dcuWe) to True
+          set(dcuBe) to U"11"
+          set(useRs) to True //手册中对应的是base而不是rs
+          set(meType) to ty
+        }
+      }
+      val conditionMove = Map(
+        MOVN -> CompareOp.NZ,
+        MOVZ -> CompareOp.EZ
+      )
+      for ((inst, op) <- conditionMove) {
+        on(inst) {
+          set(conditionMov) to True
+          set(compareOp) to op
+          set(useRt) to True
+          set(useRs) to True //理论上MOV指令是不需要useRs的，但是为了简化前传的逻辑，直接useRs拉高
+          set(rfuRd) to RFU_RD.rd
+          set(rfuRdSrc) to RFU_RD_SRC.alu
+          set(aluASrc) to ALU_A_SRC.rs
+          set(aluBSrc) to ALU_B_SRC.rt
+        }
+      }
+      val countLeading = Map(
+        CLO -> ALU_OP.clo,
+        CLZ -> ALU_OP.clz
+      )
+      for ((inst, op) <- countLeading) {
+        on(inst) {
+          set(useRs) to True
+          set(aluASrc) to ALU_A_SRC.rs
+          set(rfuRd) to RFU_RD.rd
+          set(rfuRdSrc) to RFU_RD_SRC.alu
+          set(aluOp) to op
+        }
+      }
+
+      // Arithmetics using Hi Lo Reg
+      val mulWithHiLo = Map(
+        MADD  -> ALU_OP.madd,
+        MADDU -> ALU_OP.maddu,
+        MSUB  -> ALU_OP.msub,
+        MSUBU -> ALU_OP.msubu
+      )
+      for ((inst, op) <- mulWithHiLo) {
+        on(inst) {
+          set(aluOp) to op
+          set(aluASrc) to ALU_A_SRC.rs
+          set(aluBSrc) to ALU_B_SRC.rt
+          set(useRs) to True
+          set(useRt) to True
+          set(rfuRd) to RFU_RD.rd
+          set(rfuRdSrc) to RFU_RD_SRC.alu
+
+          set(hluHiWe) to True
+          set(hluHiSrc) to HLU_SRC.alu
+          set(hluLoWe) to True
+          set(hluLoSrc) to HLU_SRC.alu
+        }
+      }
+      //TLB
       on(TLBR) {
         set(tlbr) to True
         set(fuck) to True
@@ -373,24 +469,64 @@ class DU extends Component {
         set(tlbp) to True
         set(fuck) to True
       }
-    }
-
-    if (ConstantVal.FINAL_MODE) {
-      on(ICacheIndexInvalidate) {
-        set(invalidateICache) to True
+      //Trap
+      val traps = Seq(
+        (TEQ, TEQI, ALU_OP.seq),
+        (TNE, TNEI, ALU_OP.sne),
+        (TGE, TGEI, ALU_OP.sge),
+        (TGEU, TGEIU, ALU_OP.sgeu),
+        (TLT, TLTI, ALU_OP.slt),
+        (TLTU, TLTIU, ALU_OP.sltu)
+      )
+      for ((rTypeInst, iTypeInst, op) <- traps) {
+        on(rTypeInst) {
+          set(useRs) to True
+          set(useRt) to True
+          set(aluOp) to op
+          set(aluASrc) to ALU_A_SRC.rs
+          set(aluBSrc) to ALU_B_SRC.rt
+          set(isTrap) to True
+        }
+        on(iTypeInst) {
+          set(useRs) to True
+          set(aluOp) to op
+          set(aluASrc) to ALU_A_SRC.rs
+          set(aluBSrc) to ALU_B_SRC.imm
+          set(isTrap) to True
+        }
+      }
+      //CACHE
+      val caches = Seq(
+        (ICacheIndexInvalidate, DCacheIndexInvalidate),
+        (ICacheHitInvalidate, DCacheHitInvalidate)
+      )
+      for ((icacheInv, dcacheInv) <- caches) {
+        on(icacheInv) {
+          set(invalidateICache) to True
+          set(fuck) to True
+          set(privilege) to True
+        }
+        on(dcacheInv) {
+          set(invalidateDCache) to True
+          set(fuck) to True
+          set(privilege) to True
+        }
+      }
+      on(JR_HB) {
+        set(useRs) to True
+        set(juOp) to JU_OP.t
+        set(juPcSrc) to JU_PC_SRC.rs
         set(fuck) to True
       }
-      on(ICacheHitInvalidate) {
-        set(invalidateICache) to True
-        set(fuck) to True
-      }
-      on(DCacheIndexInvalidate) {
-        set(invalidateDCache) to True
-        set(fuck) to True
-      }
-      on(DCacheHitInvalidate) {
-        set(invalidateDCache) to True
-        set(fuck) to True
+      // Privilege Instruction （暂时没有包括Cache指令，上面已经处理了Cache指令）
+      val priv = Set(ERET, TLBP, TLBR, TLBWI, TLBWR, MFC0, MTC0, WAIT)
+      for (inst <- priv) on(inst){set(privilege) to True}
+      // Instruction that does nothing
+      val useless = Set(InstructionSpec.SYNC, WAIT, PREF)
+      for (inst <- useless) {
+        on(inst) {
+          // Do nothing. Prevents Reserved Instruction exception.
+        }
       }
     }
   }
@@ -430,23 +566,28 @@ class DU extends Component {
   io.use_rt := decoder.output(useRt)
 
   when(decoder.output(NotConsidered)) {
-    io.exception := EXCEPTION.RI
+    io.exception := ExcCode.reservedInstruction
   } otherwise {
     io.exception := decoder.output(exception)
   }
   io.eret := decoder.output(eret)
   io.fuck := decoder.output(fuck)
 
-  if (ConstantVal.USE_TLB) {
+  if (ConstantVal.FINAL_MODE) {
     io.tlbr := decoder.output(tlbr)
     io.tlbw := decoder.output(tlbw)
     io.tlbp := decoder.output(tlbp)
     io.tlbIndexSrc := decoder.output(tlbIndexSrc)
-  }
-
-  if (ConstantVal.FINAL_MODE) {
-    io.invalidateICache := decoder.output(invalidateICache)
-    io.invalidateDCache := decoder.output(invalidateDCache)
+    io.invalidate_icache := decoder.output(invalidateICache)
+    io.invalidate_dcache := decoder.output(invalidateDCache)
+    io.is_trap := decoder.output(isTrap)
+    io.me_type := decoder.output(meType)
+    io.condition_mov := decoder.output(conditionMov)
+    io.compare_op := decoder.output(compareOp)
+    when(io.condition_mov) {
+      io.rfu_we := False
+    }
+    io.privilege := decoder.output(privilege)
   }
 }
 
