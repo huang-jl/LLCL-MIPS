@@ -52,6 +52,8 @@ case class Block(blockSize: Int, bankSize: Int = 4) extends Bundle {
   def apply(addr: UInt): Bits = banks(addr)
 
   def apply(idx: Int): Bits = banks(idx)
+
+  def :=(that: Block): Unit = this.banks := that.banks
 }
 
 object Block {
