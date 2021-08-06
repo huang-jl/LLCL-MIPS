@@ -107,6 +107,12 @@ class BranchPredictor extends Area {
 
   val read2 = new ComponentStage {
     val io = new Bundle {
+      val btbHit     = Bool()
+      val btbHitLine = Bits(BTB.NUM_WAYS bits)
+      val btbP       = Bits(BTB.NUM_WAYS - 1 bits)
+      val bhtV       = Bits(BHT.DATA_WIDTH bits)
+      val phtV       = UInt(2 bits)
+
       val assignJump = Bits(2 bits)
       val jumpPC     = UInt(32 bits)
     }
@@ -117,6 +123,12 @@ class BranchPredictor extends Area {
     val j = stored(btbHit) & output(phtV)(1)
     io.assignJump := (j & stored(btbPC_2)) ## (j & !stored(btbPC_2))
     io.jumpPC := U(stored(btbData) ## B"00")
+    /**/
+    io.btbHit := stored(btbHit)
+    io.btbHitLine := stored(btbHitLine)
+    io.btbP := stored(btbP)
+    io.bhtV := stored(bhtV)
+    io.phtV := output(phtV)
   }
 
   val read1 = new ComponentStage {
