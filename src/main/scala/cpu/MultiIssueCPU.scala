@@ -107,7 +107,7 @@ class MultiIssueCPU extends Component {
   val cp0  = new CP0
   val rfu  = new RFU(2, 4)
 
-  val bps = Seq.fill(2)(new BranchPredictor())
+  val bps = Seq(new BranchPredictor(0), new BranchPredictor(1))
 
   /* temp */
   mmu.io.asid.assignDontCare()
@@ -200,31 +200,18 @@ class MultiIssueCPU extends Component {
     val id = new Stage {
       setName(s"id_${i}")
 
-      if (i == 0) {
-        input(inst) := stored(entry1).inst
-        input(pc) := stored(entry1).pc
-        input(jumpPC) := stored(entry1).target
-        when(!stored(entry1).valid)(assign.flush := True)
-      } else {
-        input(inst) := stored(entry2).inst
-//        input(pc) := stored(pc)(31 downto 3) @@ U"1" @@ stored(pc)(1 downto 0)
-        input(pc) := stored(entry2).pc
-        input(jumpPC) := stored(entry2).target
-        when(!stored(entry2).valid)(assign.flush := True)
-      }
+      val entry = if (i > 0) stored(entry2) else stored(entry1)
+      input(pc) := entry.pc
+      input(inst) := entry.inst
+      input(isJump) := entry.branch.is
+      input(isDJump) := entry.branch.isDjump
+      input(jumpPC) := entry.target
+      when(!entry.valid)(assign.flush := True)
 
       val decode = new StageComponent {
         du.io.inst := input(inst)
 
         output(eret) := du.io.eret
-        output(isJump) := du.io.ju_op =/= JU_OP.f
-        output(isDJump) := du.io.ju_pc_src =/= JU_PC_SRC.rs
-        output(jumpPC) := input(jumpPC)
-//        val upperPC = input(pc)(31 downto 2)
-//        output(jumpPC) := du.io.ju_pc_src.mux(
-//          JU_PC_SRC.offset -> U(S(upperPC) + du.io.inst.offset + 1) @@ U"00",
-//          default          -> (upperPC + 1)(29 downto 26) @@ du.io.inst.index @@ U"00"
-//        )
         output(jumpCond) := du.io.ju_op
         output(useMem) := du.io.dcu_re | du.io.dcu_we
         output(useRs) := du.io.use_rs
@@ -302,45 +289,31 @@ class MultiIssueCPU extends Component {
     ibus <> fetchInst.io.ibus
 
     /**/
-    var outputs: Seq[ComponentStage] = Seq()
-    for (i <- 0 to 1) {
-      val bp    = bps(i)
-      val issue = fetchInst.io.issue(i)
-      bp.read2.will.input := fetchInst.io.bp.will.input.S2
-      val output = new ComponentStage {
-        output(bp.pc) := issue.pc
-        output(bp.isDJump) := issue.branch.isDjump
-        output(bp.jumpPC) := issue.target
-        /**/
-        output(bp.btbHitLine) := issue.predict.btbHitLine
-        output(bp.btbHit) := issue.predict.btbHit
-        output(bp.btbP) := issue.predict.btbP
-        /**/
-        output(bp.bhtV) := issue.predict.bhtV
-        output(bp.phtV) := issue.predict.phtV
-      }
-      outputs = outputs :+ output
-    }
+    bps(0).read2.will.input := fetchInst.io.bp.will.input.S2
+    bps(1).read2.will.input := fetchInst.io.bp.will.input.S2
     /**/
     when(fetchInst.io.issue(1).pc(2)) {
-      outputs(0).send(bps(0).write1)
+      bps(0).write0.io.issue := fetchInst.io.issue(0)
       bps(0).write1.will.input := p(0)(ID).will.input
-      outputs(1).send(bps(1).write1)
+      bps(1).write0.io.issue := fetchInst.io.issue(1)
       bps(1).write1.will.input := p(1)(ID).will.input
     } otherwise {
-      outputs(0).send(bps(1).write1)
+      bps(0).write0.io.issue := fetchInst.io.issue(1)
       bps(0).write1.will.input := p(1)(ID).will.input
-      outputs(1).send(bps(0).write1)
+      bps(1).write0.io.issue := fetchInst.io.issue(0)
       bps(1).write1.will.input := p(0)(ID).will.input
     }
     /**/
-    when(p(1)(ID).stored(pc)(2)) {
+    when(p(1)(ID).produced(pc)(2)) {
       bps(0).write2.will.input := p(0)(EXE).will.input
       bps(1).write2.will.input := p(1)(EXE).will.input
     } otherwise {
       bps(0).write2.will.input := p(1)(EXE).will.input
       bps(1).write2.will.input := p(0)(EXE).will.input
     }
+    /**/
+    bps(0).write2.io.assignJump := p(0)(EXE).stored(isDJump) & ju.jump
+    bps(1).write2.io.assignJump := p(1)(EXE).stored(isDJump) & ju.jump
     /**/
   }
 

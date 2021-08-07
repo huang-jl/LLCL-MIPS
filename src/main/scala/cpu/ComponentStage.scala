@@ -10,8 +10,8 @@ class ComponentStage extends Area {
   val produced = Record()
 
   val will = new Bundle {
-    val input  = Bool()
-    val output = Bool()
+    val input  = Bool().default(True)
+    val output = Bool().default(False)
   }
 
   def interConnect(): Unit = {

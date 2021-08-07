@@ -6,6 +6,7 @@ import lib._
 import defs.Config._
 
 class BranchPredictor(
+    number: Int,
     btbNumEntries: Int = BTB.NUM_ENTRIES,
     btbNumWays: Int = BTB.NUM_WAYS,
     btbIndexWidth: Int = BTB.INDEX_WIDTH,
@@ -15,6 +16,8 @@ class BranchPredictor(
     phtNumEntries: Int = PHT.NUM_ENTRIES,
     phtIndexWidth: Int = PHT.INDEX_WIDTH
 ) extends Area {
+  setName(s"bp_$number")
+
   object Address {
     val btbIndexOffset = 3
     val btbTagOffset   = btbIndexOffset + btbIndexWidth
@@ -96,6 +99,23 @@ class BranchPredictor(
     output(phtVM) := U((stored(phtV)(1) & stored(phtV)(0)) ## (stored(phtV)(1) & !stored(phtV)(0)))
   }
 
+  val write0 = new ComponentStage {
+    val io = new Bundle {
+      val issue = IssueEntry()
+    }
+    /**/
+    output(pc) := io.issue.pc
+    output(isDJump) := io.issue.branch.isDjump
+    output(jumpPC) := io.issue.target
+    /**/
+    output(btbHitLine) := io.issue.predict.btbHitLine
+    output(btbHit) := io.issue.predict.btbHit
+    output(btbP) := io.issue.predict.btbP
+    /**/
+    output(bhtV) := io.issue.predict.bhtV
+    output(phtV) := io.issue.predict.phtV
+  }
+
   val read2 = new ComponentStage {
     val io = new Bundle {
       val btbHitLine = Bits(btbNumWays bits)
@@ -131,6 +151,7 @@ class BranchPredictor(
     btb.io.r.index := io.nextPC.btbIndex
     val metaLine = btb.io.r.metaLine
     val dataLine = btb.io.r.dataLine
+    output(btbP) := btb.io.r.p
     for (i <- 0 to 3) {
       output(btbHitLine)(i) := (True ## io.pc.btbTag) === metaLine(i)
     }
@@ -147,16 +168,10 @@ class BranchPredictor(
   write2.interConnect()
   write1.send(write2)
   write1.interConnect()
+  write0.send(write1)
+  write0.interConnect()
 
   read2.interConnect()
   read1.send(read2)
   read1.interConnect()
-}
-
-object BranchPredictor {
-  def main(args: Array[String]): Unit = {
-    SpinalVerilog(new Component {
-      val t = new BranchPredictor()
-    })
-  }
 }
