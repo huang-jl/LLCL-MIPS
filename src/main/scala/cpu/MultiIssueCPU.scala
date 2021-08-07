@@ -54,8 +54,8 @@ class MultiIssueCPU extends Component {
   val ibusStage2En = Key(Bool()).setEmptyValue(False)
   val pc1          = Key(UInt(32 bits))
   val pc2          = Key(UInt(32 bits))
-  val entry1        = Key(IssueEntry()).setEmptyValue(IssueEntry().getZero)
-  val entry2        = Key(IssueEntry()).setEmptyValue(IssueEntry().getZero)
+  val entry1       = Key(IssueEntry()).setEmptyValue(IssueEntry().getZero)
+  val entry2       = Key(IssueEntry()).setEmptyValue(IssueEntry().getZero)
   val inst         = Key(Mips32Inst())
   val eret         = Key(Bool()).setEmptyValue(False)
   val isJump       = Key(Bool()).setEmptyValue(False)
@@ -277,52 +277,6 @@ class MultiIssueCPU extends Component {
   }
   /**/
 
-//  val if2 = new Stage {
-//    val fetchInst = new StageComponent {
-//      ibus.stage2.paddr := input(paddr)
-//      ibus.stage2.en := !!!(ibusStage2En)
-//
-//      output(inst1) := ibus.stage2.rdata(0, 32 bits)
-//      output(inst2) := ibus.stage2.rdata(32, 32 bits)
-//    }
-//
-//    is.done := !ibus.stage2.stall
-//    can.flush := !ibus.stage2.stall
-//  }
-//  val if1 = new Stage {
-//    val writePC = new StageComponent {
-//      val pcReg = RegInit(INIT_PC)
-//      output(pc) := pcReg
-//
-//      val jumpTask = Task(decideJump.assignJump, decideJump.produced(jumpPC), will.output)
-//
-//      when(will.output) {
-//        pcReg := (pcReg(31 downto 3) + 1) @@ U"000"
-//        when(jumpTask.has) { pcReg := jumpTask.value }
-//        when(cp0.io.exceptionBus.jumpPc.isDefined) { pcReg := cp0.io.exceptionBus.jumpPc.value }
-//      }
-//    }
-//
-//    val fetchInst = new StageComponent {
-//      icu.io.offset := writePC.pcReg(1 downto 0)
-//
-//      ibus.stage1.read := True
-//      ibus.stage1.index := writePC.pcReg(icacheConfig.offsetWidth, icacheConfig.indexWidth bits)
-////      ibus.stage1.keepRData := !if2.will.input
-//
-//      mmu.io.instVaddr := writePC.pcReg(31 downto 3) @@ U"000"
-//      output(paddr) := mmu.io.instRes.paddr
-//      output(ibusStage2En) := True
-//
-//      exceptionToRaise := None
-//      output(excOnFetch) := False
-//      when(!icu.io.addrValid) {
-//        exceptionToRaise := ExcCode.loadAddrError
-//        output(excOnFetch) := True
-//        output(ibusStage2En) := False
-//      }
-//    }
-//  }
   val IF = new Stage {
     val fetchInst = new FetchInst(icacheConfig)
     fetchInst.io.jump.valid := decideJump.assignJump
@@ -341,11 +295,53 @@ class MultiIssueCPU extends Component {
     exceptionToRaise := fetchInst.io.exception.code
 
     ibus <> fetchInst.io.ibus
+
+    /**/
+    val bps                          = Seq.fill(2)(new BranchPredictor())
+    var outputs: Seq[ComponentStage] = Seq()
+    for (i <- 0 to 1) {
+      val bp    = bps(i)
+      val issue = fetchInst.io.issue(i)
+      val output = new ComponentStage {
+        output(bp.pc) := issue.pc
+        output(bp.isDJump) := issue.branch.isDjump
+        output(bp.jumpPC) := issue.target
+        /**/
+        output(bp.btbHitLine) := issue.predict.btbHitLine
+        output(bp.btbHit) := issue.predict.btbHit
+        output(bp.btbP) := issue.predict.btbP
+        /**/
+        output(bp.bhtV) := issue.predict.bhtV
+        output(bp.phtV) := issue.predict.phtV
+      }
+      outputs = outputs :+ output
+    }
+    /**/
+    when(fetchInst.io.issue(1).pc(2)) {
+      outputs(0).send(bps(0).write1)
+      bps(0).write1.will.input := p(0)(ID).will.input
+      outputs(1).send(bps(1).write1)
+      bps(1).write1.will.input := p(1)(ID).will.input
+    } otherwise {
+      outputs(0).send(bps(1).write1)
+      bps(0).write1.will.input := p(1)(ID).will.input
+      outputs(1).send(bps(0).write1)
+      bps(1).write1.will.input := p(0)(ID).will.input
+    }
+    /**/
+    when(p(1)(ID).stored(pc)(2)) {
+      bps(0).write2.will.input := p(0)(EXE).will.input
+      bps(1).write2.will.input := p(1)(EXE).will.input
+    } otherwise {
+      bps(0).write2.will.input := p(1)(EXE).will.input
+      bps(1).write2.will.input := p(0)(EXE).will.input
+    }
+    /**/
   }
 
   /*分支预测的信号*/
   // 1. bp.write1阶段
-  IF.fetchInst.io.bp.write1.pc := p1(ID).input(pc)  //?可能不是8字节对齐
+  IF.fetchInst.io.bp.write1.pc := p1(ID).input(pc) //?可能不是8字节对齐
   // 真的需要两个DJump？
   IF.fetchInst.io.bp.write1.isDJump1 := p1(ID).input(entry1).branch.isDjump
   IF.fetchInst.io.bp.write1.jumpPC1 := p1(ID).input(entry1).target
