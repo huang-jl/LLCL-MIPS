@@ -206,7 +206,7 @@ class MultiIssueCPU extends Component {
       input(isJump) := entry.branch.is
       input(isDJump) := entry.branch.isDjump
       input(predJump) := entry.predict.taken
-      input(predJumpPC) := entry.predict.
+      input(predJumpPC) := entry.predict.target
       input(jumpPC) := entry.target
       when(!entry.valid)(assign.flush := True)
 

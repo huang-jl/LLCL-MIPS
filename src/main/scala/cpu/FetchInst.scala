@@ -16,6 +16,7 @@ object BranchType extends SpinalEnum {
 
 case class PredictInfo() extends Bundle {
   val taken      = Bool() //是否预测会发生跳转
+  val target     = UInt(32 bits)
   val btbHit     = Bool()
   val btbHitLine = Bits(BTB.NUM_WAYS bits)
   val btbP       = Bits(BTB.NUM_WAYS - 1 bits)
@@ -92,6 +93,8 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
   private implicit class InstWithBranchImplicit(inst: Mips32Inst) {
     def target(pc: UInt): UInt = {
       val res = UInt(32 bits)
+      // J和JAL属于index，其他B指令都是offset
+      // 观察发现J和JAL的op[2:1] = 01
       when(inst.op(1, 2 bits) === B"01") {
         res := (pc(31 downto 2) + 1)(29 downto 26) @@ inst.index @@ U"00"
       }.otherwise {
@@ -102,7 +105,8 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
 
     def branchTy: SpinalEnumCraft[BranchType.type] = {
       val ty = BranchType()
-      ty := (inst.op(1, 2 bits) === B"01") ? BranchType.OTHER | BranchType.RELATIVE
+      // JALR和JR不属于DJump，可以发现他们op的低3位全0
+      ty := (inst.op(0, 3 bits) === B"000") ? BranchType.OTHER | BranchType.RELATIVE
       ty
     }
   }
@@ -219,6 +223,7 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
    */
   val S2 = new Area {
     val recvFromS1 = S1.sendToS2.m2sPipe(collapsBubble = false, flush = pcHandler.io.flush.s1)
+    recvFromS1.setName("S2_recvFromS1")
     val sendToS3   = Stream(new PipeS2S3)
     // 当S3准备好了并且S2没有stall时可以接受新的输入
     recvFromS1.ready := !ibus.stage2.stall & sendToS3.ready
@@ -268,6 +273,7 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
   for(i <- 0 until 2) {
     S2.sendToS3.entry(i).predict.assignSomeByName(io.bp.predict(i))
     S2.sendToS3.entry(i).predict.taken := predict.taken(i) & predict.valid(i)
+    S2.sendToS3.entry(i).predict.target := predict.target(i)
   }
   pcHandler.io.predict.setIdle() //默认值
   when(predict.taken(0) & predict.valid(0) & S2.recvFromS1.fire) {
@@ -288,6 +294,7 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
    */
   val S3 = new Area {
     val recvFromS2 = S2.sendToS3.m2sPipe(collapsBubble = false, flush = S2.flush)
+    recvFromS2.setName("S3_recvFromS2")
 
     val validInstFromS2 = recvFromS2.valid & !pcHandler.io.flush.s3
 

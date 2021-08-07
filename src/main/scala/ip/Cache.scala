@@ -12,7 +12,7 @@ class SDPRAM(numEntries: Int, indexWidth: Int, entryWidth: Int) extends Componen
   memGeneric.READ_DATA_WIDTH_B = entryWidth
   memGeneric.READ_LATENCY_B = 1
   memGeneric.WRITE_DATA_WIDTH_A = entryWidth
-  memGeneric.WRITE_MODE_B = "write_first"
+  memGeneric.WRITE_MODE_B = "read_first"
   val mem = new xpm_memory_sdpram(memGeneric)
 
   val io = new Bundle {
