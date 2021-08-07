@@ -1,6 +1,7 @@
 package cpu
 
 import cpu.defs.{ConstantVal, Mips32Inst}
+import cpu.defs.Config._
 import cache.{CPUICacheInterface, CacheRamConfig}
 import lib.Optional
 import spinal.core._
@@ -9,29 +10,45 @@ import tlb.MMUTranslationRes
 
 import scala.language.{existentials, postfixOps}
 
-case class InstEntry() extends Bundle {
-  val inst   = Mips32Inst()
-  val pc     = UInt(32 bits)
-  val branch = Bool()
-  val valid  = Bool()
+object BranchType extends SpinalEnum {
+  val RELATIVE, OTHER = newElement()
+}
+
+case class PredictInfo() extends Bundle {
+  val taken      = Bool()   //是否预测会发生跳转
+  val btbHit     = Bool()
+  val btbHitLine = Bits(BTB.NUM_WAYS bits)
+  val btbP       = Bits(BTB.NUM_WAYS - 1 bits)
+  val bhtV       = Bits(BHT.DATA_WIDTH bits)
+  val phtV       = UInt(2 bits)
+}
+
+case class BranchInfo() extends Bundle {
+  val ty            = BranchType()
+  val is            = Bool()
+  def isDjump: Bool = is & ty === BranchType.RELATIVE
+}
+
+/** @note 队列中保存的信息 */
+class InstEntry extends Bundle {
+  val inst    = Mips32Inst()
+  val pc      = UInt(32 bits)
+  val branch  = BranchInfo()
+  val predict = PredictInfo()
+  val valid   = Bool()
 
   def validWhen(cond: Bool): InstEntry = {
-    val entry = InstEntry()
+    val entry = new InstEntry
     entry.inst := inst
     entry.pc := pc
     entry.branch := branch
+    entry.predict := predict
     entry.valid := valid & cond
     entry
   }
-
-  def assignBranch(branch: Bool): InstEntry = {
-    val entry = InstEntry()
-    entry.inst := inst
-    entry.pc := pc
-    entry.branch := branch
-    entry.valid := valid
-    entry
-  }
+}
+object InstEntry {
+  def apply(): InstEntry = new InstEntry
 }
 
 case class FetchException() extends Bundle {
@@ -46,7 +63,30 @@ case class FetchException() extends Bundle {
   }
 }
 
+case class IssueEntry() extends InstEntry {
+  val target = UInt(32 bits)
+
+  def :=(that: InstEntry): Unit = this.assignSomeByName(that)
+}
+
 class FetchInst(icacheConfig: CacheRamConfig) extends Component {
+  private implicit class InstWithBranchImplicit(inst: Mips32Inst) {
+    def target(pc: UInt): UInt = {
+      val res = UInt(32 bits)
+      when(inst.op(1, 2 bits) === B"01") {
+        res := (pc(31 downto 2) + 1)(29 downto 26) @@ inst.index @@ U"00"
+      }.otherwise {
+        res := U(S(pc(31 downto 2)) + inst.offset + 1) @@ U"00"
+      }
+      res
+    }
+
+    def branchTy: SpinalEnumCraft[BranchType.type] = {
+      val ty = BranchType()
+      ty := (inst.op(1, 2 bits) === B"01") ? BranchType.OTHER | BranchType.RELATIVE
+      ty
+    }
+  }
   class PipeS1S2 extends Bundle {
     val paddr     = UInt(32 bits)
     val exception = FetchException()
@@ -54,13 +94,34 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
   }
   class PipeS2S3 extends Bundle {
     val exception = FetchException()
-    val inst      = Vec(InstEntry(), 2)
+    val entry      = Vec(InstEntry(), 2)
   }
   val io = new Bundle {
     val fetch  = in Bool ()               //ID阶段是否需要取指
-    val inst   = out Vec (InstEntry(), 2) //双发射一个周期取2条指令
+    val issue  = out Vec (IssueEntry(), 2)
     val jump   = slave Flow UInt(32 bits) //分支纠错
     val except = slave Flow UInt(32 bits) //异常跳转
+
+    val bp = in(new Bundle {
+      val write1 = new Bundle {
+        val pc         = Address()
+        val isDJump1   = Bool()
+        val jumpPC1    = UInt(32 bits)
+        val isDJump2   = Bool()
+        val jumpPC2    = UInt(32 bits)
+        val btbHit     = Bool()
+        val btbHitLine = Bits(BTB.NUM_WAYS bits)
+        val btbP       = Bits(BTB.NUM_WAYS - 1 bits)
+        val bhtV       = Bits(BHT.DATA_WIDTH bits)
+        val phtV       = UInt(2 bits)
+      }
+      val write2 = new Bundle {
+        val assignJump = Bool()
+        val will = new Bundle {
+          val input  = Bool()
+        }
+      }
+    })
 
     val vaddr     = out UInt (32 bits)                            //取指的虚地址
     val mmuRes    = in(MMUTranslationRes(ConstantVal.FINAL_MODE)) //取指的实地址
@@ -80,12 +141,13 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
     }
     for (i <- 0 until 2) {
       decoder(i).io.inst := inst(i)
-      decoder(i).io.pc := pc(i)
       is.branch(i) := decoder(i).io.branch
-      target(i) := decoder(i).io.target
     }
   }
-  val bp = new BranchPredictor(5)
+  val bp = new BranchPredictor
+  bp.write1.io.assignAllByName(io.bp.write1)
+  bp.write2.io.assignAllByName(io.bp.write2)
+  bp.write2.will.input := io.bp.write2.will.input
   /*
    * 当pcHandler发起flush请求时，需要作废掉
    * 1. stage1对应pc的取指
@@ -121,13 +183,15 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
     sendToS2.valid := True
     sendToS2.paddr := io.mmuRes.paddr
     sendToS2.exception := check.exception
-    sendToS2.pc := pcHandler.io.pc
+    sendToS2.pc := pcHandler.io.pc.current
   }
   // S2没有准备好就retain pc
   pcHandler.io.retain := !S1.sendToS2.ready
   // 分支预测
-  bp.io.pc := pcHandler.io.pc.current
-  bp.io.nextPC := pcHandler.io.pc.next
+  bp.read1.io.pc := pcHandler.io.pc.current
+  bp.read1.io.nextPC := pcHandler.io.pc.next
+
+  bp.read1.will.input := S1.sendToS2.fire
 
   io.vaddr := pcHandler.io.pc.current
   ibus.stage1.read := True
@@ -146,12 +210,14 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
     sendToS3.valid := !ibus.stage2.stall & recvFromS1.valid
     sendToS3.exception := recvFromS1.exception
     when(!recvFromS1.valid)(sendToS3.exception.code := None)
-    sendToS3.inst(0).inst.assignFromBits(ibus.stage2.rdata(0, 32 bits))
-    sendToS3.inst(1).inst.assignFromBits(ibus.stage2.rdata(32, 32 bits))
-    sendToS3.inst(0).pc := recvFromS1.pc
-    sendToS3.inst(1).pc := recvFromS1.pc(31 downto 3) @@ U"1" @@ recvFromS1.pc(0, 2 bits)
+    sendToS3.entry(0).pc := recvFromS1.pc
+    sendToS3.entry(1).pc := recvFromS1.pc(31 downto 3) @@ U"1" @@ recvFromS1.pc(0, 2 bits)
     for (i <- 0 until 2) {
-      sendToS3.inst(i).branch.assignDontCare()
+      sendToS3.entry(i).inst.assignFromBits(ibus.stage2.rdata(i * 32, 32 bits))
+      sendToS3.entry(i).predict.assignSomeByName(bp.read2.io)
+      sendToS3.entry(i).branch.is.assignDontCare()
+      sendToS3.entry(i).branch.ty.assignDontCare()
+      sendToS3.entry(i).predict.taken := bp.read2.io.assignJump(i)
     }
 
     // 由于AXI通信无法直接被打断，因此刷新信号需要寄存
@@ -166,22 +232,27 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
       val jumpPc    = UInt(32 bits)
     }.setAsReg()
 
-    sendToS3.inst(0).valid := sendToS3.valid & recvFromS1.pc(2, 1 bits) === 0
-    sendToS3.inst(1).valid := sendToS3.valid & !waiting.delaySlot
+    sendToS3.entry(0).valid := sendToS3.valid & recvFromS1.pc(2, 1 bits) === 0
+    sendToS3.entry(1).valid := sendToS3.valid & !waiting.delaySlot
   }
 
   ibus.stage2.en := S2.recvFromS1.valid & S2.recvFromS1.exception.code.isEmpty
   ibus.stage2.paddr := S2.recvFromS1.paddr
 
   // 分支预测
-  when(bp.io.assignJump(0) & S2.recvFromS1.fire) {
-    // 第一条指令是跳转，可以立即更新pc
-    pcHandler.io.predict.push(bp.io.jumpPC)
+  val predict = new Area {
+    val taken = bp.read2.io.assignJump
+    bp.read2.will.input := S1.sendToS2.fire
   }
-  when(bp.io.assignJump(1) & S2.recvFromS1.fire) {
+  pcHandler.io.predict.setIdle() //默认值
+  when(predict.taken(0) & S2.recvFromS1.fire) {
+    // 第一条指令是跳转，可以立即更新pc
+    pcHandler.io.predict.push(bp.read2.io.jumpPC)
+  }
+  when(predict.taken(1) & S2.recvFromS1.fire) {
     // 第二条指令是跳转，需要等延迟槽
     S2.waiting.delaySlot := True
-    S2.waiting.jumpPc := bp.io.jumpPC
+    S2.waiting.jumpPc := bp.read2.io.jumpPC
   }
   when(S2.waiting.delaySlot & S2.recvFromS1.fire) {
     pcHandler.io.predict.push(S2.waiting.jumpPc)
@@ -196,18 +267,20 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
 
     val validInstFromS2 = recvFromS2.valid & !pcHandler.io.flush.s3
 
-    val inst = Vec(InstEntry(), 2)
+    val entry = Vec(InstEntry(), 2)
     for (i <- 0 until 2) {
-      inst(i).pc := recvFromS2.inst(i).pc
-      inst(i).inst := recvFromS2.inst(i).inst
-      inst(i).valid := recvFromS2.inst(i).valid & validInstFromS2
-      inst(i).branch := decoder.is.branch(i)
+      entry(i).pc := recvFromS2.entry(i).pc
+      entry(i).inst := recvFromS2.entry(i).inst
+      entry(i).valid := recvFromS2.entry(i).valid & validInstFromS2
+      entry(i).predict := recvFromS2.entry(i).predict
+      entry(i).branch.is := decoder.is.branch(i)
+      entry(i).branch.ty := recvFromS2.entry(i).inst.branchTy
     }
 
   }
   // 先进行分支指令解码
-  decoder.inst := Vec(S3.recvFromS2.inst.map(entry => entry.inst))
-  decoder.pc := Vec(S3.recvFromS2.inst.map(entry => entry.pc))
+  decoder.inst := Vec(S3.recvFromS2.entry.map(entry => entry.inst))
+  decoder.pc := Vec(S3.recvFromS2.entry.map(entry => entry.pc))
 
   pcHandler.io.stop.valid := fifo.io.full & S3.validInstFromS2
   pcHandler.io.stop.payload := RegNext(S2.recvFromS1.pc)
@@ -225,21 +298,14 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
     // delaySlot.waiting就清空，此时队列满了则不再接受S2的指令
     // branch.busy是处理ID阶段拿走的逻辑：一旦分支指令处于准备发射阶段
     // 给到ID阶段的第一条指令一定是暂存的分支指令
-    // 1.（清除） 如果之前已经需要延迟槽:
-    //     a) 如果队列为空，那么S2一旦送来有效指令则消除了延迟槽
-    //     b) 如果队列非空，那么直接pop，也消除了延迟槽
-    // 2. （产生）如果之前不需要延迟槽
-    //    当ID阶段**需要指令**时，开始判断是否需要等待延迟槽
-    //     a) 如果队列为空，那么此时会byPass：S2送过来的第二条有效指令是否是分支
-    //     b) 如果队列非空，如果队列只有1条有效指令，则看data(0)；如果有两条有效指令，则看data(1)
     when(waiting.reg) {
       when(fifo.io.empty)(waiting.next := !S3.validInstFromS2)
         .otherwise(waiting.next := False)
     }.elsewhen(io.fetch) {
       when(fifo.io.empty)(waiting.next := decoder.is.branch(1) & S3.validInstFromS2)
         .otherwise {
-          waiting.next := fifo.io.pop.data(1).valid ? fifo.io.pop.data(1).branch |
-            fifo.io.pop.data(0).branch
+          waiting.next := fifo.io.pop.data(1).valid ? fifo.io.pop.data(1).branch.is |
+            fifo.io.pop.data(0).branch.is
         }
     }
   }
@@ -257,14 +323,14 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
       }.otherwise {
         when(fifo.io.empty)(busy.next := decoder.is.branch(1) & S3.validInstFromS2)
           .otherwise {
-            busy.next := fifo.io.pop.data(1).valid ? fifo.io.pop.data(1).branch |
-              fifo.io.pop.data(0).branch
+            busy.next := fifo.io.pop.data(1).valid ? fifo.io.pop.data(1).branch.is |
+              fifo.io.pop.data(0).branch.is
           }
       }
     }
   }
   when(!branch.busy.reg) {
-    when(fifo.io.empty)(branch.inst := S3.inst(1))
+    when(fifo.io.empty)(branch.inst := S3.entry(1))
       .otherwise {
         branch.inst := fifo.io.pop.data(1).valid ? fifo.io.pop.data(1) | fifo.io.pop.data(0)
       }
@@ -273,16 +339,22 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
   val byPass = io.fetch & fifo.io.empty
   // 0是发送给第一条流水线
   when(branch.busy.reg) {
-    io.inst(0) := branch.inst.validWhen(!branch.busy.next)
-  }.otherwise(io.inst(0) := fifo.io.empty ? S3.inst(0) | fifo.io.pop.data(0))
-  when(branch.busy.next & !fifo.io.empty & !fifo.io.pop.data(1).valid)(io.inst(0).valid := False)
+    io.issue(0) := branch.inst.validWhen(!branch.busy.next)
+  }.otherwise(io.issue(0) := fifo.io.empty ? S3.entry(0) | fifo.io.pop.data(0))
+  when(branch.busy.next & !fifo.io.empty & !fifo.io.pop.data(1).valid) {
+    io.issue(0).valid := False
+  }
   // 1是发射给第二条流水线
-  when(branch.busy.reg)(io.inst(1) := byPass ? S3.inst(0) | fifo.io.pop.data(0))
-    .otherwise(io.inst(1) := fifo.io.empty ? S3.inst(1) | fifo.io.pop.data(1))
-  when(branch.busy.next)(io.inst(1).valid := False)
+  when(branch.busy.reg)(io.issue(1) := byPass ? S3.entry(0) | fifo.io.pop.data(0))
+    .otherwise(io.issue(1) := fifo.io.empty ? S3.entry(1) | fifo.io.pop.data(1))
+  when(branch.busy.next)(io.issue(1).valid := False)
+
+  for (i <- 0 until 2) {
+    io.issue(i).target := io.issue(i).inst.target(io.issue(i).pc)
+  }
 
   when(pcHandler.io.flush.s3) {
-    for (i <- 0 until 2) io.inst(i).valid := False
+    for (i <- 0 until 2) io.issue(i).valid := False
     delaySlot.waiting.next := False
     branch.busy.next := False
   }
@@ -293,17 +365,17 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
   fifo.io.push.en := (delaySlot.waiting.reg | (!fifo.io.full & !byPass)) & S3.validInstFromS2
   // push num
   when(byPass & delaySlot.waiting.reg)(fifo.io.push.num := 1)
-    .otherwise(
-      fifo.io.push.num := S3.inst.map(entry => entry.valid.asUInt).reduce((x, y) => x +^ y)
-    )
+    .otherwise {
+      fifo.io.push.num := S3.entry.map(entry => entry.valid.asUInt).reduce((x, y) => x +^ y)
+    }
   // push data
-  when((byPass & delaySlot.waiting.reg) | !S3.inst(0).valid) {
+  when((byPass & delaySlot.waiting.reg) | !S3.entry(0).valid) {
     // 当byPass并且此时需要等延迟槽的时候，只塞入一条指令
-    fifo.io.push.data(0) := S3.inst(1)
+    fifo.io.push.data(0) := S3.entry(1)
   }.otherwise {
-    fifo.io.push.data(0) := S3.inst(0)
+    fifo.io.push.data(0) := S3.entry(0)
   }
-  fifo.io.push.data(1) := S3.inst(1)
+  fifo.io.push.data(1) := S3.entry(1)
   // FIFO POP的条件
   // 1. 队列不是空
   // 2. 后续阶段需要指令供给
@@ -384,7 +456,7 @@ class InstrFifo(way: Int, pushWay: Int, depth: Int) extends Component {
   }
   val counter = SimpleCounter(way * depth + 1)
   val fifo = new Area {
-    val fifos = Array.fill(way)(new SimpleFifo(InstEntry(), 32, depth))
+    val fifos = Array.fill(way)(new SimpleFifo(InstEntry(), depth))
     val push = new Bundle {
       val data = Vec(InstEntry(), way)
       val en   = Bits(way bits)
@@ -417,10 +489,9 @@ class InstrFifo(way: Int, pushWay: Int, depth: Int) extends Component {
     val pop  = SimpleCounter(way)
   }
 
-  /** 因为采用交叠的方式，需要选择pop和push的具体位置 */
+  // 因为采用交叠的方式，需要选择pop和push的具体位置
   val index = new Bundle {
-
-    /** index.pop(idx)表示第idx个pop的entry来自于哪一个fifo */
+    // index.pop(idx)表示第idx个pop的entry来自于哪一个fifo
     val pop = Vec(UInt(log2Up(way) bits), popWay)
     for (i <- 0 until popWay) pop(i) := ptr.pop.value + i
   }
@@ -468,33 +539,24 @@ class InstrFifo(way: Int, pushWay: Int, depth: Int) extends Component {
 class SimpleDecoder extends Component {
   val io = new Bundle {
     val inst   = in(Mips32Inst())
-    val pc     = in UInt (32 bits)
     val branch = out Bool ()
-    val target = out UInt (32 bits)
   }
   io.branch := False
   import defs.InstructionSpec._
   import defs.Mips32InstImplicits._
-  val pcRelativeBranch = Seq(BEQ, BNE, BGEZ, BLTZ, BGEZAL, BLTZAL, BGTZ, BLEZ)
-  val otherBranch      = Seq(J, JAL, JR, JALR)
-  io.target := (io.pc(31 downto 2) + 1)(29 downto 26) @@ io.inst.index @@ U"00"
-  for (inst <- pcRelativeBranch) {
+  for (inst <- Seq(BEQ, BNE, BGEZ, BLTZ, BGEZAL, BLTZAL, BGTZ, BLEZ, J, JAL, JR, JALR)) {
     when(inst === io.inst) {
-      io.target := U(S(io.pc(31 downto 2)) + io.inst.offset + 1) @@ U"00"
+      io.branch := True
     }
-  }
-  for (inst <- pcRelativeBranch ++ otherBranch) {
-    when(inst === io.inst)(io.branch := True)
   }
 }
 
 /** 简单的队列实现
-  * @param width 队列中数据宽度
   * @param depth 队列中深度
   * @note 从Spinal.lib.SteamFifo中简化而来
   */
-class SimpleFifo[T <: Data](gen: => T, width: Int, depth: Int) extends Component {
-  require(depth > 1 && width > 0)
+class SimpleFifo[T <: Data](gen: => T, depth: Int) extends Component {
+  require(depth > 1)
   val io = new Bundle {
     val flush = in Bool ()
     val full  = out Bool ()
@@ -534,7 +596,7 @@ class SimpleFifo[T <: Data](gen: => T, width: Int, depth: Int) extends Component
 }
 
 /** @param upper 计数器的上界，计数范围在[0, upper - 1]
-  * @note 只适用于2的幂对齐的计数器，例如upper = 3或者upper = 7
+  * @note 如果数值可能溢出，则适用于2的幂对齐的计数器，例如upper = 4或者upper = 8
   */
 case class SimpleCounter(upper: Int) extends Bundle {
   val counter               = Reg(UInt(log2Up(upper) bits)) init 0

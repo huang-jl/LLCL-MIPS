@@ -54,10 +54,8 @@ class MultiIssueCPU extends Component {
   val ibusStage2En = Key(Bool()).setEmptyValue(False)
   val pc1          = Key(UInt(32 bits))
   val pc2          = Key(UInt(32 bits))
-  val inst1        = Key(Mips32Inst()).setEmptyValue(NOP)
-  val inst2        = Key(Mips32Inst()).setEmptyValue(NOP)
-  val inst1Valid   = Key(Bool)
-  val inst2Valid   = Key(Bool)
+  val entry1        = Key(IssueEntry()).setEmptyValue(IssueEntry().getZero)
+  val entry2        = Key(IssueEntry()).setEmptyValue(IssueEntry().getZero)
   val inst         = Key(Mips32Inst())
   val eret         = Key(Bool()).setEmptyValue(False)
   val isJump       = Key(Bool()).setEmptyValue(False)
@@ -84,6 +82,7 @@ class MultiIssueCPU extends Component {
   val memEx        = Key(MU_EX())
   val memRE        = Key(Bool()).setEmptyValue(False)
   val memWE        = Key(Bool()).setEmptyValue(False)
+  val memWData     = Key(Bits(32 bits))
   val hiWE         = Key(Bool()).setEmptyValue(False)
   val newHiSrc     = Key(HLU_SRC())
   val newHi        = Key(Bits(32 bits))
@@ -200,14 +199,16 @@ class MultiIssueCPU extends Component {
       setName(s"id_${i}")
 
       if (i == 0) {
-        input(inst) := stored(inst1)
-        input(pc) := stored(pc1)
-        when(!stored(inst1Valid))(assign.flush := True)
+        input(inst) := stored(entry1).inst
+        input(pc) := stored(entry1).pc
+        input(jumpPC) := stored(entry1).target
+        when(!stored(entry1).valid)(assign.flush := True)
       } else {
-        input(inst) := stored(inst2)
+        input(inst) := stored(entry2).inst
 //        input(pc) := stored(pc)(31 downto 3) @@ U"1" @@ stored(pc)(1 downto 0)
-        input(pc) := stored(pc2)
-        when(!stored(inst2Valid))(assign.flush := True)
+        input(pc) := stored(entry2).pc
+        input(jumpPC) := stored(entry2).target
+        when(!stored(entry2).valid)(assign.flush := True)
       }
 
       val decode = new StageComponent {
@@ -216,11 +217,12 @@ class MultiIssueCPU extends Component {
         output(eret) := du.io.eret
         output(isJump) := du.io.ju_op =/= JU_OP.f
         output(isDJump) := du.io.ju_pc_src =/= JU_PC_SRC.rs
-        val upperPC = input(pc)(31 downto 2)
-        output(jumpPC) := du.io.ju_pc_src.mux(
-          JU_PC_SRC.offset -> U(S(upperPC) + du.io.inst.offset + 1) @@ U"00",
-          default          -> (upperPC + 1)(29 downto 26) @@ du.io.inst.index @@ U"00"
-        )
+        output(jumpPC) := input(jumpPC)
+//        val upperPC = input(pc)(31 downto 2)
+//        output(jumpPC) := du.io.ju_pc_src.mux(
+//          JU_PC_SRC.offset -> U(S(upperPC) + du.io.inst.offset + 1) @@ U"00",
+//          default          -> (upperPC + 1)(29 downto 26) @@ du.io.inst.index @@ U"00"
+//        )
         output(jumpCond) := du.io.ju_op
         output(useMem) := du.io.dcu_re | du.io.dcu_we
         output(useRs) := du.io.use_rs
@@ -330,12 +332,9 @@ class MultiIssueCPU extends Component {
     mmu.io.instVaddr := fetchInst.io.vaddr
     fetchInst.io.mmuRes := mmu.io.instRes
     fetchInst.io.fetch := p(0)(ID).can.input & p(1)(ID).can.input
-    produced(inst1) := fetchInst.io.inst(0).inst
-    produced(inst2) := fetchInst.io.inst(1).inst
-    produced(pc1) := fetchInst.io.inst(0).pc
-    produced(pc2) := fetchInst.io.inst(1).pc
-    produced(inst1Valid) := fetchInst.io.inst(0).valid
-    produced(inst2Valid) := fetchInst.io.inst(1).valid
+    // TODO 这个地方连接到ID阶段分别连就可以了，不用都produced下去？
+    produced(entry1) := fetchInst.io.issue(0)
+    produced(entry2) := fetchInst.io.issue(1)
     produced(tlbRefillException) := fetchInst.io.exception.refillException
     produced(excOnFetch) := fetchInst.io.exception.code.isDefined
 
@@ -344,28 +343,46 @@ class MultiIssueCPU extends Component {
     ibus <> fetchInst.io.ibus
   }
 
+  /*分支预测的信号*/
+  // 1. bp.write1阶段
+  IF.fetchInst.io.bp.write1.pc := p1(ID).input(pc)  //?可能不是8字节对齐
+  // 真的需要两个DJump？
+  IF.fetchInst.io.bp.write1.isDJump1 := p1(ID).input(entry1).branch.isDjump
+  IF.fetchInst.io.bp.write1.jumpPC1 := p1(ID).input(entry1).target
+  IF.fetchInst.io.bp.write1.isDJump2 := p2(ID).input(entry2).branch.isDjump
+  IF.fetchInst.io.bp.write1.jumpPC2 := p2(ID).input(entry2).target
+  // 全部用p1的就行？
+  IF.fetchInst.io.bp.write1.assignSomeByName(p1(ID).input(entry1).predict)
+  // 2. bp.write2阶段???
+  IF.fetchInst.io.bp.write2.assignJump := p1(EXE).input(isJump)
+  IF.fetchInst.io.bp.write2.will.input := p1(EXE).will.input
+
   val accessMem2 = new ComponentStage {
     dcu2.io.input.byteEnable := stored(memBE)
     dcu2.io.input.extend := stored(memEx)
-    dcu2.io.input.wdata := stored(rtValue)
     dcu2.io.input.rdata := dbus.stage2.rdata
 
     dbus.stage2.read := !!!(memRE)
     dbus.stage2.write := !!!(memWE)
     dbus.stage2.paddr := stored(mmuRes).paddr
     dbus.stage2.byteEnable := stored(memBE)
-    dbus.stage2.wdata := dcu2.io.output.wdata
+    dbus.stage2.wdata := stored(memWData)
     dbus.stage2.uncache := !stored(mmuRes).cached
   }
   val accessMem1 = new ComponentStage {
     output(mmuRes) := RegNextWhen(mmu.io.dataRes, will.input)
 
-    dcu1.io.input.paddr := output(mmuRes).paddr
+    dcu1.io.input.byteOffset := output(mmuRes).paddr(0, 2 bits)
     dcu1.io.input.byteEnable := stored(memBEType)
-    output(memBE) := dcu1.io.output.byteEnable
+    dcu1.io.input.wdata := stored(rtValue)
 
-    dbus.stage1.keepRData := !accessMem2.will.input
+    output(memBE) := dcu1.io.output.byteEnable
+    output(memWData) := dcu1.io.output.wdata
+
+    dbus.stage1.write := stored(memWE)
     dbus.stage1.paddr := output(mmuRes).paddr
+    dbus.stage1.wdata := dcu1.io.output.wdata
+    dbus.stage1.byteEnable := dcu1.io.output.byteEnable
   }
 
   decideJump.interConnect()
@@ -383,9 +400,6 @@ class MultiIssueCPU extends Component {
       decideJump.will.output := p(i)(EXE).will.output
     }
   }
-  /**/
-
-  /* 给出控制信号 */
 
   when(decideJump.assignJump) {
 //    if1.assign.flush := True
@@ -466,7 +480,7 @@ class MultiIssueCPU extends Component {
 
       if (i == 1) {
         val stage = p1(ID)
-        stage.!!!(inst1)
+        stage.!!!(entry1)
         when(stage.produced(rfuWE)) {
           when(stage.produced(rfuIndex) === input(inst).rs) {
             rsNotDone := True
