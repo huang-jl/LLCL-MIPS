@@ -75,15 +75,15 @@ class MyCPUTop extends Component {
 
     val wb = io.debug.wb
     when(sel) {
-      wb.rf.wen := B(4 bits, default -> cpu.p2(WB).stored(cpu.rfuWE).pull)
-      wb.rf.wdata := cpu.p2(WB).stored(cpu.rfuData).pull
-      wb.rf.wnum := cpu.p2(WB).stored(cpu.rfuIndex).pull
-      wb.pc := cpu.p2(WB).stored(cpu.pc).pull
-    } otherwise {
       wb.rf.wen := B(4 bits, default -> cpu.p1(WB).stored(cpu.rfuWE).pull)
       wb.rf.wdata := cpu.p1(WB).stored(cpu.rfuData).pull
       wb.rf.wnum := cpu.p1(WB).stored(cpu.rfuIndex).pull
       wb.pc := cpu.p1(WB).stored(cpu.pc).pull
+    } otherwise {
+      wb.rf.wen := B(4 bits, default -> cpu.p0(WB).stored(cpu.rfuWE).pull)
+      wb.rf.wdata := cpu.p0(WB).stored(cpu.rfuData).pull
+      wb.rf.wnum := cpu.p0(WB).stored(cpu.rfuIndex).pull
+      wb.pc := cpu.p0(WB).stored(cpu.pc).pull
     }
   }
 

@@ -96,6 +96,9 @@ class MultiIssueCPU extends Component {
 
   val mmuRes = Key(MMUTranslationRes(ConstantVal.FINAL_MODE))
 
+  val predJump   = Key(Bool())
+  val predJumpPC = Key(UInt(32 bits))
+
   val tlbRefillException = Key(Bool) //是否是TLB缺失异常（影响异常处理地址）
 
   val mmu  = new MMU
@@ -256,7 +259,7 @@ class MultiIssueCPU extends Component {
   val p0 = p(0)
   val p1 = p(1)
 
-  val correct = Flow(UInt(32 bits))
+  val correct = Flow(UInt(32 bits)).setIdle()
   val IF = new Stage {
     val fetchInst = new FetchInst(icacheConfig)
     // input
@@ -562,8 +565,6 @@ class MultiIssueCPU extends Component {
   ju.b := S(p(0)(EXE).stored(rtValue))
   val juJumpPC = p(0)(EXE).stored(isDJump) ? p(0)(EXE).stored(jumpPC) | U(ju.a)
 
-  val predJump   = Key(Bool())
-  val predJumpPC = Key(UInt(32 bits))
   when(p(1)(EXE).stored(predJump)) {
     correct.push(p(1)(EXE).stored(pc) + 4)
     p(0)(ID).assign.flush := True
@@ -596,11 +597,6 @@ class MultiIssueCPU extends Component {
     next._2.interConnect()
     curr._2.connect(next._2, canPass)
   }
-
-//  if2.interConnect()
-//
-//  if1.connect(if2, if2.can.input)
-//  if1.interConnect()
   /**/
 }
 
