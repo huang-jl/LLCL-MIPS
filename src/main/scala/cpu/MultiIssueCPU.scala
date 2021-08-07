@@ -343,6 +343,20 @@ class MultiIssueCPU extends Component {
     ibus <> fetchInst.io.ibus
   }
 
+  /*分支预测的信号*/
+  // 1. bp.write1阶段
+  IF.fetchInst.io.bp.write1.pc := p1(ID).input(pc)  //?可能不是8字节对齐
+  // 真的需要两个DJump？
+  IF.fetchInst.io.bp.write1.isDJump1 := p1(ID).input(entry1).branch.isDjump
+  IF.fetchInst.io.bp.write1.jumpPC1 := p1(ID).input(entry1).target
+  IF.fetchInst.io.bp.write1.isDJump2 := p2(ID).input(entry2).branch.isDjump
+  IF.fetchInst.io.bp.write1.jumpPC2 := p2(ID).input(entry2).target
+  // 全部用p1的就行？
+  IF.fetchInst.io.bp.write1.assignSomeByName(p1(ID).input(entry1).predict)
+  // 2. bp.write2阶段???
+  IF.fetchInst.io.bp.write2.assignJump := p1(EXE).input(isJump)
+  IF.fetchInst.io.bp.write2.will.input := p1(EXE).will.input
+
   val accessMem2 = new ComponentStage {
     dcu2.io.input.byteEnable := stored(memBE)
     dcu2.io.input.extend := stored(memEx)
@@ -386,21 +400,6 @@ class MultiIssueCPU extends Component {
       decideJump.will.output := p(i)(EXE).will.output
     }
   }
-
-  /*分支预测的信号*/
-  // 1. bp.write1阶段
-  IF.fetchInst.io.bp.write1.pc := p1(ID).input(pc)  //?可能不是8字节对齐
-  // 真的需要两个DJump？
-  IF.fetchInst.io.bp.write1.isDJump1 := p1(ID).input(entry1).branch.isDjump
-  IF.fetchInst.io.bp.write1.jumpPC1 := p1(ID).input(entry1).target
-  IF.fetchInst.io.bp.write1.isDJump2 := p2(ID).input(entry2).branch.isDjump
-  IF.fetchInst.io.bp.write1.jumpPC2 := p2(ID).input(entry2).target
-  // 全部用p1的就行？
-  IF.fetchInst.io.bp.write1.assignSomeByName(p1(ID).input(entry1).predict)
-  // 2. bp.write2阶段???
-  IF.fetchInst.io.bp.write2.assignJump := p1(EXE).input(isJump)
-  IF.fetchInst.io.bp.write2.will.input := p1(EXE).will.input
-  /* 给出控制信号 */
 
   when(decideJump.assignJump) {
 //    if1.assign.flush := True

@@ -15,7 +15,7 @@ object BranchType extends SpinalEnum {
 }
 
 case class PredictInfo() extends Bundle {
-  val taken      = Bool()
+  val taken      = Bool()   //是否预测会发生跳转
   val btbHit     = Bool()
   val btbHitLine = Bits(BTB.NUM_WAYS bits)
   val btbP       = Bits(BTB.NUM_WAYS - 1 bits)
@@ -94,7 +94,7 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
   }
   class PipeS2S3 extends Bundle {
     val exception = FetchException()
-    val inst      = Vec(InstEntry(), 2)
+    val entry      = Vec(InstEntry(), 2)
   }
   val io = new Bundle {
     val fetch  = in Bool ()               //ID阶段是否需要取指
@@ -210,14 +210,14 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
     sendToS3.valid := !ibus.stage2.stall & recvFromS1.valid
     sendToS3.exception := recvFromS1.exception
     when(!recvFromS1.valid)(sendToS3.exception.code := None)
-    sendToS3.inst(0).pc := recvFromS1.pc
-    sendToS3.inst(1).pc := recvFromS1.pc(31 downto 3) @@ U"1" @@ recvFromS1.pc(0, 2 bits)
+    sendToS3.entry(0).pc := recvFromS1.pc
+    sendToS3.entry(1).pc := recvFromS1.pc(31 downto 3) @@ U"1" @@ recvFromS1.pc(0, 2 bits)
     for (i <- 0 until 2) {
-      sendToS3.inst(i).inst.assignFromBits(ibus.stage2.rdata(i * 32, 32 bits))
-      sendToS3.inst(i).predict.assignSomeByName(bp.read2.io)
-      sendToS3.inst(i).branch.is.assignDontCare()
-      sendToS3.inst(i).branch.ty.assignDontCare()
-      sendToS3.inst(i).predict.taken := bp.read2.io.assignJump(i)
+      sendToS3.entry(i).inst.assignFromBits(ibus.stage2.rdata(i * 32, 32 bits))
+      sendToS3.entry(i).predict.assignSomeByName(bp.read2.io)
+      sendToS3.entry(i).branch.is.assignDontCare()
+      sendToS3.entry(i).branch.ty.assignDontCare()
+      sendToS3.entry(i).predict.taken := bp.read2.io.assignJump(i)
     }
 
     // 由于AXI通信无法直接被打断，因此刷新信号需要寄存
@@ -232,8 +232,8 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
       val jumpPc    = UInt(32 bits)
     }.setAsReg()
 
-    sendToS3.inst(0).valid := sendToS3.valid & recvFromS1.pc(2, 1 bits) === 0
-    sendToS3.inst(1).valid := sendToS3.valid & !waiting.delaySlot
+    sendToS3.entry(0).valid := sendToS3.valid & recvFromS1.pc(2, 1 bits) === 0
+    sendToS3.entry(1).valid := sendToS3.valid & !waiting.delaySlot
   }
 
   ibus.stage2.en := S2.recvFromS1.valid & S2.recvFromS1.exception.code.isEmpty
@@ -267,20 +267,20 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
 
     val validInstFromS2 = recvFromS2.valid & !pcHandler.io.flush.s3
 
-    val inst = Vec(InstEntry(), 2)
+    val entry = Vec(InstEntry(), 2)
     for (i <- 0 until 2) {
-      inst(i).pc := recvFromS2.inst(i).pc
-      inst(i).inst := recvFromS2.inst(i).inst
-      inst(i).valid := recvFromS2.inst(i).valid & validInstFromS2
-      inst(i).predict := recvFromS2.inst(i).predict
-      inst(i).branch.is := decoder.is.branch(i)
-      inst(i).branch.ty := recvFromS2.inst(i).inst.branchTy
+      entry(i).pc := recvFromS2.entry(i).pc
+      entry(i).inst := recvFromS2.entry(i).inst
+      entry(i).valid := recvFromS2.entry(i).valid & validInstFromS2
+      entry(i).predict := recvFromS2.entry(i).predict
+      entry(i).branch.is := decoder.is.branch(i)
+      entry(i).branch.ty := recvFromS2.entry(i).inst.branchTy
     }
 
   }
   // 先进行分支指令解码
-  decoder.inst := Vec(S3.recvFromS2.inst.map(entry => entry.inst))
-  decoder.pc := Vec(S3.recvFromS2.inst.map(entry => entry.pc))
+  decoder.inst := Vec(S3.recvFromS2.entry.map(entry => entry.inst))
+  decoder.pc := Vec(S3.recvFromS2.entry.map(entry => entry.pc))
 
   pcHandler.io.stop.valid := fifo.io.full & S3.validInstFromS2
   pcHandler.io.stop.payload := RegNext(S2.recvFromS1.pc)
@@ -330,7 +330,7 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
     }
   }
   when(!branch.busy.reg) {
-    when(fifo.io.empty)(branch.inst := S3.inst(1))
+    when(fifo.io.empty)(branch.inst := S3.entry(1))
       .otherwise {
         branch.inst := fifo.io.pop.data(1).valid ? fifo.io.pop.data(1) | fifo.io.pop.data(0)
       }
@@ -340,13 +340,13 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
   // 0是发送给第一条流水线
   when(branch.busy.reg) {
     io.issue(0) := branch.inst.validWhen(!branch.busy.next)
-  }.otherwise(io.issue(0) := fifo.io.empty ? S3.inst(0) | fifo.io.pop.data(0))
+  }.otherwise(io.issue(0) := fifo.io.empty ? S3.entry(0) | fifo.io.pop.data(0))
   when(branch.busy.next & !fifo.io.empty & !fifo.io.pop.data(1).valid) {
     io.issue(0).valid := False
   }
   // 1是发射给第二条流水线
-  when(branch.busy.reg)(io.issue(1) := byPass ? S3.inst(0) | fifo.io.pop.data(0))
-    .otherwise(io.issue(1) := fifo.io.empty ? S3.inst(1) | fifo.io.pop.data(1))
+  when(branch.busy.reg)(io.issue(1) := byPass ? S3.entry(0) | fifo.io.pop.data(0))
+    .otherwise(io.issue(1) := fifo.io.empty ? S3.entry(1) | fifo.io.pop.data(1))
   when(branch.busy.next)(io.issue(1).valid := False)
 
   for (i <- 0 until 2) {
@@ -365,17 +365,17 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
   fifo.io.push.en := (delaySlot.waiting.reg | (!fifo.io.full & !byPass)) & S3.validInstFromS2
   // push num
   when(byPass & delaySlot.waiting.reg)(fifo.io.push.num := 1)
-    .otherwise(
-      fifo.io.push.num := S3.inst.map(entry => entry.valid.asUInt).reduce((x, y) => x +^ y)
-    )
+    .otherwise {
+      fifo.io.push.num := S3.entry.map(entry => entry.valid.asUInt).reduce((x, y) => x +^ y)
+    }
   // push data
-  when((byPass & delaySlot.waiting.reg) | !S3.inst(0).valid) {
+  when((byPass & delaySlot.waiting.reg) | !S3.entry(0).valid) {
     // 当byPass并且此时需要等延迟槽的时候，只塞入一条指令
-    fifo.io.push.data(0) := S3.inst(1)
+    fifo.io.push.data(0) := S3.entry(1)
   }.otherwise {
-    fifo.io.push.data(0) := S3.inst(0)
+    fifo.io.push.data(0) := S3.entry(0)
   }
-  fifo.io.push.data(1) := S3.inst(1)
+  fifo.io.push.data(1) := S3.entry(1)
   // FIFO POP的条件
   // 1. 队列不是空
   // 2. 后续阶段需要指令供给
