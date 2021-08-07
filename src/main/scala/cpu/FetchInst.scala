@@ -1,8 +1,8 @@
 package cpu
 
-import cpu.defs.{ConstantVal, Mips32Inst}
-import cpu.defs.Config._
 import cache.{CPUICacheInterface, CacheRamConfig}
+import cpu.defs.Config._
+import cpu.defs.{ConstantVal, Mips32Inst}
 import lib.Optional
 import spinal.core._
 import spinal.lib._
@@ -15,7 +15,7 @@ object BranchType extends SpinalEnum {
 }
 
 case class PredictInfo() extends Bundle {
-  val taken      = Bool()   //是否预测会发生跳转
+  val taken      = Bool() //是否预测会发生跳转
   val btbHit     = Bool()
   val btbHitLine = Bits(BTB.NUM_WAYS bits)
   val btbP       = Bits(BTB.NUM_WAYS - 1 bits)
@@ -70,6 +70,25 @@ case class IssueEntry() extends InstEntry {
 }
 
 class FetchInst(icacheConfig: CacheRamConfig) extends Component {
+  private object Aligned extends Enumeration {
+    val Odd, Even = Value
+  }
+  private implicit class PCImplicit(pc: UInt) {
+    /** 对齐4字节的奇数或者偶数 */
+    def align(ty: Aligned.Value): UInt = {
+      ty match {
+        case Aligned.Odd => pc(31 downto 3) @@ U"100"
+        case Aligned.Even => pc(31 downto 3) @@ U"000"
+      }
+    }
+    /** 检查是否是对齐到4字节的奇数 */
+    def isAligned(ty: Aligned.Value): Bool = {
+      ty match {
+        case Aligned.Odd => pc(2, 1 bits) === U"1"
+        case Aligned.Even => pc(2, 1 bits) === U"0"
+      }
+    }
+  }
   private implicit class InstWithBranchImplicit(inst: Mips32Inst) {
     def target(pc: UInt): UInt = {
       val res = UInt(32 bits)
@@ -94,7 +113,7 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
   }
   class PipeS2S3 extends Bundle {
     val exception = FetchException()
-    val entry      = Vec(InstEntry(), 2)
+    val entry     = Vec(InstEntry(), 2)
   }
   val io = new Bundle {
     val fetch  = in Bool ()               //ID阶段是否需要取指
@@ -102,26 +121,27 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
     val jump   = slave Flow UInt(32 bits) //分支纠错
     val except = slave Flow UInt(32 bits) //异常跳转
 
-    val bp = in(new Bundle {
-      val write1 = new Bundle {
-        val pc         = Address()
-        val isDJump1   = Bool()
-        val jumpPC1    = UInt(32 bits)
-        val isDJump2   = Bool()
-        val jumpPC2    = UInt(32 bits)
-        val btbHit     = Bool()
+    val bp = new Bundle {
+      val query = out(new Bundle {
+        val pc     = UInt(32 bits)
+        val nextPC = UInt(32 bits)
+      })
+      val predict = in Vec (new Bundle {
         val btbHitLine = Bits(BTB.NUM_WAYS bits)
+        val btbHit     = Bool()
         val btbP       = Bits(BTB.NUM_WAYS - 1 bits)
         val bhtV       = Bits(BHT.DATA_WIDTH bits)
         val phtV       = UInt(2 bits)
-      }
-      val write2 = new Bundle {
+        /**/
         val assignJump = Bool()
-        val will = new Bundle {
-          val input  = Bool()
+        val jumpPC     = UInt(32 bits)
+      }, 2)
+      val will = out(new Bundle {
+        val input = new Bundle {
+          val S2 = Bool()
         }
-      }
-    })
+      })
+    }
 
     val vaddr     = out UInt (32 bits)                            //取指的虚地址
     val mmuRes    = in(MMUTranslationRes(ConstantVal.FINAL_MODE)) //取指的实地址
@@ -135,7 +155,6 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
     val decoder = Array.fill(2)(new SimpleDecoder)
     val inst    = Vec(Mips32Inst(), 2)
     val pc      = Vec(UInt(32 bits), 2)
-    val target  = Vec(UInt(32 bits), 2)
     val is = new Area {
       val branch = Bits(2 bits)
     }
@@ -144,10 +163,7 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
       is.branch(i) := decoder(i).io.branch
     }
   }
-  val bp = new BranchPredictor
-  bp.write1.io.assignAllByName(io.bp.write1)
-  bp.write2.io.assignAllByName(io.bp.write2)
-  bp.write2.will.input := io.bp.write2.will.input
+
   /*
    * 当pcHandler发起flush请求时，需要作废掉
    * 1. stage1对应pc的取指
@@ -188,10 +204,10 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
   // S2没有准备好就retain pc
   pcHandler.io.retain := !S1.sendToS2.ready
   // 分支预测
-  bp.read1.io.pc := pcHandler.io.pc.current
-  bp.read1.io.nextPC := pcHandler.io.pc.next
+  io.bp.query.pc := pcHandler.io.pc.current.align(Aligned.Even)
+  io.bp.query.nextPC := pcHandler.io.pc.next.align(Aligned.Even)
 
-  bp.read1.will.input := S1.sendToS2.fire
+//  io.bp.will.input.S1 := S1.sendToS2.fire
 
   io.vaddr := pcHandler.io.pc.current
   ibus.stage1.read := True
@@ -214,10 +230,8 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
     sendToS3.entry(1).pc := recvFromS1.pc(31 downto 3) @@ U"1" @@ recvFromS1.pc(0, 2 bits)
     for (i <- 0 until 2) {
       sendToS3.entry(i).inst.assignFromBits(ibus.stage2.rdata(i * 32, 32 bits))
-      sendToS3.entry(i).predict.assignSomeByName(bp.read2.io)
       sendToS3.entry(i).branch.is.assignDontCare()
       sendToS3.entry(i).branch.ty.assignDontCare()
-      sendToS3.entry(i).predict.taken := bp.read2.io.assignJump(i)
     }
 
     // 由于AXI通信无法直接被打断，因此刷新信号需要寄存
@@ -227,12 +241,14 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
     val flush = delayFlush | pcHandler.io.flush.s2
 
     // S2已经检测到分支跳转了但是需要等延迟槽
-    val waiting = new Bundle {
-      val delaySlot = Bool() clearWhen flush
-      val jumpPc    = UInt(32 bits)
-    }.setAsReg()
+    val waiting = new Area {
+      val delaySlot = Reg(Bool()) init False clearWhen flush
+    }
+    val delay = new Area {
+      val jumpPC = Reg(UInt(32 bits))
+    }
 
-    sendToS3.entry(0).valid := sendToS3.valid & recvFromS1.pc(2, 1 bits) === 0
+    sendToS3.entry(0).valid := sendToS3.valid & recvFromS1.pc.isAligned(Aligned.Even)
     sendToS3.entry(1).valid := sendToS3.valid & !waiting.delaySlot
   }
 
@@ -241,21 +257,29 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
 
   // 分支预测
   val predict = new Area {
-    val taken = bp.read2.io.assignJump
-    bp.read2.will.input := S1.sendToS2.fire
+    val taken = io.bp.predict.map(x => x.assignJump).asBits
+    val target = Vec(io.bp.predict.map(x => x.jumpPC))
+    val valid = Bits(2 bits)    //分支预测的两条信息是否有效
+    valid(0) := !S2.waiting.delaySlot & S2.recvFromS1.pc.isAligned(Aligned.Even)
+    valid(1) := !taken(0)
+    io.bp.will.input.S2 := S1.sendToS2.fire
+  }
+  // 指令携带的分支预测相关信息
+  for(i <- 0 until 2) {
+    S2.sendToS3.entry(i).predict.assignSomeByName(io.bp.predict(i))
+    S2.sendToS3.entry(i).predict.taken := predict.taken(i) & predict.valid(i)
   }
   pcHandler.io.predict.setIdle() //默认值
-  when(predict.taken(0) & S2.recvFromS1.fire) {
+  when(predict.taken(0) & predict.valid(0) & S2.recvFromS1.fire) {
     // 第一条指令是跳转，可以立即更新pc
-    pcHandler.io.predict.push(bp.read2.io.jumpPC)
-  }
-  when(predict.taken(1) & S2.recvFromS1.fire) {
+    pcHandler.io.predict.push(predict.target(0))
+  }.elsewhen(predict.taken(1) & S2.recvFromS1.fire) {
     // 第二条指令是跳转，需要等延迟槽
     S2.waiting.delaySlot := True
-    S2.waiting.jumpPc := bp.read2.io.jumpPC
+    S2.delay.jumpPC := predict.target(1)
   }
   when(S2.waiting.delaySlot & S2.recvFromS1.fire) {
-    pcHandler.io.predict.push(S2.waiting.jumpPc)
+    pcHandler.io.predict.push(S2.delay.jumpPC)
   }
   when(S2.waiting.delaySlot & S2.sendToS3.fire)(S2.waiting.delaySlot.clear())
 

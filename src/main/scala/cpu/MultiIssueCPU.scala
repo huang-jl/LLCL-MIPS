@@ -107,6 +107,8 @@ class MultiIssueCPU extends Component {
   val cp0  = new CP0
   val rfu  = new RFU(2, 4)
 
+  val bps = Seq.fill(2)(new BranchPredictor())
+
   /* temp */
   mmu.io.asid.assignDontCare()
   /**/
@@ -279,14 +281,17 @@ class MultiIssueCPU extends Component {
 
   val IF = new Stage {
     val fetchInst = new FetchInst(icacheConfig)
+    // input
     fetchInst.io.jump.valid := decideJump.assignJump
     fetchInst.io.jump.payload := decideJump.produced(jumpPC)
     fetchInst.io.except.valid := cp0.io.exceptionBus.jumpPc.isDefined
     fetchInst.io.except.payload := cp0.io.exceptionBus.jumpPc.value
-    mmu.io.instVaddr := fetchInst.io.vaddr
     fetchInst.io.mmuRes := mmu.io.instRes
     fetchInst.io.fetch := p(0)(ID).can.input & p(1)(ID).can.input
-    // TODO 这个地方连接到ID阶段分别连就可以了，不用都produced下去？
+    for (i <- 0 until 2) fetchInst.io.bp.predict(i).assignAllByName(bps(i).read2.io)
+    //output
+    for (i <- 0 until 2) bps(i).read1.io.assignAllByName(fetchInst.io.bp.query)
+    mmu.io.instVaddr := fetchInst.io.vaddr
     produced(entry1) := fetchInst.io.issue(0)
     produced(entry2) := fetchInst.io.issue(1)
     produced(tlbRefillException) := fetchInst.io.exception.refillException
@@ -297,11 +302,11 @@ class MultiIssueCPU extends Component {
     ibus <> fetchInst.io.ibus
 
     /**/
-    val bps                          = Seq.fill(2)(new BranchPredictor())
     var outputs: Seq[ComponentStage] = Seq()
     for (i <- 0 to 1) {
       val bp    = bps(i)
       val issue = fetchInst.io.issue(i)
+      bp.read2.will.input := fetchInst.io.bp.will.input.S2
       val output = new ComponentStage {
         output(bp.pc) := issue.pc
         output(bp.isDJump) := issue.branch.isDjump
@@ -339,20 +344,6 @@ class MultiIssueCPU extends Component {
     /**/
   }
 
-  /*分支预测的信号*/
-  // 1. bp.write1阶段
-  IF.fetchInst.io.bp.write1.pc := p1(ID).input(pc) //?可能不是8字节对齐
-  // 真的需要两个DJump？
-  IF.fetchInst.io.bp.write1.isDJump1 := p1(ID).input(entry1).branch.isDjump
-  IF.fetchInst.io.bp.write1.jumpPC1 := p1(ID).input(entry1).target
-  IF.fetchInst.io.bp.write1.isDJump2 := p2(ID).input(entry2).branch.isDjump
-  IF.fetchInst.io.bp.write1.jumpPC2 := p2(ID).input(entry2).target
-  // 全部用p1的就行？
-  IF.fetchInst.io.bp.write1.assignSomeByName(p1(ID).input(entry1).predict)
-  // 2. bp.write2阶段???
-  IF.fetchInst.io.bp.write2.assignJump := p1(EXE).input(isJump)
-  IF.fetchInst.io.bp.write2.will.input := p1(EXE).will.input
-
   val accessMem2 = new ComponentStage {
     dcu2.io.input.byteEnable := stored(memBE)
     dcu2.io.input.extend := stored(memEx)
@@ -375,7 +366,7 @@ class MultiIssueCPU extends Component {
     output(memBE) := dcu1.io.output.byteEnable
     output(memWData) := dcu1.io.output.wdata
 
-    dbus.stage1.write := stored(memWE)
+//    dbus.stage1.write := stored(memWE)
     dbus.stage1.paddr := output(mmuRes).paddr
     dbus.stage1.wdata := dcu1.io.output.wdata
     dbus.stage1.byteEnable := dcu1.io.output.byteEnable
@@ -557,6 +548,8 @@ class MultiIssueCPU extends Component {
     condWhen(i == 0, p(i)(MEM1).!!!(useMem)) {
       accessMem1.will.output := p(i)(MEM1).will.output
       accessMem2.will.input := p(i)(MEM2).will.input
+      // 注意只有访存才会在MEM1触发异常
+      dbus.stage1.write := p(i)(MEM1).stored(memWE) & p(i)(MEM1).exception.isEmpty
     }
     condWhen(i == 0, p(i)(MEM2).!!!(useMem)) {
       accessMem2.will.output := p(i)(MEM2).will.output
