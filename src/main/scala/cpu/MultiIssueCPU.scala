@@ -205,6 +205,8 @@ class MultiIssueCPU extends Component {
       input(inst) := entry.inst
       input(isJump) := entry.branch.is
       input(isDJump) := entry.branch.isDjump
+      input(predJump) := entry.predict.taken
+      input(predJumpPC) := entry.predict.
       input(jumpPC) := entry.target
       when(!entry.valid)(assign.flush := True)
 
@@ -251,26 +253,14 @@ class MultiIssueCPU extends Component {
     )
   }
 
-  val p1 = p(0)
-  val p2 = p(1)
+  val p0 = p(0)
+  val p1 = p(1)
 
-  /**/
-  val decideJump = new ComponentStage {
-    val assignJump = RegNext(will.input) & ju.jump
-
-    ju.op := !!!(jumpCond)
-    ju.a := stored(rsValue).asSInt
-    ju.b := stored(rtValue).asSInt
-
-    output(jumpPC) := stored(isDJump) ? stored(jumpPC) | U(stored(rsValue))
-  }
-  /**/
-
+  val correct = Flow(UInt(32 bits))
   val IF = new Stage {
     val fetchInst = new FetchInst(icacheConfig)
     // input
-    fetchInst.io.jump.valid := decideJump.assignJump
-    fetchInst.io.jump.payload := decideJump.produced(jumpPC)
+    fetchInst.io.jump := correct
     fetchInst.io.except.valid := cp0.io.exceptionBus.jumpPc.isDefined
     fetchInst.io.except.payload := cp0.io.exceptionBus.jumpPc.value
     fetchInst.io.mmuRes := mmu.io.instRes
@@ -345,55 +335,28 @@ class MultiIssueCPU extends Component {
     dbus.stage1.byteEnable := dcu1.io.output.byteEnable
   }
 
-  decideJump.interConnect()
-
   accessMem2.interConnect()
   accessMem1.send(accessMem2)
   accessMem1.interConnect()
-
-  for (i <- 1 downto 0) {
-    condWhen(i == 0, p(i)(ID).produced(isJump)) {
-      decideJump.will.input := p(i)(EXE).will.input
-      decideJump.receive(p(i)(ID))
-    }
-    condWhen(i == 0, p(i)(EXE).!!!(isJump)) {
-      decideJump.will.output := p(i)(EXE).will.output
-    }
-  }
-
-  when(decideJump.assignJump) {
-//    if1.assign.flush := True
-    when(p1(EXE).!!!(isJump)) {
-//      if2.assign.flush := True
-      when(!p2(EXE).is.empty) {
-        p1(ID).assign.flush := True
-        p2(ID).assign.flush := True
-      }
-    }
-//    elsewhen !p1(ID).is.empty {
-//      if2.assign.flush := True
-//    }
-  }
-
   /**/
 
   /* CP0 相关控制 */
   when(cp0.io.exceptionBus.jumpPc.isDefined) {
 //    if1.assign.flush := True
 //    if2.assign.flush := True
+    p0(ID).assign.flush := True
     p1(ID).assign.flush := True
-    p2(ID).assign.flush := True
+    p0(EXE).assign.flush := True
     p1(EXE).assign.flush := True
-    p2(EXE).assign.flush := True
-    p2(MEM1).assign.flush := True
-    when(p1(MEM1).produced(modifyCP0)) {
-      p1(MEM1).assign.flush := True
+    p1(MEM1).assign.flush := True
+    when(p0(MEM1).produced(modifyCP0)) {
+      p0(MEM1).assign.flush := True
     }
   }
 
-//  cp0.io.instOnInt.valid := !p1(EXE).is.empty
-//  cp0.io.instOnInt.bd := p1(EXE).produced(inSlot)
-//  cp0.io.instOnInt.pc := p1(EXE).stored(pc)
+//  cp0.io.instOnInt.valid := !p0(EXE).is.empty
+//  cp0.io.instOnInt.bd := p0(EXE).produced(inSlot)
+//  cp0.io.instOnInt.pc := p0(EXE).stored(pc)
   /**/
 
   /* 关注点 rfu 读写前传 */
@@ -439,7 +402,7 @@ class MultiIssueCPU extends Component {
       }
 
       if (i == 1) {
-        val stage = p1(ID)
+        val stage = p0(ID)
         stage.!!!(entry1)
         when(stage.produced(rfuWE)) {
           when(stage.produced(rfuIndex) === input(inst).rs) {
@@ -482,7 +445,7 @@ class MultiIssueCPU extends Component {
       val hi = B(hi_v)
       val lo = B(lo_v)
       if (i == 1) {
-        val stage = p1(EXE)
+        val stage = p0(EXE)
         when(stage.!!!(hiWE)) { hi := stage.produced(newHi) }
         when(stage.!!!(loWE)) { lo := stage.produced(newLo) }
       }
@@ -499,14 +462,14 @@ class MultiIssueCPU extends Component {
   /**/
 
   /* 关注点 cp0 读写前传 */
-  when(p1(EXE).!!!(cp0RE) & (p1(MEM1).!!!(modifyCP0) | p2(MEM1).!!!(modifyCP0))) {
-    p1(EXE).is.done := False
+  when(p0(EXE).!!!(cp0RE) & (p0(MEM1).!!!(modifyCP0) | p1(MEM1).!!!(modifyCP0))) {
+    p0(EXE).is.done := False
   }
   when(
-    p2(EXE).!!!(cp0RE) &
-      (p1(MEM1).!!!(modifyCP0) | p2(MEM1).!!!(modifyCP0) | p1(EXE).!!!(modifyCP0))
+    p1(EXE).!!!(cp0RE) &
+      (p0(MEM1).!!!(modifyCP0) | p1(MEM1).!!!(modifyCP0) | p0(EXE).!!!(modifyCP0))
   ) {
-    p2(EXE).is.done := False
+    p1(EXE).is.done := False
   }
   /**/
 
@@ -529,8 +492,8 @@ class MultiIssueCPU extends Component {
     }
   }
 
-  when(p1(ID).produced(useMem) & p2(ID).produced(useMem)) {
-    p2(ID).is.done := False
+  when(p0(ID).produced(useMem) & p1(ID).produced(useMem)) {
+    p1(ID).is.done := False
   }
   /**/
 
@@ -561,48 +524,69 @@ class MultiIssueCPU extends Component {
   }
   cp0.io.externalInterrupt := io.externalInterrupt(0, 5 bits)
 
-  when(p1(MEM1).produced(modifyCP0) & p2(MEM1).produced(modifyCP0)) {
-    p2(MEM1).is.done := False
+  when(p0(MEM1).produced(modifyCP0) & p1(MEM1).produced(modifyCP0)) {
+    p1(MEM1).is.done := False
   }
   /**/
 
   /* 关注点 跳转相关 */
-//  when(p1(ID).stored(pc)(2)) { p1(ID).assign.flush := True }
-
-  val p2IDFlushNextInst = SimpleTask(
-    p2(EXE).!!!(isJump) & decideJump.assignJump,
-    p2(ID).will.flush
-  )
-  when(p2IDFlushNextInst.has & !p2(ID).is.empty) { p2(ID).assign.flush := True }
-
+  p0(EXE).addComponent(new StageComponent {
+    val dsReg = RegInit(False)
+    when(p0(EXE).will.output | p0(EXE).assign.flush) { dsReg := False }
+    when(p1(MEM1).will.input & p1(EXE).!!!(isJump)) { dsReg := True }
+    output(inSlot) := dsReg
+  })
   p1(EXE).addComponent(new StageComponent {
     val dsReg = RegInit(False)
     when(p1(EXE).will.output | p1(EXE).assign.flush) { dsReg := False }
-    when(p2(MEM1).will.input & p2(EXE).!!!(isJump)) { dsReg := True }
-    output(inSlot) := dsReg
-  })
-  p2(EXE).addComponent(new StageComponent {
-    val dsReg = RegInit(False)
-    when(p2(EXE).will.output | p2(EXE).assign.flush) { dsReg := False }
-    when(p1(EXE).will.input & p1(ID).produced(isJump)) { dsReg := True }
+    when(p0(EXE).will.input & p0(ID).produced(isJump)) { dsReg := True }
     output(inSlot) := dsReg
   })
   /**/
 
   /* 关注点 异常相关 */
-  p2(MEM1).addComponent(new StageComponent {
-    output(hiWE) := p1(MEM1).exception.isEmpty & p2(MEM1).!!!(hiWE)
-    output(loWE) := p1(MEM1).exception.isEmpty & p2(MEM1).!!!(loWE)
+  p1(MEM1).addComponent(new StageComponent {
+    output(hiWE) := p0(MEM1).exception.isEmpty & p1(MEM1).!!!(hiWE)
+    output(loWE) := p0(MEM1).exception.isEmpty & p1(MEM1).!!!(loWE)
   })
   /**/
 
   /* 关注点 2 号流水线不能超过 1 号流水线 */
-  when(!p1(ID).is.done) { p2(ID).is.done := False }
-  when(!p1(EXE).is.done) { p2(EXE).is.done := False }
+  when(!p0(ID).is.done) { p1(ID).is.done := False }
+  when(!p0(EXE).is.done) { p1(EXE).is.done := False }
+  /**/
+
+  /* 关注点: exe 阶段的跳转纠正 */
+  ju.op := p(0)(EXE).!!!(jumpCond)
+  ju.a := S(p(0)(EXE).stored(rsValue))
+  ju.b := S(p(0)(EXE).stored(rtValue))
+  val juJumpPC = p(0)(EXE).stored(isDJump) ? p(0)(EXE).stored(jumpPC) | U(ju.a)
+
+  val predJump   = Key(Bool())
+  val predJumpPC = Key(UInt(32 bits))
+  when(p(1)(EXE).stored(predJump)) {
+    correct.push(p(1)(EXE).stored(pc) + 4)
+    p(0)(ID).assign.flush := True
+    p(1)(ID).assign.flush := True
+  }
+  when(ju.jump) {
+    when(!p(0)(EXE).stored(predJump) | p(0)(EXE).stored(predJumpPC) =/= juJumpPC) {
+      correct.push(juJumpPC)
+      when(!p(1)(EXE).is.empty) {
+        p(0)(ID).assign.flush := True
+        p(1)(ID).assign.flush := True
+      }
+    }
+  } elsewhen p(0)(EXE).stored(predJump) {
+    correct.push(p(0)(EXE).stored(pc) + 4)
+    p(0)(ID).assign.flush := True
+    p(1)(ID).assign.flush := True
+    p(0)(EXE).assign.flush := True
+  }
   /**/
 
   /* 连接各个阶段 */
-  val seq = (IF, IF) +: p1.values.zip(p2.values).toSeq
+  val seq = (IF, IF) +: p0.values.zip(p1.values).toSeq
   for ((curr, next) <- seq.zip(seq.tail).reverse) {
     val canPass = next._1.can.input & next._2.can.input
 
