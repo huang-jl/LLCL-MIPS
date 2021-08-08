@@ -96,7 +96,7 @@ class MultiIssueCPU extends Component {
 
   val mmuRes = Key(MMUTranslationRes(ConstantVal.FINAL_MODE))
 
-  val predJump   = Key(Bool())
+  val predJump   = Key(Bool()) setEmptyValue False
   val predJumpPC = Key(UInt(32 bits))
 
   val tlbRefillException = Key(Bool) //是否是TLB缺失异常（影响异常处理地址）
@@ -560,29 +560,31 @@ class MultiIssueCPU extends Component {
   /**/
 
   /* 关注点: exe 阶段的跳转纠正 */
-  ju.op := p(0)(EXE).!!!(jumpCond)
-  ju.a := S(p(0)(EXE).stored(rsValue))
-  ju.b := S(p(0)(EXE).stored(rtValue))
-  val juJumpPC = p(0)(EXE).stored(isDJump) ? p(0)(EXE).stored(jumpPC) | U(ju.a)
+  ju.op := p0(EXE).!!!(jumpCond)
+  ju.a := S(p0(EXE).stored(rsValue))
+  ju.b := S(p0(EXE).stored(rtValue))
+  val juJumpPC = p0(EXE).stored(isDJump) ? p0(EXE).stored(jumpPC) | U(ju.a)
 
-  when(p(1)(EXE).stored(predJump)) {
-    correct.push(p(1)(EXE).stored(pc) + 4)
-    p(0)(ID).assign.flush := True
-    p(1)(ID).assign.flush := True
+  when(p1(EXE).!!!(predJump)) {
+    correct.push(p1(EXE).stored(pc) + 4)
+    p0(ID).assign.flush := True
+    p1(ID).assign.flush := True
   }
-  when(ju.jump) {
-    when(!p(0)(EXE).stored(predJump) | p(0)(EXE).stored(predJumpPC) =/= juJumpPC) {
-      correct.push(juJumpPC)
-      when(!p(1)(EXE).is.empty) {
-        p(0)(ID).assign.flush := True
-        p(1)(ID).assign.flush := True
+  when(RegNext(p0(EXE).will.input)) {
+    when(ju.jump) {
+      when(!p0(EXE).stored(predJump) | p0(EXE).stored(predJumpPC) =/= juJumpPC) {
+        correct.push(juJumpPC)
+        when(!p1(EXE).is.empty) {
+          p0(ID).assign.flush := True
+          p1(ID).assign.flush := True
+        }
       }
+    } elsewhen p0(EXE).stored(predJump) {
+      correct.push(p0(EXE).stored(pc) + 4)
+      p0(ID).assign.flush := True
+      p1(ID).assign.flush := True
+      p1(EXE).assign.flush := True
     }
-  } elsewhen p(0)(EXE).stored(predJump) {
-    correct.push(p(0)(EXE).stored(pc) + 4)
-    p(0)(ID).assign.flush := True
-    p(1)(ID).assign.flush := True
-    p(0)(EXE).assign.flush := True
   }
   /**/
 
