@@ -532,7 +532,7 @@ class MultiIssueCPU extends Component {
   }
   /**/
 
-  /* 关注点 跳转相关 */
+  /* 关注点: 延迟槽的计算 */
   p0(EXE).addComponent(new StageComponent {
     val dsReg = RegInit(False)
     when(p0(EXE).will.output | p0(EXE).assign.flush) { dsReg := False }
@@ -560,32 +560,36 @@ class MultiIssueCPU extends Component {
   /**/
 
   /* 关注点: exe 阶段的跳转纠正 */
-  ju.op := p0(EXE).!!!(jumpCond)
+  ju.op := p0(EXE).stored(jumpCond)
   ju.a := S(p0(EXE).stored(rsValue))
   ju.b := S(p0(EXE).stored(rtValue))
   val juJumpPC = p0(EXE).stored(isDJump) ? p0(EXE).stored(jumpPC) | U(ju.a)
 
-  when(p1(EXE).!!!(predJump)) {
-    correct.push(p1(EXE).stored(pc) + 4)
-    p0(ID).assign.flush := True
-    p1(ID).assign.flush := True
-  }
-  when(RegNext(p0(EXE).will.input)) {
-    when(ju.jump) {
-      when(!p0(EXE).stored(predJump) | p0(EXE).stored(predJumpPC) =/= juJumpPC) {
-        correct.push(juJumpPC)
+  val p0ExeIsNew = RegNext(p0(EXE).will.input)
+  val p1ExeIsNew = RegNext(p1(EXE).will.input)
+  when(p0(EXE).stored(isJump)) {
+    correct.payload := ju.jump ? juJumpPC | p0(EXE).stored(pc) + 8
+    when(p0ExeIsNew) {
+      when(ju.jump & (!p0(EXE).stored(predJump) | p0(EXE).stored(predJumpPC) =/= juJumpPC) | !ju.jump & p0(EXE).stored(predJump)) {
+        correct.valid := True
         when(!p1(EXE).is.empty) {
           p0(ID).assign.flush := True
           p1(ID).assign.flush := True
         }
       }
-    } elsewhen p0(EXE).stored(predJump) {
-      correct.push(p0(EXE).stored(pc) + 4)
-      p0(ID).assign.flush := True
-      p1(ID).assign.flush := True
-      p1(EXE).assign.flush := True
     }
-  }
+  } /* otherwise {
+    when(p0(EXE).stored(predJump)) {
+      correct.push(p0(EXE).stored(pc) + 4)
+      p0(ID).assign.flush := p0ExeIsNew
+      p1(ID).assign.flush := p0ExeIsNew
+      p1(EXE).assign.flush := p0ExeIsNew
+    } elsewhen p1(EXE).stored(predJump) {
+      correct.push(p1(EXE).stored(pc) + 4)
+      p0(ID).assign.flush := p1ExeIsNew
+      p1(ID).assign.flush := p1ExeIsNew
+    }
+  }*/
   /**/
 
   /* 连接各个阶段 */

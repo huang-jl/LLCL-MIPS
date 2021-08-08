@@ -27,7 +27,7 @@ class SDPRAM(numEntries: Int, indexWidth: Int, entryWidth: Int) extends Componen
 
   val prevDina  = RegNext(mem.io.dina)
   val currAddrb = RegNext(mem.io.addrb)
-  val conflict  = RegNext(io.ena & (io.addra === currAddrb)) init False
+  val conflict  = RegNext(io.ena & (io.addra === mem.io.addrb)) init False
 
   mem.io.ena := io.ena
   mem.io.addra := io.addra
