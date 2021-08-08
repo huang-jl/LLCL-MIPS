@@ -298,28 +298,25 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
   val S3 = new Area {
     val recvFromS2 = S2.sendToS3.m2sPipe(collapsBubble = false, flush = S2.flush)
     recvFromS2.setName("S3_recvFromS2")
-    // 这个信号最多维持1个周期
-    val S2WaitingDelaySlot = RegNextWhen(S2.waiting.delaySlot, recvFromS2.ready) init False
-    S2WaitingDelaySlot clearWhen S2WaitingDelaySlot
-
+    val S2WaitingDelaySlot = RegNext(S2.waiting.delaySlot) init False
+    // 接收到S2的指令有效
     val validInstFromS2 = recvFromS2.fire & !pcHandler.io.flush.s3
 
     val entry = Vec(InstEntry(), 2)
     for (i <- 0 until 2) {
       entry(i).pc := recvFromS2.entry(i).pc
       entry(i).inst := recvFromS2.entry(i).inst
-      entry(i).valid := recvFromS2.entry(i).valid & validInstFromS2
       entry(i).predict := recvFromS2.entry(i).predict
       entry(i).branch.is := decoder.is.branch(i)
       entry(i).branch.ty := recvFromS2.entry(i).inst.branchTy
+      entry(i).valid := recvFromS2.entry(i).valid & validInstFromS2
     }
-    val recvDelaySlot = Bool
   }
   // 先进行分支指令解码
   decoder.inst := Vec(S3.recvFromS2.entry.map(entry => entry.inst))
   decoder.pc := Vec(S3.recvFromS2.entry.map(entry => entry.pc))
 
-  pcHandler.io.stop.valid := fifo.io.full & !S3.recvDelaySlot & S3.recvFromS2.valid
+  pcHandler.io.stop.valid := S3.recvFromS2.isStall
   pcHandler.io.stop.payload := RegNext(S2.recvFromS1.pc)
 
   val delaySlot = new Area {
@@ -336,7 +333,7 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
     // branch.busy是处理ID阶段拿走的逻辑：一旦分支指令处于准备发射阶段
     // 给到ID阶段的第一条指令一定是暂存的分支指令
     when(waiting.reg) {
-      when(fifo.io.empty)(waiting.next := !S3.recvDelaySlot)
+      when(fifo.io.empty)(waiting.next := !S3.validInstFromS2)
         .otherwise(waiting.next := False)
     }.elsewhen(io.fetch) {
       when(fifo.io.empty)(waiting.next := decoder.is.branch(1) & S3.validInstFromS2)
@@ -399,9 +396,8 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
   // FIFO能够PUSH的必要条件是S2传来有效指令
   // 1. 正在等待延迟槽，那么另一条指令进入
   // 2. 队列没有满并且不是byPass
-  S3.recvDelaySlot := S3.recvFromS2.valid & (S3.S2WaitingDelaySlot | delaySlot.waiting.reg) & !pcHandler.io.flush.s3
 //  fifo.io.push.en := (S3.recvFromS2.delaySlot | delaySlot.waiting.reg | (!fifo.io.full & !byPass)) & S3.validInstFromS2
-  fifo.io.push.en := (!byPass & S3.validInstFromS2) | S3.recvDelaySlot
+  fifo.io.push.en := S3.validInstFromS2 & (!byPass | delaySlot.waiting.reg)
   // push num
   when(byPass & delaySlot.waiting.reg)(fifo.io.push.num := S3.entry(1).valid.asUInt.resized)
     .otherwise {
@@ -423,7 +419,7 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
   // FIFO FLUSH
   fifo.io.flush := pcHandler.io.flush.s3
 
-  S3.recvFromS2.ready := !fifo.io.full
+  S3.recvFromS2.ready := !fifo.io.full | S3.S2WaitingDelaySlot
   io.exception := S3.recvFromS2.exception
   when(!S3.recvFromS2.valid)(io.exception.code := None)
 }
