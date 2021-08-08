@@ -297,7 +297,7 @@ class MultiIssueCPU extends Component {
       bps(1).write1.will.input := p(0)(ID).will.input
     }
     /**/
-    when(!p1(EXE).is.empty & p1(ID).input(pc)(2) | !p0(ID).input(pc)(2)) {
+    when(p1(ID).stored(entry2).valid & p1(ID).input(pc)(2) | !p0(ID).input(pc)(2)) {
       bps(0).write2.will.input := p(0)(EXE).will.input
       bps(1).write2.will.input := p(1)(EXE).will.input
     } otherwise {
