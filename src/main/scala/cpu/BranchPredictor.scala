@@ -80,7 +80,7 @@ class BranchPredictor(
     bpu.io.w.bhtEn := !!!(isDJump)
     bpu.io.w.phtEn := !!!(isDJump)
     bpu.io.w.bhtI := stored(bhtI)
-    bpu.io.w.bhtV := stored(bhtV)(1, bhtDataWidth - 1 bits) ## io.assignJump
+    bpu.io.w.bhtV := stored(bhtV)(0, bhtDataWidth - 1 bits) ## io.assignJump
     bpu.io.w.phtI := stored(phtI)
     bpu.io.w.phtV := io.assignJump ? stored(phtVP) | stored(phtVM)
   }
@@ -131,14 +131,24 @@ class BranchPredictor(
     bpu.io.r.phtI := stored(phtI)
     output(phtV) := bpu.io.r.phtV
     /**/
-    io.assignJump := !!!(btbHit) & output(phtV)(1)
-    io.jumpPC := U(stored(btbData) ## B"00")
+    io.assignJump := output(btbHit) & output(phtV)(1)
+    io.jumpPC := U(output(btbData) ## B"00")
     /**/
-    io.btbHitLine := stored(btbHitLine)
-    io.btbHit := stored(btbHit)
-    io.btbP := stored(btbP)
+    io.btbHitLine := output(btbHitLine)
+    io.btbHit := output(btbHit)
+    io.btbP := output(btbP)
     io.bhtV := stored(bhtV)
     io.phtV := output(phtV)
+    /**/
+    btb.io.r.en := will.input
+    val metaLine = btb.io.r.metaLine
+    val dataLine = btb.io.r.dataLine
+    output(btbP) := btb.io.r.p
+    for (i <- 0 to 3) {
+      output(btbHitLine)(i) := (True ## stored(pc).btbTag) === metaLine(i)
+    }
+    output(btbHit) := output(btbHitLine).orR
+    output(btbData) := dataLine.oneHotAccess(output(btbHitLine))
   }
 
   val read1 = new ComponentStage {
@@ -147,16 +157,7 @@ class BranchPredictor(
       val pc     = Address()
     }
     /**/
-    btb.io.r.en := will.input
-    btb.io.r.index := io.nextPC.btbIndex
-    val metaLine = btb.io.r.metaLine
-    val dataLine = btb.io.r.dataLine
-    output(btbP) := btb.io.r.p
-    for (i <- 0 to 3) {
-      output(btbHitLine)(i) := (True ## io.pc.btbTag) === metaLine(i)
-    }
-    output(btbHit) := output(btbHitLine).orR
-    output(btbData) := dataLine.oneHotAccess(output(btbHitLine))
+    btb.io.r.index := io.pc.btbIndex
     /**/
     bpu.io.r.bhtI := io.pc.bhtBase ^ io.pc.bhtIndex
     output(bhtV) := bpu.io.r.bhtV

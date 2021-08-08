@@ -305,8 +305,13 @@ class MultiIssueCPU extends Component {
       bps(1).write2.will.input := p(0)(EXE).will.input
     }
     /**/
-    bps(0).write2.io.assignJump := p(0)(EXE).stored(isDJump) & ju.jump
-    bps(1).write2.io.assignJump := p(1)(EXE).stored(isDJump) & ju.jump
+    when(p1(EXE).stored(pc)(2)) {
+      bps(0).write2.io.assignJump := ju.jump
+      bps(1).write2.io.assignJump := False
+    } otherwise {
+      bps(0).write2.io.assignJump := False
+      bps(1).write2.io.assignJump := ju.jump
+    }
     /**/
   }
 
