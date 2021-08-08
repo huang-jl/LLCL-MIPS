@@ -285,7 +285,7 @@ class MultiIssueCPU extends Component {
     bps(0).read2.will.input := fetchInst.io.bp.will.input.S2
     bps(1).read2.will.input := fetchInst.io.bp.will.input.S2
     /**/
-    when(fetchInst.io.issue(1).pc(2)) {
+    when(fetchInst.io.issue(1).valid & fetchInst.io.issue(1).pc(2) | !fetchInst.io.issue(0).pc(2)) {
       bps(0).write0.io.issue := fetchInst.io.issue(0)
       bps(0).write1.will.input := p(0)(ID).will.input
       bps(1).write0.io.issue := fetchInst.io.issue(1)
@@ -297,7 +297,7 @@ class MultiIssueCPU extends Component {
       bps(1).write1.will.input := p(0)(ID).will.input
     }
     /**/
-    when(p(1)(ID).produced(pc)(2)) {
+    when(!p1(EXE).is.empty & p1(ID).input(pc)(2) | !p0(ID).input(pc)(2)) {
       bps(0).write2.will.input := p(0)(EXE).will.input
       bps(1).write2.will.input := p(1)(EXE).will.input
     } otherwise {
@@ -305,12 +305,16 @@ class MultiIssueCPU extends Component {
       bps(1).write2.will.input := p(0)(EXE).will.input
     }
     /**/
-    when(p1(EXE).stored(pc)(2)) {
+    when(!p1(EXE).is.empty & p1(EXE).stored(pc)(2) | !p0(EXE).stored(pc)(2)) {
       bps(0).write2.io.assignJump := ju.jump
+      bps(0).write2.will.output := p0(EXE).will.output
       bps(1).write2.io.assignJump := False
+      bps(1).write2.will.output := p1(EXE).will.output
     } otherwise {
       bps(0).write2.io.assignJump := False
+      bps(0).write2.will.output := p1(EXE).will.output
       bps(1).write2.io.assignJump := ju.jump
+      bps(1).write2.will.output := p0(EXE).will.output
     }
     /**/
   }
