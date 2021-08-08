@@ -45,11 +45,11 @@ class BranchPredictor(
   }
 
   val pc      = Key(Address())
-  val isDJump = Key(Bool())
+  val isDJump = Key(Bool()) setEmptyValue False
   val jumpPC  = Key(UInt(32 bits))
 
   val btbHitLine = Key(Bits(btbNumWays bits))
-  val btbHit     = Key(Bool())
+  val btbHit     = Key(Bool()) setEmptyValue False
   val btbOH      = Key(Bits(btbNumWays bits))
   val btbMeta    = Key(Bits(Address.btbMetaWidth bits))
   val btbData    = Key(Bits(30 bits))
@@ -70,7 +70,7 @@ class BranchPredictor(
       val assignJump = Bool()
     }
     /**/
-    btb.io.w.en := stored(btbHit) | stored(isDJump)
+    btb.io.w.en := stored(btbHit) | !!!(isDJump)
     btb.io.w.oh := stored(btbOH)
     btb.io.w.index := stored(pc).btbIndex
     btb.io.w.meta := stored(btbMeta)
@@ -131,7 +131,7 @@ class BranchPredictor(
     bpu.io.r.phtI := stored(phtI)
     output(phtV) := bpu.io.r.phtV
     /**/
-    io.assignJump := stored(btbHit) & output(phtV)(1)
+    io.assignJump := !!!(btbHit) & output(phtV)(1)
     io.jumpPC := U(stored(btbData) ## B"00")
     /**/
     io.btbHitLine := stored(btbHitLine)
