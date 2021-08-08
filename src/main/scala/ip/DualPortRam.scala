@@ -145,9 +145,11 @@ class SimpleDualPortBram(config: BRamIPConfig) extends Component {
   mem.io.wea := io.portA.we.asBits
   // B
   mem.io.enb := True
-  val currAddrB = RegNext(mem.io.addrb) init 0
-  mem.io.addrb := io.portB.en ? io.portB.addr | currAddrB
+  mem.io.addrb := io.portB.addr
   io.portB.dout := mem.io.doutb
+//  val currAddrB = RegNext(mem.io.addrb) init 0
+//  mem.io.addrb := io.portB.en ? io.portB.addr | currAddrB
+//  io.portB.dout := mem.io.doutb
 }
 
 ///** @param dataWidth 数据宽度，单位是bit

@@ -30,8 +30,9 @@ class RFU(numW: Int = 1, numR: Int = 2) extends Component {
     val r = Vec(slave(RegRead()), numR)
   }
 
-  val mem = Vec(Reg(Bits(32 bits)), 32)
-  mem(0).init(0)
+//  val mem = Vec(Reg(Bits(32 bits)), 32)
+val mem = Vec(RegInit(B"32'h0"), 32)
+//  mem(0).init(0)
 
   for (i <- 0 until numW) {
     when(io.w(i).valid) { mem(io.w(i).index) := io.w(i).data }

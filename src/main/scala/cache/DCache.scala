@@ -155,7 +155,8 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
       val write = new Bundle {
         val data  = RegNext(_write_.data)
         val addr  = RegNext(_write_.addr)
-        val valid = RegNext(we.data)
+        val valid = Reg(Bits(2 bits)) init 0
+        valid := B"00"  //默认情况下个周期都为0
       }
     }
     val extra = new Bundle {
@@ -205,7 +206,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     * ************ STAGE   1 **********
     * *********************************
     */
-  val sendToS2 = Stream(new PipeS1S2)
+  val sendToS2 = Flow(new PipeS1S2)
   //only drive portB for read
   ram.read.addr := stage1.index
   //第一阶段组合逻辑读tag，打一拍读data
@@ -224,7 +225,6 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     * *********************************
     */
   val recvFromS1 = sendToS2.m2sPipe()
-  recvFromS1.ready := !io.cpu.stage2.stall
 
   //only drive portA for write
   ram.write.addr := stage2.index
@@ -460,10 +460,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
       when(counter.inv.value === config.wayNum)(goto(stateBoot))
     }
 
-    refill.whenIsActive {
-      ram.read.addr := stage2.index
-      goto(finish)
-    }
+    refill.whenIsActive(goto(finish))
     finish.whenIsActive(goto(stateBoot))
   }
 
@@ -530,6 +527,12 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
           LRU.access := cache.replaceIndex
         }
       }
+    }
+    dcacheFSM.refill.whenIsActive {
+      for (i <- 0 until config.wayNum) {
+        sendToS2.hitPerWay(i) := (ram.extra.tags(i).tag === stage2.tag.asBits) & ram.extra.tags(i).valid
+      }
+      ram.read.addr := stage2.index
     }
     //uncache dcache状态
     dcacheFSM.uncacheReadWaitAXIReady.whenIsActive {
@@ -601,6 +604,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     when(cache.write & cache.hit) {
       ram.we.tag := recvFromS1.hitPerWay
       ram.we.data := recvFromS1.hitPerWay
+      ram.prev.write.valid := recvFromS1.hitPerWay
     }
   }
   //写入dache ram的数据
