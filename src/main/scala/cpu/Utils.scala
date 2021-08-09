@@ -1,6 +1,7 @@
 package cpu
 
 import spinal.core._
+import spinal.lib._
 import scala.language.postfixOps
 
 package object Utils {
@@ -94,4 +95,5 @@ package object Utils {
       isUnmappedSection(vaddr) | (isUseg(vaddr) & ERL)
     }
   }
+
 }

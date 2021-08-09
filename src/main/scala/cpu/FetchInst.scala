@@ -123,8 +123,8 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
     val delaySlot = Bool()
   }
   val io = new Bundle {
-    val fetch  = in Bool ()               //ID阶段是否需要取指
-    val issue  = out Vec (IssueEntry(), 2)
+//    val fetch  = in Bool ()               //ID阶段是否需要取指
+    val issue  = master Stream Vec(IssueEntry(), 2)
     val jump   = slave Flow UInt(32 bits) //分支纠错
     val except = slave Flow UInt(32 bits) //异常跳转
 
@@ -308,6 +308,10 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
     // 接收到S2的指令有效
     val validInstFromS2 = recvFromS2.valid & !pcHandler.io.flush.s3 & canRecv
 
+    val sendToID  = Stream(Vec(IssueEntry(), 2))
+    sendToID.valid := sendToID.payload(0).valid | sendToID.payload(1).valid
+    io.issue << FetchInst.s2mPipe(sendToID, flush = pcHandler.io.flush.s3)
+
     val entry = Vec(InstEntry(), 2)
     for (i <- 0 until 2) {
       entry(i).pc := recvFromS2.entry(i).pc
@@ -341,7 +345,7 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
     when(waiting.reg) {
       when(fifo.io.empty)(waiting.next := !S3.validInstFromS2)
         .otherwise(waiting.next := False)
-    }.elsewhen(io.fetch) {
+    }.elsewhen(S3.sendToID.ready) {
       when(fifo.io.empty)(waiting.next := decoder.is.branch(1) & S3.validInstFromS2)
         .otherwise {
           waiting.next := fifo.io.pop.data(1).valid ? fifo.io.pop.data(1).branch.is |
@@ -356,7 +360,7 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
       val reg  = RegNext(next)
       next := reg
     }
-    when(io.fetch) {
+    when(S3.sendToID.ready) {
       when(busy.reg) {
         when(fifo.io.empty)(busy.next := delaySlot.waiting.next)
           .otherwise(busy.next := False)
@@ -376,25 +380,25 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
       }
   }
 
-  val byPass = io.fetch & fifo.io.empty
+  val byPass = S3.sendToID.ready & fifo.io.empty
   // 0是发送给第一条流水线
   when(branch.busy.reg) {
-    io.issue(0) := branch.inst.validWhen(!branch.busy.next)
-  }.otherwise(io.issue(0) := fifo.io.empty ? S3.entry(0) | fifo.io.pop.data(0))
+    S3.sendToID.payload(0) := branch.inst.validWhen(!branch.busy.next)
+  }.otherwise(S3.sendToID.payload(0) := fifo.io.empty ? S3.entry(0) | fifo.io.pop.data(0))
   when(branch.busy.next & !fifo.io.empty & !fifo.io.pop.data(1).valid) {
-    io.issue(0).valid := False
+    S3.sendToID.payload(0).valid := False
   }
   // 1是发射给第二条流水线
-  when(branch.busy.reg)(io.issue(1) := byPass ? S3.entry(0) | fifo.io.pop.data(0))
-    .otherwise(io.issue(1) := fifo.io.empty ? S3.entry(1) | fifo.io.pop.data(1))
-  when(branch.busy.next)(io.issue(1).valid := False)
+  when(branch.busy.reg)(S3.sendToID.payload(1) := fifo.io.empty ? S3.entry(0) | fifo.io.pop.data(0))
+    .otherwise(S3.sendToID.payload(1) := fifo.io.empty ? S3.entry(1) | fifo.io.pop.data(1))
+  when(branch.busy.next)(S3.sendToID.payload(1).valid := False)
 
   for (i <- 0 until 2) {
-    io.issue(i).target := io.issue(i).inst.target(io.issue(i).pc)
+    S3.sendToID.payload(i).target := S3.sendToID.payload(i).inst.target(S3.sendToID.payload(i).pc)
   }
 
   when(pcHandler.io.flush.s3) {
-    for (i <- 0 until 2) io.issue(i).valid := False
+    for (i <- 0 until 2) S3.sendToID.payload(i).valid := False
     delaySlot.waiting.next := False
     branch.busy.next := False
   }
@@ -416,7 +420,7 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
   // FIFO POP的条件
   // 1. 队列不是空
   // 2. 后续阶段需要指令供给
-  fifo.io.pop.en := io.fetch & !fifo.io.empty
+  fifo.io.pop.en := S3.sendToID.ready & !fifo.io.empty
   fifo.io.pop.num := branch.busy.reg ? U(1) | U(2)
   // FIFO FLUSH
   fifo.io.flush := pcHandler.io.flush.s3
@@ -618,7 +622,7 @@ class SimpleFifo[T <: Data](gen: => T, depth: Int) extends Component {
   io.empty := !risingOccupancy & ptrMatch
   io.pop.data := ram(popPtr.value)
 
-  when(io.push.en & (!io.full | io.pop.en)) {
+  when(io.push.en & !io.full) {
     ram(pushPtr.value) := io.push.data
     pushPtr.increment()
   }
@@ -649,4 +653,19 @@ object FetchInst {
       CacheRamConfig(blockSize = ConstantVal.IcacheLineSize, wayNum = ConstantVal.IcacheWayNum)
     SpinalVerilog(new FetchInst(icacheConfig))
   }
+
+  def s2mPipe[T <: Data](that: Stream[T], flush: Bool): Stream[T] = {
+    val s2mPipe = Stream(that.payloadType)
+
+    val rValid = RegInit(False) setWhen (that.valid) clearWhen (s2mPipe.ready | flush)
+    val rData  = RegNextWhen(that.payload, that.ready)
+
+    that.ready := !rValid
+
+    s2mPipe.valid := (that.valid || rValid) & !flush
+    s2mPipe.payload := Mux(rValid, rData, that.payload)
+
+    s2mPipe
+  }
+
 }

@@ -267,13 +267,17 @@ class MultiIssueCPU extends Component {
     fetchInst.io.except.valid := cp0.io.exceptionBus.jumpPc.isDefined
     fetchInst.io.except.payload := cp0.io.exceptionBus.jumpPc.value
     fetchInst.io.mmuRes := mmu.io.instRes
-    fetchInst.io.fetch := p(0)(ID).can.input & p(1)(ID).can.input
+    fetchInst.io.issue.ready := p(0)(ID).can.input & p(1)(ID).can.input
     for (i <- 0 until 2) fetchInst.io.bp.predict(i).assignAllByName(bps(i).read2.io)
     //output
     for (i <- 0 until 2) bps(i).read1.io.assignAllByName(fetchInst.io.bp.query)
     mmu.io.instVaddr := fetchInst.io.vaddr
-    produced(entry1) := fetchInst.io.issue(0)
-    produced(entry2) := fetchInst.io.issue(1)
+    produced(entry1) := fetchInst.io.issue.payload(0)
+    produced(entry2) := fetchInst.io.issue.payload(1)
+    when(!fetchInst.io.issue.valid) {
+      produced(entry1).valid := False
+      produced(entry2).valid := False
+    }
     produced(tlbRefillException) := fetchInst.io.exception.refillException
     produced(excOnFetch) := fetchInst.io.exception.code.isDefined
 

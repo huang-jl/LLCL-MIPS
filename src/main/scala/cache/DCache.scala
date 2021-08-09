@@ -395,8 +395,6 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     val uncacheWriteMem          = new State
     val uncacheWaitAXIBValid     = new State
 
-    val invalidate = new State //清除某个Cache Index
-
     val refill = new State
     val finish = new State
 
@@ -414,7 +412,6 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
           when(io.uncacheAXI.aw.ready)(goto(uncacheWriteMem))
             .otherwise(goto(uncacheWriteWaitAXIReady))
         }
-        when(io.cpu.invalidate.en)(goto(invalidate)) //当要刷新时，可能需要进行写回
       }
 
     //这个状态是开始读一个cache line的前置状态，进入这个状态说明ram和fifo都没有命中
@@ -426,7 +423,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     waitWb.whenIsActive {
       //当FIFO要push（也就是要替换脏行时）并且FIFO已经满了的时候，需要等待
       when(!(writeBuffer.io.push & writeBuffer.io.full)) {
-        when(wb.hit)(goto(stateBoot))
+        when(wb.hit)(goto(refill))
           .otherwise(goto(waitAXIReady))
       }
     }
@@ -456,12 +453,19 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
       when(io.uncacheAXI.b.valid)(goto(stateBoot))
     }
 
-    invalidate.whenIsActive {
-      when(counter.inv.value === config.wayNum)(goto(stateBoot))
-    }
-
     refill.whenIsActive(goto(finish))
     finish.whenIsActive(goto(stateBoot))
+
+    // 刷新DCache
+    val invalidate = ConstantVal.FINAL_MODE generate new State //清除某个Cache Index
+    if(ConstantVal.FINAL_MODE) {
+      invalidate.whenIsActive {
+        when(counter.inv.value === config.wayNum)(goto(stateBoot))
+      }
+      stateBoot.whenIsActive {
+        when(io.cpu.invalidate.en)(goto(invalidate)) //当要刷新时，可能需要进行写回
+      }
+    }
   }
 
   val wbFSM = new StateMachine {
@@ -558,9 +562,10 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   cache.rdata := cache.hitLine.banks(stage2.wordOffset)
   when(!cache.hit & recvFromS1.fifo.hit.read) {
     cache.rdata := recvFromS1.fifo.rdata
-  }.elsewhen(!cache.hit & wb.hit) {
-    cache.rdata := wb.data.banks(stage2.wordOffset)
   }
+//  elsewhen(!cache.hit & wb.hit) {
+//    cache.rdata := wb.data.banks(stage2.wordOffset)
+//  }
   //uncache读出的数据，直接从总线上拿
   uncache.rdata := io.uncacheAXI.r.data
 
@@ -628,21 +633,23 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
       }
     }
   }
-  // 刷新Cache某个index的写回检测逻辑
-  dcacheFSM.invalidate.whenIsActive {
-    val wayIndex = counter.inv.value.resize(log2Up(config.wayNum))
-    when(ram.extra.tags(wayIndex).valid & ram.extra.tags(wayIndex).dirty) {
-      writeBuffer.io.push := True
-      writeBuffer.io.pushTag := ram.extra.tags(wayIndex).tag ## stage2.index
-      writeBuffer.io.pushData := ram.read.datas(wayIndex)
-      when(!writeBuffer.io.full)(counter.inv.increment())
-    }.otherwise(counter.inv.increment())
+  if(ConstantVal.FINAL_MODE) {
+    // 刷新Cache某个index的写回检测逻辑
+    dcacheFSM.invalidate.whenIsActive {
+      val wayIndex = counter.inv.value.resize(log2Up(config.wayNum))
+      when(ram.extra.tags(wayIndex).valid & ram.extra.tags(wayIndex).dirty) {
+        writeBuffer.io.push := True
+        writeBuffer.io.pushTag := ram.extra.tags(wayIndex).tag ## stage2.index
+        writeBuffer.io.pushData := ram.read.datas(wayIndex)
+        when(!writeBuffer.io.full)(counter.inv.increment())
+      }.otherwise(counter.inv.increment())
 
-    // 最后一拍时写回
-    for (i <- 0 until config.wayNum) {
-      when(counter.inv.valueNext === config.wayNum) {
-        ram.we.tag(i) := True
-        ram.write.tag.valid := False
+      // 最后一拍时写回
+      for (i <- 0 until config.wayNum) {
+        when(counter.inv.valueNext === config.wayNum) {
+          ram.we.tag(i) := True
+          ram.write.tag.valid := False
+        }
       }
     }
   }
