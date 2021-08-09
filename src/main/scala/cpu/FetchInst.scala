@@ -120,6 +120,7 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
   class PipeS2S3 extends Bundle {
     val exception = FetchException()
     val entry     = Vec(InstEntry(), 2)
+    val delaySlot = Bool()
   }
   val io = new Bundle {
     val fetch  = in Bool ()               //ID阶段是否需要取指
@@ -226,11 +227,10 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
   val S2 = new Area {
     val recvFromS1 = S1.sendToS2.m2sPipe(collapsBubble = false, flush = pcHandler.io.flush.s1)
     recvFromS1.setName("S2_recvFromS1")
-    val sendToS3 = Stream(new PipeS2S3)
+    val sendToS3 = Flow(new PipeS2S3)
     // 当S3准备好了并且S2没有stall时可以接受新的输入
-    recvFromS1.ready := !ibus.stage2.stall & sendToS3.ready
+    recvFromS1.ready := !ibus.stage2.stall
 
-    sendToS3.valid := !ibus.stage2.stall & recvFromS1.valid
     sendToS3.exception := recvFromS1.exception
     when(!recvFromS1.valid)(sendToS3.exception.code := None)
     sendToS3.entry(0).pc := recvFromS1.pc
@@ -251,12 +251,13 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
     val waiting = new Area {
       val delaySlot = Reg(Bool()) init False
     }
-    val delay = new Area {
-      val jumpPC = Reg(UInt(32 bits))
-    }
+    val clearNext = Reg(Bool()) init False  // 分支预测需要作废下一拍的两条指令
 
-    sendToS3.entry(0).valid := sendToS3.valid & recvFromS1.pc.isAligned(Aligned.Even)
-    sendToS3.entry(1).valid := sendToS3.valid & !waiting.delaySlot
+    sendToS3.delaySlot := waiting.delaySlot
+    sendToS3.entry(0).valid := sendToS3.valid & recvFromS1.pc.isAligned(Aligned.Even) & !clearNext
+    sendToS3.entry(1).valid := sendToS3.valid & !waiting.delaySlot & !clearNext
+
+    sendToS3.valid := recvFromS1.fire & !clearNext & !flush
   }
 
   ibus.stage2.en := S2.recvFromS1.valid & S2.recvFromS1.exception.code.isEmpty
@@ -267,8 +268,8 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
     val taken  = io.bp.predict.map(x => x.assignJump).asBits
     val target = Vec(io.bp.predict.map(x => x.jumpPC))
     val valid  = Bits(2 bits) //分支预测的两条信息是否有效
-    valid(0) := !S2.waiting.delaySlot & S2.recvFromS1.pc.isAligned(Aligned.Even)
-    valid(1) := !taken(0)
+    valid(0) := !S2.waiting.delaySlot & !S2.clearNext & S2.recvFromS1.pc.isAligned(Aligned.Even) & S2.recvFromS1.fire
+    valid(1) := !taken(0) & !S2.clearNext & S2.recvFromS1.fire
     io.bp.will.input.S2 := S1.sendToS2.fire & !pcHandler.io.flush.s1
   }
   // 指令携带的分支预测相关信息
@@ -278,29 +279,33 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
     S2.sendToS3.entry(i).predict.target := predict.target(i)
   }
   pcHandler.io.predict.setIdle() //默认值
-  when(predict.taken(0) & predict.valid(0) & S2.recvFromS1.fire) {
+  when(predict.taken(0) & predict.valid(0)) {
     // 第一条指令是跳转，可以立即更新pc
     pcHandler.io.predict.push(predict.target(0))
-  }.elsewhen(predict.taken(1) & S2.recvFromS1.fire) {
+    S2.clearNext := True
+  }.elsewhen(predict.taken(1) & predict.valid(1)) {
     // 第二条指令是跳转，需要等延迟槽
     S2.waiting.delaySlot := True
-    S2.delay.jumpPC := predict.target(1)
+    pcHandler.io.predict.push(predict.target(1))
+//    S2.delay.jumpPC := predict.target(1)
   }
-  when(S2.waiting.delaySlot & S2.recvFromS1.fire) {
-    pcHandler.io.predict.push(S2.delay.jumpPC)
-  }
-  when(S2.waiting.delaySlot & S2.sendToS3.fire)(S2.waiting.delaySlot.clear())
+  // clearNext
+  when(S2.clearNext & S2.recvFromS1.fire)(S2.clearNext.clear())
+  // delaySlot
+  when(S2.waiting.delaySlot & S2.recvFromS1.fire)(S2.waiting.delaySlot.clear())
+  // flush
+  S2.clearNext.clearWhen(S2.flush)
   S2.waiting.delaySlot.clearWhen(S2.flush)
 
   /*
    * stage3: 压入指令队列或者byPass给下一阶段
    */
   val S3 = new Area {
-    val recvFromS2 = S2.sendToS3.m2sPipe(collapsBubble = false, flush = S2.flush)
+    val recvFromS2 = S2.sendToS3.m2sPipe()
     recvFromS2.setName("S3_recvFromS2")
-    val S2WaitingDelaySlot = RegNext(S2.waiting.delaySlot) init False
+    val canRecv = !fifo.io.full | recvFromS2.delaySlot
     // 接收到S2的指令有效
-    val validInstFromS2 = recvFromS2.fire & !pcHandler.io.flush.s3
+    val validInstFromS2 = recvFromS2.valid & !pcHandler.io.flush.s3 & canRecv
 
     val entry = Vec(InstEntry(), 2)
     for (i <- 0 until 2) {
@@ -316,7 +321,7 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
   decoder.inst := Vec(S3.recvFromS2.entry.map(entry => entry.inst))
   decoder.pc := Vec(S3.recvFromS2.entry.map(entry => entry.pc))
 
-  pcHandler.io.stop.valid := S3.recvFromS2.isStall
+  pcHandler.io.stop.valid := S3.recvFromS2.valid & !S3.canRecv
   pcHandler.io.stop.payload := RegNext(S2.recvFromS1.pc)
 
   val delaySlot = new Area {
@@ -393,10 +398,6 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
     branch.busy.next := False
   }
 
-  // FIFO能够PUSH的必要条件是S2传来有效指令
-  // 1. 正在等待延迟槽，那么另一条指令进入
-  // 2. 队列没有满并且不是byPass
-//  fifo.io.push.en := (S3.recvFromS2.delaySlot | delaySlot.waiting.reg | (!fifo.io.full & !byPass)) & S3.validInstFromS2
   fifo.io.push.en := S3.validInstFromS2 & (!byPass | delaySlot.waiting.reg)
   // push num
   when(byPass & delaySlot.waiting.reg)(fifo.io.push.num := S3.entry(1).valid.asUInt.resized)
@@ -419,7 +420,6 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
   // FIFO FLUSH
   fifo.io.flush := pcHandler.io.flush.s3
 
-  S3.recvFromS2.ready := !fifo.io.full | S3.S2WaitingDelaySlot
   io.exception := S3.recvFromS2.exception
   when(!S3.recvFromS2.valid)(io.exception.code := None)
 }
@@ -450,13 +450,14 @@ class PCHandler extends Component {
     val next = UInt(32 bits)
     val reg  = RegNext(next) init ConstantVal.INIT_PC
   }
-  io.pc.current := io.predict.valid ? io.predict.payload | pc.reg
+//  io.pc.current := io.predict.valid ? io.predict.payload | pc.reg
+  io.pc.current := pc.reg
   io.pc.next := pc.next
 
   pc.next := (io.pc.current(31 downto 3) + 1) @@ U"000" //默认情况下pc + 8
+  when(io.predict.valid)(pc.next := io.predict.payload)
   when(io.retain)(pc.next := pc.reg)
   when(io.stop.valid)(pc.next := io.stop.payload)
-//  when(io.predict.valid)(pc.next := io.predict.payload)
   when(io.jump.valid)(pc.next := io.jump.payload)
   when(io.except.valid)(pc.next := io.except.payload)
 }
