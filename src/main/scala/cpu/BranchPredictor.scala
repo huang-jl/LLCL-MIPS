@@ -5,18 +5,15 @@ import ip._
 import lib._
 import defs.Config._
 
-class BranchPredictor(
-    number: Int,
-    btbNumEntries: Int = BTB.NUM_ENTRIES,
-    btbNumWays: Int = BTB.NUM_WAYS,
-    btbIndexWidth: Int = BTB.INDEX_WIDTH,
-    bhtNumEntries: Int = BHT.NUM_ENTRIES,
-    bhtIndexWidth: Int = BHT.INDEX_WIDTH,
-    bhtDataWidth: Int = BHT.DATA_WIDTH,
-    phtNumEntries: Int = PHT.NUM_ENTRIES,
-    phtIndexWidth: Int = PHT.INDEX_WIDTH
-) extends Area {
-  setName(s"bp_$number")
+object BranchPredictor {
+  val btbNumEntries = BTB.NUM_ENTRIES
+  val btbNumWays    = BTB.NUM_WAYS
+  val btbIndexWidth = BTB.INDEX_WIDTH
+  val bhtNumEntries = BHT.NUM_ENTRIES
+  val bhtIndexWidth = BHT.INDEX_WIDTH
+  val bhtDataWidth  = BHT.DATA_WIDTH
+  val phtNumEntries = PHT.NUM_ENTRIES
+  val phtIndexWidth = PHT.INDEX_WIDTH
 
   object Address {
     val btbIndexOffset = 3
@@ -44,24 +41,29 @@ class BranchPredictor(
     def phtIndex: UInt = this(phtIndexOffset, phtIndexWidth bits)
   }
 
-  val pc      = Key(Address())
-  val isDJump = Key(Bool()).setEmptyValue(False)
-  val jumpPC  = Key(UInt(32 bits))
+  val pc      = Key(Address()).setName("bp_pc")
+  val isDJump = Key(Bool()).setEmptyValue(False).setName("bp_isDJump")
+  val jumpPC  = Key(UInt(32 bits)).setName("bp_jumpPC")
 
-  val btbHitLine = Key(Bits(btbNumWays bits))
-  val btbHit     = Key(Bool()).setEmptyValue(False)
-  val btbOH      = Key(Bits(btbNumWays bits))
-  val btbMeta    = Key(Bits(Address.btbMetaWidth bits))
-  val btbData    = Key(Bits(30 bits))
-  val btbP       = Key(Bits(btbNumWays - 1 bits))
+  val btbHitLine = Key(Bits(btbNumWays bits)).setName("bp_btbHitLine")
+  val btbHit     = Key(Bool()).setEmptyValue(False).setName("bp_btbHit")
+  val btbOH      = Key(Bits(btbNumWays bits)).setName("bp_btbOH")
+  val btbMeta    = Key(Bits(Address.btbMetaWidth bits)).setName("bp_btbMeta")
+  val btbData    = Key(Bits(30 bits)).setName("bp_btbData")
+  val btbP       = Key(Bits(btbNumWays - 1 bits)).setName("bp_btbP")
 
-  val bhtI  = Key(UInt(bhtIndexWidth bits))
-  val bhtV  = Key(Bits(bhtDataWidth bits))
-  val phtI  = Key(UInt(phtIndexWidth bits))
-  val phtV  = Key(UInt(2 bits))
-  val phtVP = Key(UInt(2 bits))
-  val phtVM = Key(UInt(2 bits))
+  val bhtI  = Key(UInt(bhtIndexWidth bits)).setName("bp_bhtI")
+  val bhtV  = Key(Bits(bhtDataWidth bits)).setName("bp_bhtV")
+  val phtI  = Key(UInt(phtIndexWidth bits)).setName("bp_phtI")
+  val phtV  = Key(UInt(2 bits)).setName("bp_phtV")
+  val phtVP = Key(UInt(2 bits)).setName("bp_phtVP")
+  val phtVM = Key(UInt(2 bits)).setName("bp_phtVM")
+}
 
+class BranchPredictor(number: Int) extends Area {
+  setName(s"bp_$number")
+
+  import BranchPredictor._
   val btb = new Cache(btbNumEntries / btbNumWays, btbNumWays, btbIndexWidth, Address.btbMetaWidth, 30)
   val bpu = new BPU(bhtNumEntries, bhtIndexWidth, bhtDataWidth, phtNumEntries, phtIndexWidth)
 
@@ -86,34 +88,31 @@ class BranchPredictor(
   }
 
   val write1 = new ComponentStage {
-    val valid = stored(isDJump)
-    val we    = stored(btbHit) ? stored(btbHitLine) | btb.plru(stored(btbP))
-    output(btbOH) := we
-    output(btbMeta) := valid ## stored(pc).btbTag
-    output(btbData) := B(stored(jumpPC))(2, 30 bits)
-    btb.getP(stored(btbP), we, valid, output(btbP))
-    /**/
-    output(bhtI) := stored(pc).bhtBase ^ stored(pc).bhtIndex
-    output(phtI) := U(stored(bhtV), phtIndexWidth bits) ^ stored(pc).phtIndex
-    output(phtVP) := U((stored(phtV)(1) | stored(phtV)(0)) ## (stored(phtV)(1) | !stored(phtV)(0)))
-    output(phtVM) := U((stored(phtV)(1) & stored(phtV)(0)) ## (stored(phtV)(1) & !stored(phtV)(0)))
-  }
-
-  val write0 = new ComponentStage {
     val io = new Bundle {
       val issue = IssueEntry()
     }
     /**/
+    val jumpPC     = io.issue.target
+    val btbHitLine = io.issue.predict.btbHitLine
+    val btbP       = io.issue.predict.btbP
+    val phtV       = io.issue.predict.phtV
+    /**/
     output(pc) := io.issue.pc
     output(isDJump) := io.issue.branch.isDjump
-    output(jumpPC) := io.issue.target
-    /**/
-    output(btbHitLine) := io.issue.predict.btbHitLine
     output(btbHit) := io.issue.predict.btbHit
-    output(btbP) := io.issue.predict.btbP
-    /**/
     output(bhtV) := io.issue.predict.bhtV
-    output(phtV) := io.issue.predict.phtV
+    /**/
+    val valid = output(isDJump)
+    val we    = output(btbHit) ? btbHitLine | btb.plru(btbP)
+    output(btbOH) := we
+    output(btbMeta) := valid ## output(pc).btbTag
+    output(btbData) := B(jumpPC)(2, 30 bits)
+    btb.getP(btbP, we, valid, output(BranchPredictor.btbP))
+    /**/
+    output(bhtI) := output(pc).bhtBase ^ output(pc).bhtIndex
+    output(phtI) := U(output(bhtV), phtIndexWidth bits) ^ output(pc).phtIndex
+    output(phtVP) := U((phtV(1) | phtV(0)) ## (phtV(1) | !phtV(0)))
+    output(phtVM) := U((phtV(1) & phtV(0)) ## (phtV(1) & !phtV(0)))
   }
 
   val read2 = new ComponentStage {
@@ -169,8 +168,6 @@ class BranchPredictor(
   write2.interConnect()
   write1.send(write2)
   write1.interConnect()
-  write0.send(write1)
-  write0.interConnect()
 
   read2.interConnect()
   read1.send(read2)
