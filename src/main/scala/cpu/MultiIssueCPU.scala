@@ -284,36 +284,27 @@ class MultiIssueCPU extends Component {
     /**/
     bps(0).read2.will.input := fetchInst.io.bp.will.input.S2
     bps(1).read2.will.input := fetchInst.io.bp.will.input.S2
+    /* 两个 write1 随便哪条指令用都一样 */
+    bps(0).write1.io.issue := p0(ID).stored(entry1)
+    bps(1).write1.io.issue := p1(ID).stored(entry2)
     /**/
-    when(fetchInst.io.issue(1).valid & fetchInst.io.issue(1).pc(2) | !fetchInst.io.issue(0).pc(2)) {
-      bps(0).write0.io.issue := fetchInst.io.issue(0)
-      bps(0).write1.will.input := p(0)(ID).will.input
-      bps(1).write0.io.issue := fetchInst.io.issue(1)
-      bps(1).write1.will.input := p(1)(ID).will.input
-    } otherwise {
-      bps(0).write0.io.issue := fetchInst.io.issue(1)
-      bps(0).write1.will.input := p(1)(ID).will.input
-      bps(1).write0.io.issue := fetchInst.io.issue(0)
-      bps(1).write1.will.input := p(0)(ID).will.input
+    bps(0).write2.will.input := p0(EXE).will.input
+    bps(1).write2.will.input := p1(EXE).will.input
+    when(p1(ID).stored(entry2).valid & !p1(ID).input(pc)(2) | p0(ID).stored(entry1).valid & p0(ID).input(pc)(2)) {
+      bps(0).write2.will.input := p1(EXE).will.input
+      bps(1).write2.will.input := p0(EXE).will.input
+      bps(0).write1.send(bps(1).write2)
+      bps(1).write1.send(bps(0).write2)
     }
     /**/
-    when(p1(ID).stored(entry2).valid & p1(ID).input(pc)(2) | !p0(ID).input(pc)(2)) {
-      bps(0).write2.will.input := p(0)(EXE).will.input
-      bps(1).write2.will.input := p(1)(EXE).will.input
-    } otherwise {
-      bps(0).write2.will.input := p(1)(EXE).will.input
-      bps(1).write2.will.input := p(0)(EXE).will.input
-    }
-    /**/
-    when(!p1(EXE).is.empty & p1(EXE).stored(pc)(2) | !p0(EXE).stored(pc)(2)) {
-      bps(0).write2.io.assignJump := ju.jump
-      bps(0).write2.will.output := p0(EXE).will.output
-      bps(1).write2.io.assignJump := False
-      bps(1).write2.will.output := p1(EXE).will.output
-    } otherwise {
+    bps(0).write2.io.assignJump := ju.jump
+    bps(1).write2.io.assignJump := False
+    bps(0).write2.will.output := p0(EXE).will.output
+    bps(1).write2.will.output := p1(EXE).will.output
+    when(!p1(EXE).is.empty & !p1(EXE).stored(pc)(2) | !p0(EXE).is.empty & p0(EXE).stored(pc)(2)) {
       bps(0).write2.io.assignJump := False
-      bps(0).write2.will.output := p1(EXE).will.output
       bps(1).write2.io.assignJump := ju.jump
+      bps(0).write2.will.output := p1(EXE).will.output
       bps(1).write2.will.output := p0(EXE).will.output
     }
     /**/
