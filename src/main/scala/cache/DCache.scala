@@ -248,8 +248,6 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
         }.otherwise(hitLine := ram.read.datas(i))
       }
     }
-    //读或写命中时更新LRU
-    when((read | write) & hit)(LRU.we := True)
 
     val replaceIndex = LRU.mem.latestWayIndex(stage2.index)
   }
@@ -511,6 +509,11 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
       io.uncacheAXI.ar.valid := uncache.read
       io.uncacheAXI.aw.valid := uncache.write
       counter.inv.clear()
+    }
+    dcacheFSM.stateBoot.whenIsActive {
+      when(readMiss|writeMiss)(ram.read.addr := stage2.index)
+      //读或写命中时更新LRU
+      when((cache.read | cache.write) & cache.hit)(LRU.we := True)
     }
     dcacheFSM.waitAXIReady.whenIsActive {
       counter.recv.clear()
