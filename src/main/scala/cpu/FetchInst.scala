@@ -269,7 +269,7 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
     val target = Vec(io.bp.predict.map(x => x.jumpPC))
     val valid  = Bits(2 bits) //分支预测的两条信息是否有效
     valid(0) := !S2.waiting.delaySlot & !S2.clearNext & S2.recvFromS1.pc.isAligned(Aligned.Even) & S2.recvFromS1.fire
-    valid(1) := !taken(0) & !S2.clearNext & S2.recvFromS1.fire
+    valid(1) := !taken(0) & !S2.waiting.delaySlot & !S2.clearNext & S2.recvFromS1.fire
     io.bp.will.input.S2 := S1.sendToS2.fire & !pcHandler.io.flush.s1
   }
   // 指令携带的分支预测相关信息
@@ -283,7 +283,8 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
     // 第一条指令是跳转，可以立即更新pc
     pcHandler.io.predict.push(predict.target(0))
     S2.clearNext := True
-  }.elsewhen(predict.taken(1) & predict.valid(1)) {
+  }
+  when(predict.taken(1) & predict.valid(1)) {
     // 第二条指令是跳转，需要等延迟槽
     S2.waiting.delaySlot := True
     pcHandler.io.predict.push(predict.target(1))
