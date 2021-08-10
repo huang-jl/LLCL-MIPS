@@ -99,6 +99,9 @@ class MultiIssueCPU extends Component {
   val predJump   = Key(Bool()) setEmptyValue False
   val predJumpPC = Key(UInt(32 bits))
 
+  val rsFromMem = Key(Bool())
+  val rtFromMem = Key(Bool())
+
   val tlbRefillException = Key(Bool) //是否是TLB缺失异常（影响异常处理地址）
 
   val mmu  = new MMU
@@ -157,6 +160,11 @@ class MultiIssueCPU extends Component {
     }
     val exe = new Stage {
       setName(s"exe_${i}")
+
+      val memData = Reg(Bits(32 bits))
+      when(will.input) { memData := dcu2.io.output.rdata }
+      input(rsValue) := stored(rsFromMem) ? memData | stored(rsValue)
+      input(rtValue) := stored(rtFromMem) ? memData | stored(rtValue)
 
       val calc = new StageComponent {
         alu.io.input.op := !!!(aluOp)
@@ -392,15 +400,20 @@ class MultiIssueCPU extends Component {
       val rsNotDone = False
       val rtNotDone = False
 
+      output(rsFromMem) := False
+      output(rtFromMem) := False
+
       for (j <- 0 to 1) {
         val stage = p(j)(MEM2)
         when(stage.!!!(rfuWE)) {
           when(stage.stored(rfuIndex) === input(inst).rs) {
-            output(rsValue) := stage.produced(rfuData)
+            output(rsValue) := stage.stored(rfuData)
+            output(rsFromMem) := stage.stored(memRE)
             rsNotDone := !stage.is.done
           }
           when(stage.stored(rfuIndex) === input(inst).rt) {
-            output(rtValue) := stage.produced(rfuData)
+            output(rtValue) := stage.stored(rfuData)
+            output(rtFromMem) := stage.stored(memRE)
             rtNotDone := !stage.is.done
           }
         }
@@ -412,10 +425,12 @@ class MultiIssueCPU extends Component {
           when(stage.!!!(rfuWE)) {
             when(stage.stored(rfuIndex) === input(inst).rs) {
               output(rsValue) := stage.produced(rfuData)
+              output(rsFromMem) := False
               rsNotDone := stage.stored(memRE)
             }
             when(stage.stored(rfuIndex) === input(inst).rt) {
               output(rtValue) := stage.produced(rfuData)
+              output(rtFromMem) := False
               rtNotDone := stage.stored(memRE)
             }
           }
@@ -583,8 +598,8 @@ class MultiIssueCPU extends Component {
 
   /* 关注点: exe 阶段的跳转纠正 */
   ju.op := p0(EXE).stored(jumpCond)
-  ju.a := S(p0(EXE).stored(rsValue))
-  ju.b := S(p0(EXE).stored(rtValue))
+  ju.a := S(p0(EXE).input(rsValue))
+  ju.b := S(p0(EXE).input(rtValue))
   val juJumpPC = p0(EXE).stored(isDJump) ? p0(EXE).stored(jumpPC) | U(ju.a)
 
   val p0ExeIsNew = RegNext(p0(EXE).will.input)
