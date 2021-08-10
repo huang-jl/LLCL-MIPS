@@ -75,7 +75,7 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
     val Odd, Even = Value
   }
   private implicit class PCImplicit(pc: UInt) {
-
+    require(pc.getBitsWidth == 32)
     /** 对齐4字节的奇数或者偶数 */
     def align(ty: Aligned.Value): UInt = {
       ty match {
@@ -161,7 +161,6 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
   val decoder = new Area {
     val decoder = Array.fill(2)(new SimpleDecoder)
     val inst    = Vec(Mips32Inst(), 2)
-    val pc      = Vec(UInt(32 bits), 2)
     val is = new Area {
       val branch = Bits(2 bits)
     }
@@ -231,8 +230,6 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
     // 当S3准备好了并且S2没有stall时可以接受新的输入
     recvFromS1.ready := !ibus.stage2.stall
 
-    sendToS3.exception := recvFromS1.exception
-    when(!recvFromS1.valid)(sendToS3.exception.code := None)
     sendToS3.entry(0).pc := recvFromS1.pc
     sendToS3.entry(1).pc := recvFromS1.pc(31 downto 3) @@ U"1" @@ recvFromS1.pc(0, 2 bits)
     for (i <- 0 until 2) {
@@ -257,6 +254,8 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
     sendToS3.entry(0).valid := sendToS3.valid & recvFromS1.pc.isAligned(Aligned.Even) & !clearNext
     sendToS3.entry(1).valid := sendToS3.valid & !waiting.delaySlot & !clearNext
 
+    sendToS3.exception := recvFromS1.exception
+    when(!recvFromS1.valid | flush)(sendToS3.exception.code := None)
     sendToS3.valid := recvFromS1.fire & !clearNext & !flush
   }
 
@@ -324,7 +323,6 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
   }
   // 先进行分支指令解码
   decoder.inst := Vec(S3.recvFromS2.entry.map(entry => entry.inst))
-  decoder.pc := Vec(S3.recvFromS2.entry.map(entry => entry.pc))
 
   pcHandler.io.stop.valid := S3.recvFromS2.valid & !S3.canRecv
   pcHandler.io.stop.payload := RegNext(S2.recvFromS1.pc)
@@ -426,7 +424,7 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
   fifo.io.flush := pcHandler.io.flush.s3
 
   io.exception := S3.recvFromS2.exception
-  when(!S3.recvFromS2.valid)(io.exception.code := None)
+  when(!S3.recvFromS2.valid | pcHandler.io.flush.s3)(io.exception.code := None)
 }
 
 class PCHandler extends Component {
