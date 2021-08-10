@@ -378,7 +378,6 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
 
   ram.we.assignFromBits(B(0, ram.we.getBitsWidth bits))
   writeBuffer.io.pop := False
-  io.cpu.stage2.stall := True
 
   //这个状态机不包括写内存
   //写内存的逻辑是单独一个状态机，直接和fifo进行交互
@@ -439,7 +438,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
       when(io.uncacheAXI.ar.ready)(goto(uncacheReadMem))
     }
     uncacheReadMem.whenIsActive {
-      when(io.uncacheAXI.r.valid)(goto(stateBoot))
+      when(io.uncacheAXI.r.valid)(goto(finish))
     }
     uncacheWriteWaitAXIReady.whenIsActive {
       when(io.uncacheAXI.aw.ready)(goto(uncacheWriteMem))
@@ -448,7 +447,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
       when(io.uncacheAXI.w.ready)(goto(uncacheWaitAXIBValid))
     }
     uncacheWaitAXIBValid.whenIsActive {
-      when(io.uncacheAXI.b.valid)(goto(stateBoot))
+      when(io.uncacheAXI.b.valid)(goto(finish))
     }
 
     refill.whenIsActive(goto(finish))
@@ -504,7 +503,6 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
 
   //dcache状态机的逻辑
   val dcacheFSMLogic = new Area {
-    dcacheFSM.stateBoot.whenIsNext(io.cpu.stage2.stall := False)
     dcacheFSM.stateBoot.whenIsActive {
       io.uncacheAXI.ar.valid := uncache.read
       io.uncacheAXI.aw.valid := uncache.write
@@ -547,6 +545,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     }
     dcacheFSM.uncacheReadMem.whenIsActive {
       io.uncacheAXI.r.ready := True
+      recvBlock.banks(0) := io.uncacheAXI.r.data
     }
     dcacheFSM.uncacheWriteWaitAXIReady.whenIsActive {
       io.uncacheAXI.aw.valid := True
@@ -555,9 +554,12 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
       io.uncacheAXI.w.valid := True
       io.uncacheAXI.w.last := True
     }
+    val loadStoreRequest = readMiss | writeMiss | uncache.read | uncache.write
   }
 
-  //cache读出的数据可能是
+  io.cpu.stage2.stall := !(dcacheFSM.isActive(dcacheFSM.finish) |
+    (dcacheFSM.isActive(dcacheFSM.stateBoot) & !dcacheFSMLogic.loadStoreRequest))
+    //cache读出的数据可能是
   //1.如果读miss，此时多打2个周期，能够从hitLine中读到
   //2.命中cache: hitLine
   //3.命中Fifo中的数据
@@ -570,7 +572,8 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
 //    cache.rdata := wb.data.banks(stage2.wordOffset)
 //  }
   //uncache读出的数据，直接从总线上拿
-  uncache.rdata := io.uncacheAXI.r.data
+//  uncache.rdata := io.uncacheAXI.r.data
+  uncache.rdata := recvBlock(0)
 
   wb.writing := !wbFSM.isActive(wbFSM.stateBoot) //write buffer正在写回
 
