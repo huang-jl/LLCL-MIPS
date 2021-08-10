@@ -16,9 +16,10 @@ class DU extends Component {
     val inst = in(Mips32Inst())
 
     // out
-    val alu_op    = out(ALU_OP)
-    val alu_a_src = out(ALU_A_SRC)
-    val alu_b_src = out(ALU_B_SRC)
+    val alu_op     = out(ALU_OP)
+    val alu_a_src  = out(ALU_A_SRC)
+    val alu_b_src  = out(ALU_B_SRC)
+    val complex_op = out Bool ()
 
     val cp0_re = out Bool ()
     val cp0_we = out Bool ()
@@ -65,8 +66,8 @@ class DU extends Component {
     val compare_op        = Utils.instantiateWhen(out(CompareOp), ConstantVal.FINAL_MODE)
     val me_type           = Utils.instantiateWhen(out(ME_TYPE), ConstantVal.FINAL_MODE)
 
-    val fuck = out Bool () //例如特权指令，拉高后让后面的指令都不发射
-    val privilege = out Bool()  //是否是COP0特权指令
+    val fuck      = out Bool () //例如特权指令，拉高后让后面的指令都不发射
+    val privilege = out Bool () //是否是COP0特权指令
   }
 
   // wires
@@ -76,9 +77,10 @@ class DU extends Component {
 
   //
 
-  val aluOp   = Key(ALU_OP())
-  val aluASrc = Key(ALU_A_SRC())
-  val aluBSrc = Key(ALU_B_SRC())
+  val aluOp     = Key(ALU_OP())
+  val aluASrc   = Key(ALU_A_SRC())
+  val aluBSrc   = Key(ALU_B_SRC())
+  val complexOp = Key(Bool())
 
   val cp0Re, cp0We = Key(Bool)
 
@@ -104,7 +106,7 @@ class DU extends Component {
   val exception = Key(Optional(ExcCode()))
   val eret      = Key(Bool)
   val fuck      = Key(Bool)
-  val privilege = Key(Bool)  //是否是COP0特权指令
+  val privilege = Key(Bool) //是否是COP0特权指令
 
   val tlbr, tlbw, tlbp = Key(Bool)
   val tlbIndexSrc      = Key(TLBIndexSrc())
@@ -120,6 +122,7 @@ class DU extends Component {
     default(aluOp) to ALU_OP.addu
     default(aluASrc) to ALU_A_SRC.rs
     default(aluBSrc) to ALU_B_SRC.rt
+    default(complexOp) to False
     default(cp0Re) to False
     default(cp0We) to False
     default(dcuRe) to False
@@ -369,13 +372,16 @@ class DU extends Component {
       set(rfuRd) to RFU_RD.rt
       set(rfuRdSrc) to RFU_RD_SRC.cp0
     }
+    // Complex Op
+    val complexOperation = Seq(MUL, MULT, MULTU, DIV, DIVU)
+    for (inst <- complexOperation) on(inst) { set(complexOp) to True }
 
     if (ConstantVal.FINAL_MODE) {
       val unalignedLoad = Map(
         LWL -> ME_TYPE.lwl,
-        LWR -> ME_TYPE.lwr,
+        LWR -> ME_TYPE.lwr
       )
-      for((inst, ty) <- unalignedLoad) {
+      for ((inst, ty) <- unalignedLoad) {
         on(inst) {
           set(dcuRe) to True
           set(rfuRd) to RFU_RD.rt
@@ -389,7 +395,7 @@ class DU extends Component {
         SWL -> ME_TYPE.swl,
         SWR -> ME_TYPE.swr
       )
-      for((inst, ty) <- unalignedStore) {
+      for ((inst, ty) <- unalignedStore) {
         on(inst) {
           set(dcuWe) to True
           set(dcuBe) to U"11"
@@ -439,6 +445,7 @@ class DU extends Component {
           set(aluOp) to op
           set(aluASrc) to ALU_A_SRC.rs
           set(aluBSrc) to ALU_B_SRC.rt
+          set(complexOp) to True
           set(useRs) to True
           set(useRt) to True
           set(rfuRd) to RFU_RD.rd
@@ -520,7 +527,7 @@ class DU extends Component {
       }
       // Privilege Instruction （暂时没有包括Cache指令，上面已经处理了Cache指令）
       val priv = Set(ERET, TLBP, TLBR, TLBWI, TLBWR, MFC0, MTC0, WAIT)
-      for (inst <- priv) on(inst){set(privilege) to True}
+      for (inst <- priv) on(inst) { set(privilege) to True }
       // Instruction that does nothing
       val useless = Set(InstructionSpec.SYNC, WAIT, PREF)
       for (inst <- useless) {
@@ -536,6 +543,7 @@ class DU extends Component {
   io.alu_op := decoder.output(aluOp)
   io.alu_a_src := decoder.output(aluASrc)
   io.alu_b_src := decoder.output(aluBSrc)
+  io.complex_op := decoder.output(complexOp)
 
   io.cp0_re := decoder.output(cp0Re)
   io.cp0_we := decoder.output(cp0We)

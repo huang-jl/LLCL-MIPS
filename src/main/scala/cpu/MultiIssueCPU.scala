@@ -72,8 +72,8 @@ class MultiIssueCPU extends Component {
   val aluOp        = Key(ALU_OP()).setEmptyValue(ALU_OP.sll())
   val aluASrc      = Key(ALU_A_SRC())
   val aluBSrc      = Key(ALU_B_SRC())
+  val complexOp    = Key(Bool()) //是否是复杂运算
   val aluC         = Key(UInt(32 bits))
-  val aluD         = Key(UInt(32 bits))
   val cp0RE        = Key(Bool()).setEmptyValue(False)
   val cp0WE        = Key(Bool()).setEmptyValue(False)
   val memAddr      = Key(UInt(32 bits))
@@ -109,6 +109,7 @@ class MultiIssueCPU extends Component {
   val hlu  = new HLU
   val cp0  = new CP0
   val rfu  = new RFU(2, 4)
+  val complexALU = new ComplexALU
 
   val bps = Seq(new BranchPredictor(0), new BranchPredictor(1))
 
@@ -168,11 +169,7 @@ class MultiIssueCPU extends Component {
           ALU_B_SRC.imm -> U(input(inst).immExtended)
         )
 
-        alu.io.will.input := will.input
-        alu.io.will.output := will.output
-
         output(aluC) := alu.io.c
-        output(aluD) := alu.io.d
 
         exceptionToRaise := alu.io.exception
       }
@@ -188,17 +185,18 @@ class MultiIssueCPU extends Component {
 
       val calcHiLo = new StageComponent {
         output(newHi) := input(newHiSrc).mux(
-          HLU_SRC.alu -> B(alu.io.c),
+          HLU_SRC.alu -> B(complexALU.io.c),
           HLU_SRC.rs  -> input(rsValue)
         )
         output(newLo) := input(newLoSrc).mux(
-          HLU_SRC.alu -> B(alu.io.d),
+          HLU_SRC.alu -> B(complexALU.io.d),
           HLU_SRC.rs  -> input(rsValue)
         )
       }
 
-      is.done := !alu.io.stall
-      can.flush := !alu.io.stall
+      produced(aluC) := input(complexOp) ? complexALU.io.c | calc.output(aluC)
+      is.done := input(complexOp) ? !complexALU.io.stall | True
+      can.flush := input(complexOp) ? !complexALU.io.stall | True
     }
     val id = new Stage {
       setName(s"id_${i}")
@@ -224,6 +222,7 @@ class MultiIssueCPU extends Component {
         output(aluOp) := du.io.alu_op
         output(aluASrc) := du.io.alu_a_src
         output(aluBSrc) := du.io.alu_b_src
+        output(complexOp) := du.io.complex_op
         output(memBEType) := du.io.dcu_be
         output(memEx) := du.io.mu_ex
         output(memRE) := du.io.dcu_re
@@ -258,6 +257,15 @@ class MultiIssueCPU extends Component {
 
   val p0 = p(0)
   val p1 = p(1)
+
+  val multiCycleCompute = new ComponentStage {
+    complexALU.io.input.op := !!!(aluOp)
+    // 复杂运算的操作数一定来自于GPR
+    complexALU.io.input.a := stored(rsValue).asUInt
+    complexALU.io.input.b := stored(rtValue).asUInt
+    complexALU.io.will.input := will.input
+    complexALU.io.will.output := will.output
+  }
 
   val correct = Flow(UInt(32 bits)).setIdle()
   val IF = new Stage {
@@ -336,11 +344,17 @@ class MultiIssueCPU extends Component {
     output(memBE) := dcu1.io.output.byteEnable
     output(memWData) := dcu1.io.output.wdata
 
-//    dbus.stage1.write := stored(memWE)
+    if(ConstantVal.DISABLE_VIRT_UART) {
+      output(memRE) := output(mmuRes).paddr =/= U"32'h1faf_fff0" & stored(memRE)
+      output(memWE) := output(mmuRes).paddr =/= U"32'h1faf_fff0" & stored(memWE)
+    }
+
     dbus.stage1.paddr := output(mmuRes).paddr
     dbus.stage1.wdata := dcu1.io.output.wdata
     dbus.stage1.byteEnable := dcu1.io.output.byteEnable
   }
+
+  multiCycleCompute.interConnect()
 
   accessMem2.interConnect()
   accessMem1.send(accessMem2)
@@ -418,6 +432,10 @@ class MultiIssueCPU extends Component {
           when(stage.produced(rfuIndex) === input(inst).rt) {
             rtNotDone := True
           }
+        }
+        // 不能发射两条复杂运算指令
+        when(self.produced(complexOp) & stage.produced(complexOp)) {
+          self.is.done := False
         }
       }
 
@@ -594,7 +612,18 @@ class MultiIssueCPU extends Component {
       p1(ID).assign.flush := p1ExeIsNew
     }
   }*/
-  /**/
+  /* 复杂运算的流水线选择 */
+  // complexALU
+  for(i <- 1 downto 0) {
+    condWhen(i == 0, p(i)(ID).produced(complexOp)) {
+      multiCycleCompute.will.input := p(i)(EXE).will.input
+      multiCycleCompute.receive(p(i)(ID))
+    }
+    condWhen(i == 0, p(i)(EXE).stored(complexOp)) {
+      multiCycleCompute.will.output := p(i)(EXE).will.output
+    }
+  }
+
 
   /* 连接各个阶段 */
   val seq = (IF, IF) +: p0.values.zip(p1.values).toSeq
