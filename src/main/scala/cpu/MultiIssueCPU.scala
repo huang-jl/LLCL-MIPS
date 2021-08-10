@@ -104,14 +104,14 @@ class MultiIssueCPU extends Component {
 
   val tlbRefillException = Key(Bool) //是否是TLB缺失异常（影响异常处理地址）
 
-  val mmu  = new MMU
-  val icu  = new ICU
-  val ju   = new JU
-  val dcu1 = new DCU1
-  val dcu2 = new DCU2
-  val hlu  = new HLU
-  val cp0  = new CP0
-  val rfu  = new RFU(2, 4)
+  val mmu        = new MMU
+  val icu        = new ICU
+  val ju         = new JU
+  val dcu1       = new DCU1
+  val dcu2       = new DCU2
+  val hlu        = new HLU
+  val cp0        = new CP0
+  val rfu        = new RFU(2, 4)
   val complexALU = new ComplexALU
 
   val bps = Seq(new BranchPredictor(0), new BranchPredictor(1))
@@ -267,10 +267,12 @@ class MultiIssueCPU extends Component {
   val p1 = p(1)
 
   val multiCycleCompute = new ComponentStage {
+    val memData = RegNextWhen(dcu2.io.output.rdata, will.input)
+
     complexALU.io.input.op := !!!(aluOp)
     // 复杂运算的操作数一定来自于GPR
-    complexALU.io.input.a := stored(rsValue).asUInt
-    complexALU.io.input.b := stored(rtValue).asUInt
+    complexALU.io.input.a := U(stored(rsFromMem) ? memData | stored(rsValue))
+    complexALU.io.input.b := U(stored(rtFromMem) ? memData | stored(rtValue))
     complexALU.io.will.input := will.input
     complexALU.io.will.output := will.output
   }
@@ -352,7 +354,7 @@ class MultiIssueCPU extends Component {
     output(memBE) := dcu1.io.output.byteEnable
     output(memWData) := dcu1.io.output.wdata
 
-    if(ConstantVal.DISABLE_VIRT_UART) {
+    if (ConstantVal.DISABLE_VIRT_UART) {
       output(memRE) := output(mmuRes).paddr =/= U"32'h1faf_fff0" & stored(memRE)
       output(memWE) := output(mmuRes).paddr =/= U"32'h1faf_fff0" & stored(memWE)
     }
@@ -629,7 +631,7 @@ class MultiIssueCPU extends Component {
   }*/
   /* 复杂运算的流水线选择 */
   // complexALU
-  for(i <- 1 downto 0) {
+  for (i <- 1 downto 0) {
     condWhen(i == 0, p(i)(ID).produced(complexOp)) {
       multiCycleCompute.will.input := p(i)(EXE).will.input
       multiCycleCompute.receive(p(i)(ID))
@@ -638,7 +640,6 @@ class MultiIssueCPU extends Component {
       multiCycleCompute.will.output := p(i)(EXE).will.output
     }
   }
-
 
   /* 连接各个阶段 */
   val seq = (IF, IF) +: p0.values.zip(p1.values).toSeq
