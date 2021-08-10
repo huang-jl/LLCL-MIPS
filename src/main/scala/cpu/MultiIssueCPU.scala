@@ -204,7 +204,6 @@ class MultiIssueCPU extends Component {
 
       produced(aluC) := input(complexOp) ? complexALU.io.c | calc.output(aluC)
       is.done := input(complexOp) ? !complexALU.io.stall | True
-      can.flush := input(complexOp) ? !complexALU.io.stall | True
     }
     val id = new Stage {
       setName(s"id_${i}")
@@ -268,13 +267,10 @@ class MultiIssueCPU extends Component {
 
   val multiCycleCompute = new ComponentStage {
     val memData = RegNextWhen(dcu2.io.output.rdata, will.input)
-
     complexALU.io.input.op := !!!(aluOp)
     // 复杂运算的操作数一定来自于GPR
     complexALU.io.input.a := U(stored(rsFromMem) ? memData | stored(rsValue))
     complexALU.io.input.b := U(stored(rtFromMem) ? memData | stored(rtValue))
-    complexALU.io.will.input := will.input
-    complexALU.io.will.output := will.output
   }
 
   val correct = Flow(UInt(32 bits)).setIdle()
@@ -638,6 +634,7 @@ class MultiIssueCPU extends Component {
     }
     condWhen(i == 0, p(i)(EXE).stored(complexOp)) {
       multiCycleCompute.will.output := p(i)(EXE).will.output
+      complexALU.io.flush := p(i)(EXE).will.flush
     }
   }
 

@@ -13,6 +13,7 @@ class MultiplierIP(dataWidth: Int = 32, name: String = "multiplier") extends Bla
   val io = new Bundle {
     val CLK = in Bool ()
     val CE  = in Bool ()    //clock enable, active high
+    val SCLR = in Bool()    //Synchronize Clear
     val A   = in UInt (32 bits)
     val B   = in UInt (32 bits)
     val P   = out UInt (64 bits)

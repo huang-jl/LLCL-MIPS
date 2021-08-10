@@ -73,6 +73,7 @@ class BranchPredictor(number: Int) extends Area {
     }
     /**/
     btb.io.w.en := stored(btbHit) | !!!(isDJump)
+//    btb.io.w.en := stored(btbHit) | stored(isDJump)
     btb.io.w.oh := stored(btbOH)
     btb.io.w.index := stored(pc).btbIndex
     btb.io.w.meta := stored(btbMeta)
@@ -81,6 +82,8 @@ class BranchPredictor(number: Int) extends Area {
     /**/
     bpu.io.w.bhtEn := !!!(isDJump)
     bpu.io.w.phtEn := !!!(isDJump)
+//    bpu.io.w.bhtEn := stored(isDJump)
+//    bpu.io.w.phtEn := stored(isDJump)
     bpu.io.w.bhtI := stored(bhtI)
     bpu.io.w.bhtV := stored(bhtV)(0, bhtDataWidth - 1 bits) ## io.assignJump
     bpu.io.w.phtI := stored(phtI)
