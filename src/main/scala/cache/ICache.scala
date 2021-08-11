@@ -202,7 +202,6 @@ class ICache(config: CacheRamConfig) extends Component {
   val counter = Counter(0 until config.wordNum) //从内存读入数据的计数器
   val recvBlock = Reg(Block(config.blockSize)) //从内存中读出的一行的寄存器
 
-  io.cpu.stage2.stall := True
   val icacheFSM = new StateMachine {
     val waitAXIReady = new State
     val readMem      = new State
@@ -212,7 +211,6 @@ class ICache(config: CacheRamConfig) extends Component {
     disableAutoStart()
 
     stateBoot
-      .whenIsNext(io.cpu.stage2.stall := False)
       .whenIsActive {
         when(io.cpu.stage2.en & !hit)(goto(waitAXIReady))
       }
@@ -247,6 +245,8 @@ class ICache(config: CacheRamConfig) extends Component {
     }
     finish.whenIsActive(goto(stateBoot))
   }
+  io.cpu.stage2.stall := !(icacheFSM.isActive(icacheFSM.finish) |
+    icacheFSM.isActive(icacheFSM.stateBoot) & (!io.cpu.stage2.en | hit))
 
   //写回cache ram的数据
   write.meta.tag := stage2.tag
