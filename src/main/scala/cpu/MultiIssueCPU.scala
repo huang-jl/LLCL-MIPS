@@ -104,6 +104,20 @@ class MultiIssueCPU extends Component {
 
   val tlbRefillException = Key(Bool) //是否是TLB缺失异常（影响异常处理地址）
 
+  // 以下信号是为了操作系统
+  val isTrap           = Key(Bool()) setEmptyValue False
+  val tlbr             = Key(Bool()) setEmptyValue False
+  val tlbw             = Key(Bool()) setEmptyValue False
+  val tlbp             = Key(Bool()) setEmptyValue False
+  val tlbIndexSrc      = Key(TLBIndexSrc())
+  val invalidateICache = Key(Bool()) setEmptyValue False
+  val invalidateDCache = Key(Bool()) setEmptyValue False
+  val meType           = Key(ME_TYPE())
+  val compareOp        = Key(CompareOp())
+  val conditionMov     = Key(Bool())
+  val privilege        = Key(Bool()) setEmptyValue False
+  val fuck             = Key(Bool()) setEmptyValue False
+
   val mmu        = new MMU
   val icu        = new ICU
   val ju         = new JU
@@ -116,8 +130,21 @@ class MultiIssueCPU extends Component {
 
   val bps = Seq(new BranchPredictor(0), new BranchPredictor(1))
 
-  /* temp */
-  mmu.io.asid.assignDontCare()
+  if (!ConstantVal.FINAL_MODE) {
+    mmu.io.asid.assignDontCare()
+  } else {
+    mmu.io.asid := cp0.io.tlbBus.tlbwEntry.asid
+    mmu.io.probeVPN2 := cp0.io.tlbBus.tlbwEntry.vpn2
+    mmu.io.probeASID := cp0.io.tlbBus.tlbwEntry.asid
+    mmu.io.index := cp0.io.tlbBus.index //默认是读index寄存器的值
+    mmu.io.wdata := cp0.io.tlbBus.tlbwEntry
+    mmu.io.K0 := cp0.io.machineState.K0
+    mmu.io.ERL := cp0.io.machineState.ERL
+    mmu.io.userMode := cp0.io.machineState.userMode
+
+    cp0.io.tlbBus.probeIndex := mmu.io.probeIndex
+    cp0.io.tlbBus.tlbrEntry := mmu.io.rdata
+  }
   /**/
 
   var p: Seq[Map[Value, Stage]] = Seq()
@@ -146,6 +173,12 @@ class MultiIssueCPU extends Component {
 
       is.done := !dbus.stage2.stall
       can.flush := !dbus.stage2.stall
+
+      ConstantVal.FINAL_MODE generate {
+        ibus.invalidate.en := !!!(invalidateICache)
+        ibus.invalidate.addr := stored(mmuRes).paddr
+        dbus.invalidate.en := !!!(invalidateDCache)
+      }
     }
     val mem1 = new Stage {
       setName(s"mem1_${i}")
@@ -153,9 +186,13 @@ class MultiIssueCPU extends Component {
       !!!(memRE)
       !!!(memWE)
       exceptionToRaise := None
-      when(!dcu1.io.output.addrValid) {
-        when(stored(memRE)) { exceptionToRaise := ExcCode.loadAddrError }
-        when(stored(memWE)) { exceptionToRaise := ExcCode.storeAddrError }
+
+      ConstantVal.FINAL_MODE generate {
+        when(input(isTrap) & input(aluC)(0))(exceptionToRaise := ExcCode.trapError)
+
+        when(input(privilege) & cp0.io.machineState.userMode & !cp0.io.machineState.cu0) {
+          exceptionToRaise := ExcCode.copUnusable
+        }
       }
     }
     val exe = new Stage {
@@ -201,9 +238,21 @@ class MultiIssueCPU extends Component {
           HLU_SRC.rs  -> input(rsValue)
         )
       }
-
       produced(aluC) := input(complexOp) ? complexALU.io.c | calc.output(aluC)
       is.done := input(complexOp) ? !complexALU.io.stall | True
+
+      ConstantVal.FINAL_MODE generate {
+        // TODO 如果EX阶段要向ID前传的话，需要修改前传的判断，因为这里的rfuWE在produced才能算出来
+        val movC = new StageComponent {
+          val comparator = new Comparator
+          comparator.io.op := input(compareOp)
+          comparator.io.operand := input(rtValue)
+          output(rfuWE) := input(conditionMov) & comparator.io.mov
+        }
+        produced(rfuWE) := movC.output(rfuWE) & input(rfuWE)
+        when(movC.output(rfuWE))(produced(aluC) := input(rsValue).asUInt)
+      }
+
     }
     val id = new Stage {
       setName(s"id_${i}")
@@ -244,6 +293,21 @@ class MultiIssueCPU extends Component {
         output(rfuWE) := du.io.rfu_we
         output(rfuIndex) := du.io.rfu_rd
         output(rfuSrc) := du.io.rfu_rd_src
+
+        ConstantVal.FINAL_MODE generate {
+          output(tlbr) := du.io.tlbr
+          output(tlbw) := du.io.tlbw
+          output(tlbp) := du.io.tlbp
+          output(tlbIndexSrc) := du.io.tlbIndexSrc
+          output(isTrap) := du.io.is_trap
+          output(invalidateICache) := du.io.invalidate_icache
+          output(invalidateDCache) := du.io.invalidate_dcache
+          output(meType) := du.io.me_type
+          output(compareOp) := du.io.compare_op
+          output(conditionMov) := du.io.condition_mov
+          output(privilege) := du.io.privilege
+          output(fuck) := du.io.fuck
+        }
 
         exceptionToRaise := du.io.exception
       }
@@ -339,6 +403,7 @@ class MultiIssueCPU extends Component {
     dbus.stage2.byteEnable := stored(memBE)
     dbus.stage2.wdata := stored(memWData)
     dbus.stage2.uncache := !stored(mmuRes).cached
+
   }
   val accessMem1 = new ComponentStage {
     output(mmuRes) := RegNextWhen(mmu.io.dataRes, will.input)
@@ -347,17 +412,46 @@ class MultiIssueCPU extends Component {
     dcu1.io.input.byteEnable := stored(memBEType)
     dcu1.io.input.wdata := stored(rtValue)
 
-    output(memBE) := dcu1.io.output.byteEnable
-    output(memWData) := dcu1.io.output.wdata
-
-    if (ConstantVal.DISABLE_VIRT_UART) {
-      output(memRE) := output(mmuRes).paddr =/= U"32'h1faf_fff0" & stored(memRE)
-      output(memWE) := output(mmuRes).paddr =/= U"32'h1faf_fff0" & stored(memWE)
-    }
-
     dbus.stage1.paddr := output(mmuRes).paddr
     dbus.stage1.wdata := dcu1.io.output.wdata
     dbus.stage1.byteEnable := dcu1.io.output.byteEnable
+
+    output(memBE) := dcu1.io.output.byteEnable
+    output(memWData) := dcu1.io.output.wdata
+
+    ConstantVal.DISABLE_VIRT_UART generate {
+      output(memRE) := output(mmuRes).paddr =/= U"32'h1faf_fff0" & stored(memRE)
+      output(memWE) := output(mmuRes).paddr =/= U"32'h1faf_fff0" & stored(memWE)
+    }
+    clearWhenEmpty(memRE)
+    clearWhenEmpty(memWE)
+
+    val excCode = Optional(ExcCode()) // 访存相关的异常
+    excCode := None
+    if (ConstantVal.FINAL_MODE) {
+      val refillException = output(mmuRes).tlbRefillException
+      val invalidException =
+        output(mmuRes).tlbInvalidException
+      val modifiedException = output(mmuRes).tlbModException & stored(memWE)
+      when(refillException | invalidException) {
+        when(stored(memRE))(excCode := ExcCode.loadTLBError)
+          .elsewhen(stored(memWE))(excCode := ExcCode.storeTLBError)
+      }.elsewhen(modifiedException)(excCode := ExcCode.tlbModError)
+      // 当memRe或memWe时才会由本阶段触发refillException
+      cp0.io.exceptionBus.exception.tlbRefill := stored(tlbRefillException) |
+        (refillException & (stored(memRE) | stored(memWE)))
+      // 地址不对齐错误更优先
+      when(!dcu1.io.output.addrValid & !stored(invalidateICache) & !stored(invalidateDCache)) {
+        when(stored(memRE))(excCode := ExcCode.loadAddrError)
+        when(stored(memWE))(excCode := ExcCode.storeAddrError)
+      }
+    } else {
+      cp0.io.exceptionBus.exception.tlbRefill := stored(tlbRefillException)
+      when(!dcu1.io.output.addrValid) {
+        when(stored(memRE))(excCode := ExcCode.loadAddrError)
+        when(stored(memWE))(excCode := ExcCode.storeAddrError)
+      }
+    }
   }
 
   multiCycleCompute.interConnect()
@@ -522,7 +616,10 @@ class MultiIssueCPU extends Component {
     condWhen(i == 0, p(i)(MEM1).!!!(useMem)) {
       accessMem1.will.output := p(i)(MEM1).will.output
       accessMem2.will.input := p(i)(MEM2).will.input
-      // 注意只有访存才会在MEM1触发异常
+
+      when(accessMem1.excCode.isDefined) {
+        p(i)(MEM1).exceptionToRaise := accessMem1.excCode
+      }
       dbus.stage1.write := p(i)(MEM1).stored(memWE) & p(i)(MEM1).exception.isEmpty
     }
     condWhen(i == 0, p(i)(MEM2).!!!(useMem)) {
@@ -552,7 +649,6 @@ class MultiIssueCPU extends Component {
 
       cp0.io.exceptionBus.exception.excCode := self.exception
       cp0.io.exceptionBus.exception.instFetch := self.stored(excOnFetch)
-      cp0.io.exceptionBus.exception.tlbRefill := self.stored(tlbRefillException)
       cp0.io.exceptionBus.eret := self.stored(eret)
       cp0.io.exceptionBus.vaddr := self.stored(memAddr)
       cp0.io.exceptionBus.pc := self.stored(pc)
@@ -638,6 +734,47 @@ class MultiIssueCPU extends Component {
     }
   }
 
+  ConstantVal.FINAL_MODE generate {
+    /** TLB模块 */
+    val mmuModule = new ComponentStage {
+      cp0.io.tlbBus.tlbr := !!!(tlbr)
+      cp0.io.tlbBus.tlbp := !!!(tlbp)
+      mmu.io.write := !!!(tlbw)
+      when(stored(tlbw) & stored(tlbIndexSrc) === TLBIndexSrc.Random) {
+        cp0.io.tlbBus.tlbwr := True
+        mmu.io.index := cp0.io.tlbBus.random //如果是写tlbwr那么用random
+      }.otherwise(cp0.io.tlbBus.tlbwr := False)
+    }
+    mmuModule.interConnect()
+    for (i <- 1 downto 0) {
+      condWhen(i == 0, p(i)(EXE).stored(privilege)) {
+        mmuModule.will.input := p(i)(EXE).will.input
+        mmuModule.receive(p(i)(EXE))
+      }
+      condWhen(i == 0, p(i)(MEM1).stored(privilege)) {
+        multiCycleCompute.will.output := p(i)(MEM1).will.output
+      }
+    }
+    /** 当出现特殊指令需要暂停整个流水线 */
+    val stopPipeline = new Area {
+      val pipelines = Seq(ID, EXE, MEM1, MEM2)
+      // 暂停取指阶段
+      for(stage <- pipelines) {
+        for(id <- 0 to 1) {
+          when(p(id)(stage).produced(fuck)) {
+            IF.is.done := False
+          }
+        }
+      }
+      // 暂停第二条流水线
+      for((s0, idx) <- pipelines.zipWithIndex) {
+        for(s1 <- pipelines.slice(0, idx)) {
+          println(s"when p0($s0).fuck: p1($s1).is.done = False")
+          when(p0(s0).produced(fuck))(p1(s1).is.done := False)
+        }
+      }
+    }
+  }
   /* 连接各个阶段 */
   val seq = (IF, IF) +: p0.values.zip(p1.values).toSeq
   for ((curr, next) <- seq.zip(seq.tail).reverse) {

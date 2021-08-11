@@ -269,7 +269,7 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
     val valid  = Bits(2 bits) //分支预测的两条信息是否有效
     valid(0) := !S2.waiting.delaySlot & !S2.clearNext & S2.recvFromS1.pc.isAligned(Aligned.Even) & S2.recvFromS1.fire
     valid(1) := !taken(0) & !S2.waiting.delaySlot & !S2.clearNext & S2.recvFromS1.fire
-    io.bp.will.input.S2 := S1.sendToS2.fire & !pcHandler.io.flush.s1
+    io.bp.will.input.S2 := S1.sendToS2.fire
   }
   // 指令携带的分支预测相关信息
   for (i <- 0 until 2) {
@@ -305,7 +305,7 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
     recvFromS2.setName("S3_recvFromS2")
     val canRecv = !fifo.io.full | recvFromS2.delaySlot
     // 接收到S2的指令有效
-    val validInstFromS2 = recvFromS2.valid & !pcHandler.io.flush.s3 & canRecv
+    val validInstFromS2 = recvFromS2.valid & canRecv
 
     val sendToID  = Stream(Vec(IssueEntry(), 2))
     sendToID.valid := sendToID.payload(0).valid | sendToID.payload(1).valid
@@ -401,6 +401,7 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
     branch.busy.next := False
   }
 
+  // fifo.io.push.en不需要考虑flush信号，因为指针会归0
   fifo.io.push.en := S3.validInstFromS2 & (!byPass | delaySlot.waiting.reg)
   // push num
   when(byPass & delaySlot.waiting.reg)(fifo.io.push.num := S3.entry(1).valid.asUInt.resized)

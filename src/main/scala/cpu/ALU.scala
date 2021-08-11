@@ -156,8 +156,8 @@ class ALU extends Component {
 class ComplexALU extends Component {
   val io = new Bundle {
     val input = in(ALUInput())
-    val hi    = Utils.instantiateWhen(UInt(32 bits), ConstantVal.FINAL_MODE)
-    val lo    = Utils.instantiateWhen(UInt(32 bits), ConstantVal.FINAL_MODE)
+    val hi = ConstantVal.FINAL_MODE generate in UInt(32 bits)
+    val lo = ConstantVal.FINAL_MODE generate in UInt(32 bits)
     val flush = in Bool ()
 
     // out
