@@ -9,7 +9,6 @@ import spinal.lib._
 import scala.collection.mutable
 import scala.language.postfixOps
 
-
 object ALU_OP extends SpinalEnum {
   val add, addu, sub, subu, and, or, xor, nor, sll, lu, srl, sra, mult, multu, div, divu, seq, sne, slt, sltu, mul = newElement()
   val madd, maddu, msub, msubu, clo, clz, sge, sgeu =
@@ -186,8 +185,8 @@ class ComplexALU extends Component {
     divider.io.input.divisor := io.input.b
     divider.io.input.op := io.input.op
     divider.io.input.valid := useDivider
-    val stall = useDivider & !divider.io.output.valid
-    val quotient = divider.io.output.quotient
+    val stall     = useDivider & !divider.io.output.valid
+    val quotient  = divider.io.output.quotient
     val remainder = divider.io.output.remainder
   }
 
@@ -403,7 +402,7 @@ class Div10Unit extends Component {
       output.remainder.lo_mul_hi := (aLo * bHi).asUInt.resized
       output.remainder.hi_mul_lo := (aHi * bLo).asUInt.resized
 
-      output.remainder.sum := b(0 until 31) +^ b(0 until 29)
+      output.remainder.sum := b(1, 31 bits) +^ b(3, 29 bits)
     }
   }
 
@@ -457,15 +456,14 @@ class Div10Unit extends Component {
   stage3.output >> io.output
 }
 
-
 class DivUnit extends Component {
   val io = new Bundle {
     val input  = slave Flow DividerInput()
     val output = master Flow DividerOutput()
-    val flush = in Bool ()
+    val flush  = in Bool ()
   }
   val pow2   = new DivPow2Unit
-  val div10   = new Div10Unit
+  val div10  = new Div10Unit
   val normal = new NormalDivUnit
 
   io.output.setIdle()
@@ -474,7 +472,7 @@ class DivUnit extends Component {
   val fsm = new StateMachine {
     val decision   = new State
     val waitPow2   = new State
-    val wait10   = new StateDelay(2)
+    val wait10     = new StateDelay(2)
     val waitNormal = new StateDelay(32)
 
     disableAutoStart()
@@ -502,7 +500,7 @@ class DivUnit extends Component {
       normal.io.flush := True
       io.output.payload := pow2.io.output.payload
     }
-    waitNormal.whenCompleted{
+    waitNormal.whenCompleted {
       finishJob()
       io.output.payload := normal.io.output.payload
     }
