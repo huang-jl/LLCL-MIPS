@@ -72,7 +72,7 @@ class BranchPredictor(number: Int) extends Area {
       val assignJump = Bool()
     }
     /**/
-    btb.io.w.en := stored(btbHit) | !!!(isDJump)
+    btb.io.w.en := !!!(btbHit) | !!!(isDJump)
     btb.io.w.oh := stored(btbOH)
     btb.io.w.index := stored(pc).btbIndex
     btb.io.w.meta := stored(btbMeta)

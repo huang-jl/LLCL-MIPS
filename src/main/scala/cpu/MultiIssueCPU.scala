@@ -18,6 +18,16 @@ object STAGES extends Enumeration {
 }
 import STAGES._
 
+object FwdFrom extends SpinalEnum {
+  val p = Seq(
+    ListMap(EXE  -> newElement(), MEM1 -> newElement(), MEM2 -> newElement()),
+    ListMap(MEM1 -> newElement(), MEM2 -> newElement())
+  )
+  val p0 = p(0)
+  val p1 = p(1)
+  val ns = Map(EXE -> MEM1, MEM1 -> MEM2, MEM2 -> MEM2)
+}
+
 class MultiIssueCPU extends Component {
   def condWhen(cond: Boolean, whenCond: Bool)(block: => Unit): Unit = {
     if (cond) { when(whenCond) { block } }
@@ -102,6 +112,13 @@ class MultiIssueCPU extends Component {
   val rsFromMem = Key(Bool())
   val rtFromMem = Key(Bool())
 
+  val dataNotReady  = Key(Bool())
+  val canUseMem1ALU = Key(Bool())
+  val useMem1ALU    = Key(Bool())
+
+  val rsFwdFrom = Key(FwdFrom())
+  val rtFwdFrom = Key(FwdFrom())
+
   val tlbRefillException = Key(Bool) //是否是TLB缺失异常（影响异常处理地址）
 
   val mmu        = new MMU
@@ -126,10 +143,14 @@ class MultiIssueCPU extends Component {
     val du  = new DU
     val alu = new ALU
 
+    val mem1ALU = new SimpleALU
+
     val wb = new Stage {
       setName(s"wb_${i}")
 
       produced(pc)
+
+      produced(dataNotReady) := False
 
       val writeReg = new StageComponent {
         rfu.io.w(i).valid := !!!(rfuWE)
@@ -139,6 +160,8 @@ class MultiIssueCPU extends Component {
     }
     val mem2 = new Stage {
       setName(s"mem2_${i}")
+
+      produced(dataNotReady) := stored(memRE) & dbus.stage2.stall
 
       val accessMem = new StageComponent {
         output(rfuData) := input(memRE) ? dcu2.io.output.rdata | input(rfuData)
@@ -150,6 +173,22 @@ class MultiIssueCPU extends Component {
     val mem1 = new Stage {
       setName(s"mem1_${i}")
 
+      produced(dataNotReady) := stored(memRE)
+
+      val calc = new StageComponent {
+        mem1ALU.op := input(aluOp)
+        mem1ALU.a := input(aluASrc).mux(
+          ALU_A_SRC.rs -> U(input(rsValue)),
+          ALU_A_SRC.sa -> input(inst).sa.resize(32)
+        )
+        mem1ALU.b := input(aluBSrc).mux(
+          ALU_B_SRC.rt  -> U(input(rtValue)),
+          ALU_B_SRC.imm -> U(input(inst).immExtended)
+        )
+      }
+
+      produced(rfuData) := stored(useMem1ALU) ? B(mem1ALU.c) | stored(rfuData)
+
       !!!(memRE)
       !!!(memWE)
       exceptionToRaise := None
@@ -160,6 +199,8 @@ class MultiIssueCPU extends Component {
     }
     val exe = new Stage {
       setName(s"exe_${i}")
+
+      produced(dataNotReady) := stored(memRE) | stored(useMem1ALU)
 
       val memData = Reg(Bits(32 bits))
       when(will.input) { memData := dcu2.io.output.rdata }
@@ -244,6 +285,8 @@ class MultiIssueCPU extends Component {
         output(rfuWE) := du.io.rfu_we
         output(rfuIndex) := du.io.rfu_rd
         output(rfuSrc) := du.io.rfu_rd_src
+
+        output(canUseMem1ALU) := du.io.canUseMem1ALU
 
         exceptionToRaise := du.io.exception
       }
@@ -395,41 +438,50 @@ class MultiIssueCPU extends Component {
       output(rsValue) := rfu.io.r(i).data
       output(rtValue) := rfu.io.r(2 + i).data
 
-      val rsNotDone = False
-      val rtNotDone = False
+      val rsNotReady = False
+      val rtNotReady = False
 
       output(rsFromMem) := False
       output(rtFromMem) := False
 
-      for (j <- 0 to 1) {
-        val stage = p(j)(MEM2)
-        when(stage.!!!(rfuWE)) {
-          when(stage.stored(rfuIndex) === input(inst).rs) {
-            output(rsValue) := stage.stored(rfuData)
-            output(rsFromMem) := stage.stored(memRE)
-            rsNotDone := !stage.is.done
-          }
-          when(stage.stored(rfuIndex) === input(inst).rt) {
-            output(rtValue) := stage.stored(rfuData)
-            output(rtFromMem) := stage.stored(memRE)
-            rtNotDone := !stage.is.done
-          }
-        }
-      }
+      output(rsFwdFrom).assignDontCare()
+      output(rtFwdFrom).assignDontCare()
 
-      for (j <- Seq(MEM1, EXE)) {
+      for (j <- Seq(MEM2, MEM1, EXE)) {
         for (k <- 0 to 1) {
           val stage = p(k)(j)
           when(stage.!!!(rfuWE)) {
             when(stage.stored(rfuIndex) === input(inst).rs) {
-              output(rsValue) := stage.produced(rfuData)
-              output(rsFromMem) := False
-              rsNotDone := stage.stored(memRE)
+              if (j == MEM2) {
+                output(rsValue) := stage.stored(rfuData)
+                output(rsFromMem) := stage.stored(memRE)
+              } else {
+                output(rsValue) := stage.produced(rfuData)
+                output(rsFromMem) := False
+              }
+              rsNotReady := stage.produced(dataNotReady)
+
+              j match {
+                case MEM2 => output(rsFwdFrom) := FwdFrom.p(k)(MEM2)
+                case MEM1 => output(rsFwdFrom) := stage.will.output ? FwdFrom.p(k)(MEM2) | FwdFrom.p(k)(MEM1)
+                case EXE  => output(rsFwdFrom) := FwdFrom.p(k)(MEM1)
+              }
             }
             when(stage.stored(rfuIndex) === input(inst).rt) {
-              output(rtValue) := stage.produced(rfuData)
-              output(rtFromMem) := False
-              rtNotDone := stage.stored(memRE)
+              if (j == MEM2) {
+                output(rtValue) := stage.stored(rfuData)
+                output(rtFromMem) := stage.stored(memRE)
+              } else {
+                output(rtValue) := stage.produced(rfuData)
+                output(rtFromMem) := False
+              }
+              rtNotReady := stage.produced(dataNotReady)
+
+              j match {
+                case MEM2 => output(rtFwdFrom) := FwdFrom.p(k)(MEM2)
+                case MEM1 => output(rtFwdFrom) := stage.will.output ? FwdFrom.p(k)(MEM2) | FwdFrom.p(k)(MEM1)
+                case EXE  => output(rtFwdFrom) := FwdFrom.p(k)(MEM1)
+              }
             }
           }
         }
@@ -440,10 +492,14 @@ class MultiIssueCPU extends Component {
         stage.!!!(entry1)
         when(stage.produced(rfuWE)) {
           when(stage.produced(rfuIndex) === input(inst).rs) {
-            rsNotDone := True
+            rsNotReady := True
+
+            output(rsFwdFrom) := FwdFrom.p0(EXE)
           }
           when(stage.produced(rfuIndex) === input(inst).rt) {
-            rtNotDone := True
+            rtNotReady := True
+
+            output(rtFwdFrom) := FwdFrom.p0(EXE)
           }
         }
         // 不能发射两条复杂运算指令
@@ -452,10 +508,70 @@ class MultiIssueCPU extends Component {
         }
       }
 
-      when(self.produced(useRs) & rsNotDone | self.produced(useRt) & rtNotDone) {
-        self.is.done := False
+      output(useMem1ALU) := False
+      self.produced(useRs) := False
+      self.produced(useRt) := False
+
+      when(self.output(useRs) & rsNotReady | self.output(useRt) & rtNotReady) {
+        when(self.produced(canUseMem1ALU)) {
+          output(useMem1ALU) := True
+          self.produced(useRs) := self.output(useRs) & rsNotReady
+          self.produced(useRt) := self.output(useRt) & rtNotReady
+        } otherwise {
+          self.is.done := False
+        }
       }
     })
+  }
+  /**/
+
+  /**/
+  for (k <- 0 to 1) {
+    for (l <- 0 to 1) {
+      val rt = l.toBoolean
+
+      val rFwdFrom = if (rt) rtFwdFrom else rsFwdFrom
+      val rValue   = if (rt) rtValue else rsValue
+      val useR     = if (rt) useRt else useRs
+
+      val self        = p(k)(EXE)
+      val prev        = p(k)(ID)
+      val willOutput  = Bool()
+      val rNotReady   = Bool()
+      val data        = Bits(32 bits)
+      val nextFwdFrom = FwdFrom()
+      switch(self.stored(rFwdFrom)) {
+        for (i <- 0 to 1) {
+          for (j <- Seq(MEM1, MEM2)) {
+            is(FwdFrom.p(i)(j)) {
+              willOutput := p(i)(j).will.output
+              rNotReady := p(i)(j).produced(dataNotReady)
+              data := p(i)(j).produced(rfuData)
+              nextFwdFrom := FwdFrom.p(i)(FwdFrom.ns(j))
+            }
+          }
+        }
+        default {
+          willOutput := p0(EXE).will.output
+          rNotReady := p0(EXE).produced(dataNotReady)
+          data := p0(EXE).produced(rfuData)
+          nextFwdFrom := FwdFrom.p0(MEM1)
+        }
+      }
+
+      when(self.will.input) {
+        self.stored(rFwdFrom) := prev.produced(rFwdFrom)
+      } elsewhen willOutput {
+        self.stored(rFwdFrom) := nextFwdFrom
+      }
+
+      val assign = Bool()
+      val task   = Task(assign, data, self.will.input)
+      assign := !task.th & !rNotReady
+
+      self.produced(rValue) := self.stored(useR) ? task.value | self.input(rValue)
+      when(self.stored(useR) & rNotReady) { self.is.done := False }
+    }
   }
   /**/
 
@@ -605,7 +721,7 @@ class MultiIssueCPU extends Component {
   when(p0(EXE).stored(isJump)) {
     correct.payload := ju.jump ? juJumpPC | p0(EXE).stored(pc) + 8
     when(p0ExeIsNew) {
-      when(ju.jump & (!p0(EXE).stored(predJump) | p0(EXE).stored(predJumpPC) =/= juJumpPC) | !ju.jump & p0(EXE).stored(predJump)) {
+      when(ju.jump & (!p0(EXE).stored(predJump)/* | p0(EXE).stored(predJumpPC) =/= juJumpPC */) | !ju.jump & p0(EXE).stored(predJump)) {
         correct.valid := True
         when(!p1(EXE).is.empty) {
           p0(ID).assign.flush := True
