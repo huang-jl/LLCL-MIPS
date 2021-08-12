@@ -9,11 +9,9 @@ import spinal.lib._
 import scala.collection.mutable
 import scala.language.postfixOps
 
-
 object ALU_OP extends SpinalEnum {
   val add, addu, sub, subu, and, or, xor, nor, sll, lu, srl, sra, mult, multu, div, divu, seq, sne, slt, sltu, mul = newElement()
-  val madd, maddu, msub, msubu, clo, clz, sge, sgeu =
-    Utils.instantiateWhen(newElement(), ConstantVal.FINAL_MODE)
+  val madd, maddu, msub, msubu, clo, clz, sge, sgeu                                                                = ConstantVal.FINAL_MODE generate newElement()
 }
 
 object ALU_A_SRC extends SpinalEnum {
@@ -156,8 +154,8 @@ class ALU extends Component {
 class ComplexALU extends Component {
   val io = new Bundle {
     val input = in(ALUInput())
-    val hi = ConstantVal.FINAL_MODE generate in UInt(32 bits)
-    val lo = ConstantVal.FINAL_MODE generate in UInt(32 bits)
+    val hi    = ConstantVal.FINAL_MODE generate in UInt (32 bits)
+    val lo    = ConstantVal.FINAL_MODE generate in UInt (32 bits)
     val flush = in Bool ()
 
     // out
@@ -170,9 +168,11 @@ class ComplexALU extends Component {
 
   //无符号有符号转换
   val abs = new Area {
-    val signed: Bool = Utils.equalAny(io.input.op, div, mult, mul)
-    val a: UInt      = signed ? io.input.a.asSInt.abs | io.input.a //如果a[31]为1则转为补码，否则不变
-    val b: UInt      = signed ? io.input.b.asSInt.abs | io.input.b //如果b[31]为1则转为补码，否则不变
+    val signed: Bool =
+      if (!ConstantVal.FINAL_MODE) Utils.equalAny(io.input.op, div, mult, mul)
+      else Utils.equalAny(io.input.op, div, mult, mul, madd, msub)
+    val a: UInt = signed ? io.input.a.asSInt.abs | io.input.a //如果a[31]为1则转为补码，否则不变
+    val b: UInt = signed ? io.input.b.asSInt.abs | io.input.b //如果b[31]为1则转为补码，否则不变
   }
 
   //除法器统一进行无符号除法，所以要对操作数进行修正
@@ -186,15 +186,17 @@ class ComplexALU extends Component {
     divider.io.input.divisor := io.input.b
     divider.io.input.op := io.input.op
     divider.io.input.valid := useDivider
-    val stall = useDivider & !divider.io.output.valid
-    val quotient = divider.io.output.quotient
+    val stall     = useDivider & !divider.io.output.valid
+    val quotient  = divider.io.output.quotient
     val remainder = divider.io.output.remainder
   }
 
   val multiply = new Area {
-    val stall: Bool    = True
-    val multiply: Bool = Utils.equalAny(io.input.op, mult, multu, mul)
-    val multiplier     = new MultiplierIP()
+    val stall: Bool = True
+    val multiply: Bool =
+      if (!ConstantVal.FINAL_MODE) Utils.equalAny(io.input.op, mult, multu, mul)
+      else Utils.equalAny(io.input.op, mult, multu, mul, madd, maddu, msub, msubu)
+    val multiplier = new MultiplierIP()
     multiplier.io.A := abs.a
     multiplier.io.B := abs.b
     multiplier.io.CE := multiply
@@ -403,7 +405,7 @@ class Div10Unit extends Component {
       output.remainder.lo_mul_hi := (aLo * bHi).asUInt.resized
       output.remainder.hi_mul_lo := (aHi * bLo).asUInt.resized
 
-      output.remainder.sum := b(0 until 31) +^ b(0 until 29)
+      output.remainder.sum := b(1, 31 bits) +^ b(3, 29 bits)
     }
   }
 
@@ -457,15 +459,14 @@ class Div10Unit extends Component {
   stage3.output >> io.output
 }
 
-
 class DivUnit extends Component {
   val io = new Bundle {
     val input  = slave Flow DividerInput()
     val output = master Flow DividerOutput()
-    val flush = in Bool ()
+    val flush  = in Bool ()
   }
   val pow2   = new DivPow2Unit
-  val div10   = new Div10Unit
+  val div10  = new Div10Unit
   val normal = new NormalDivUnit
 
   io.output.setIdle()
@@ -474,7 +475,7 @@ class DivUnit extends Component {
   val fsm = new StateMachine {
     val decision   = new State
     val waitPow2   = new State
-    val wait10   = new StateDelay(2)
+    val wait10     = new StateDelay(2)
     val waitNormal = new StateDelay(32)
 
     disableAutoStart()
@@ -502,7 +503,7 @@ class DivUnit extends Component {
       normal.io.flush := True
       io.output.payload := pow2.io.output.payload
     }
-    waitNormal.whenCompleted{
+    waitNormal.whenCompleted {
       finishJob()
       io.output.payload := normal.io.output.payload
     }

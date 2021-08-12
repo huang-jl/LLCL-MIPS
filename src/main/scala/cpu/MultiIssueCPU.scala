@@ -56,7 +56,7 @@ class MultiIssueCPU extends Component {
   val pc2          = Key(UInt(32 bits))
   val entry1       = Key(IssueEntry()).setEmptyValue(IssueEntry().getZero)
   val entry2       = Key(IssueEntry()).setEmptyValue(IssueEntry().getZero)
-  val inst         = Key(Mips32Inst())
+  val inst         = Key(Mips32Inst()) setEmptyValue ConstantVal.INST_NOP
   val eret         = Key(Bool()).setEmptyValue(False)
   val isJump       = Key(Bool()).setEmptyValue(False)
   val isDJump      = Key(Bool())
@@ -114,7 +114,7 @@ class MultiIssueCPU extends Component {
   val invalidateDCache = Key(Bool()) setEmptyValue False
   val meType           = Key(ME_TYPE())
   val compareOp        = Key(CompareOp())
-  val conditionMov     = Key(Bool())
+  val conditionMov     = Key(Bool()) setEmptyValue False
   val privilege        = Key(Bool()) setEmptyValue False
   val fuck             = Key(Bool()) setEmptyValue False
 
@@ -174,11 +174,6 @@ class MultiIssueCPU extends Component {
       is.done := !dbus.stage2.stall
       can.flush := !dbus.stage2.stall
 
-      ConstantVal.FINAL_MODE generate {
-        ibus.invalidate.en := !!!(invalidateICache)
-        ibus.invalidate.addr := stored(mmuRes).paddr
-        dbus.invalidate.en := !!!(invalidateDCache)
-      }
     }
     val mem1 = new Stage {
       setName(s"mem1_${i}")
@@ -188,9 +183,9 @@ class MultiIssueCPU extends Component {
       exceptionToRaise := None
 
       ConstantVal.FINAL_MODE generate {
-        when(input(isTrap) & input(aluC)(0))(exceptionToRaise := ExcCode.trapError)
+        when(!!!(isTrap) & input(aluC)(0))(exceptionToRaise := ExcCode.trapError)
 
-        when(input(privilege) & cp0.io.machineState.userMode & !cp0.io.machineState.cu0) {
+        when(!!!(privilege) & cp0.io.machineState.userMode & !cp0.io.machineState.cu0) {
           exceptionToRaise := ExcCode.copUnusable
         }
       }
@@ -243,13 +238,13 @@ class MultiIssueCPU extends Component {
 
       ConstantVal.FINAL_MODE generate {
         // TODO 如果EX阶段要向ID前传的话，需要修改前传的判断，因为这里的rfuWE在produced才能算出来
-        val movC = new StageComponent {
+        val movC = addComponent(new StageComponent {
           val comparator = new Comparator
           comparator.io.op := input(compareOp)
           comparator.io.operand := input(rtValue)
           output(rfuWE) := input(conditionMov) & comparator.io.mov
-        }
-        produced(rfuWE) := movC.output(rfuWE) & input(rfuWE)
+        })
+        produced(rfuWE) := movC.output(rfuWE) | input(rfuWE)
         when(movC.output(rfuWE))(produced(aluC) := input(rsValue).asUInt)
       }
 
@@ -257,7 +252,7 @@ class MultiIssueCPU extends Component {
     val id = new Stage {
       setName(s"id_${i}")
 
-      val entry = if (i > 0) stored(entry2) else stored(entry1)
+      val entry = if (i > 0) !!!(entry2) else !!!(entry1)
       input(pc) := entry.pc
       input(inst) := entry.inst
       input(isJump) := entry.branch.is
@@ -330,11 +325,16 @@ class MultiIssueCPU extends Component {
   val p1 = p(1)
 
   val multiCycleCompute = new ComponentStage {
+    val hi, lo = Bits(32 bits)
     val memData = RegNextWhen(dcu2.io.output.rdata, will.input)
     complexALU.io.input.op := !!!(aluOp)
     // 复杂运算的操作数一定来自于GPR
     complexALU.io.input.a := U(stored(rsFromMem) ? memData | stored(rsValue))
     complexALU.io.input.b := U(stored(rtFromMem) ? memData | stored(rtValue))
+    ConstantVal.FINAL_MODE generate {
+      complexALU.io.hi := hi.asUInt
+      complexALU.io.lo := lo.asUInt
+    }
   }
 
   val correct = Flow(UInt(32 bits)).setIdle()
@@ -404,6 +404,16 @@ class MultiIssueCPU extends Component {
     dbus.stage2.wdata := stored(memWData)
     dbus.stage2.uncache := !stored(mmuRes).cached
 
+    ConstantVal.FINAL_MODE generate {
+      dcu2.io.input.rtValue := stored(rtValue)
+      dcu2.io.input.meType := stored(meType)
+      dcu2.io.input.byteOffset := stored(mmuRes).paddr(0, 2 bits)
+      // flush cache
+      IF.fetchInst.io.icacheInv.valid := !!!(invalidateICache)
+      IF.fetchInst.io.icacheInv.payload := stored(mmuRes).paddr
+      dbus.invalidate.en := !!!(invalidateDCache)
+    }
+
   }
   val accessMem1 = new ComponentStage {
     output(mmuRes) := RegNextWhen(mmu.io.dataRes, will.input)
@@ -429,6 +439,10 @@ class MultiIssueCPU extends Component {
     val excCode = Optional(ExcCode()) // 访存相关的异常
     excCode := None
     if (ConstantVal.FINAL_MODE) {
+      // DCU1
+      dcu1.io.input.meType := stored(meType)
+
+      // 异常
       val refillException = output(mmuRes).tlbRefillException
       val invalidException =
         output(mmuRes).tlbInvalidException
@@ -528,6 +542,20 @@ class MultiIssueCPU extends Component {
           }
         }
       }
+      ConstantVal.FINAL_MODE.generate {
+        // MOVZ数据冲突直接暂停1个周期
+        for(j <- 0 to 1) {
+          val stage = p(j)(EXE)
+          when(stage.!!!(conditionMov) & stage.produced(rfuWE)) {
+            when(stage.stored(rfuIndex) === input(inst).rs) {
+              rsNotDone := True
+            }
+            when(stage.stored(rfuIndex) === input(inst).rt) {
+              rtNotDone := True
+            }
+          }
+        }
+      }
 
       if (i == 1) {
         val stage = p0(ID)
@@ -580,6 +608,16 @@ class MultiIssueCPU extends Component {
         val stage = p0(EXE)
         when(stage.!!!(hiWE)) { hi := stage.produced(newHi) }
         when(stage.!!!(loWE)) { lo := stage.produced(newLo) }
+        ConstantVal.FINAL_MODE generate {
+          // 第一条流水线MTHI，第二条流水线做复杂计算
+          when(stage.!!!(hiWE) & self.stored(complexOp)) {
+            multiCycleCompute.hi := stage.input(rsValue)
+          }.otherwise(multiCycleCompute.hi := hi_v)
+          // 第一条流水线MTLO，第二条流水线做复杂计算
+          when(stage.!!!(loWE) & self.stored(complexOp)) {
+            multiCycleCompute.lo := stage.input(rsValue)
+          }.otherwise(multiCycleCompute.lo := lo_v)
+        }
       }
 
       output(rfuData) := input(rfuSrc).mux(
@@ -607,22 +645,29 @@ class MultiIssueCPU extends Component {
 
   /* 关注点 mem 处理 */
   for (i <- 1 downto 0) {
-    condWhen(i == 0, p(i)(EXE).!!!(useMem)) {
+    def useMemModuleCondition(pipe:Map[Value, Stage], stage:STAGES.Value): Bool = {
+      val s = pipe(stage)
+      if (ConstantVal.FINAL_MODE) {
+        s.!!!(useMem) | s.!!!(invalidateICache) | s.!!!(invalidateDCache)
+      } else {
+        s.!!!(useMem)
+      }
+    }
+    condWhen(i == 0, useMemModuleCondition(p(i), EXE)) {
       mmu.io.dataVaddr := p(i)(EXE).produced(memAddr)
-
       accessMem1.will.input := p(i)(MEM1).will.input & p(i)(EXE).exception.isEmpty
       accessMem1.receive(p(i)(EXE))
     }
-    condWhen(i == 0, p(i)(MEM1).!!!(useMem)) {
+    condWhen(i == 0, useMemModuleCondition(p(i), MEM1)) {
       accessMem1.will.output := p(i)(MEM1).will.output
       accessMem2.will.input := p(i)(MEM2).will.input
-
+      // 异常
       when(accessMem1.excCode.isDefined) {
         p(i)(MEM1).exceptionToRaise := accessMem1.excCode
       }
       dbus.stage1.write := p(i)(MEM1).stored(memWE) & p(i)(MEM1).exception.isEmpty
     }
-    condWhen(i == 0, p(i)(MEM2).!!!(useMem)) {
+    condWhen(i == 0, useMemModuleCondition(p(i), MEM2)) {
       accessMem2.will.output := p(i)(MEM2).will.output
     }
   }
@@ -747,32 +792,28 @@ class MultiIssueCPU extends Component {
     }
     mmuModule.interConnect()
     for (i <- 1 downto 0) {
-      condWhen(i == 0, p(i)(EXE).stored(privilege)) {
+      condWhen(i == 0, p(i)(EXE).!!!(privilege)) {
         mmuModule.will.input := p(i)(EXE).will.input
         mmuModule.receive(p(i)(EXE))
       }
-      condWhen(i == 0, p(i)(MEM1).stored(privilege)) {
-        multiCycleCompute.will.output := p(i)(MEM1).will.output
+      condWhen(i == 0, p(i)(MEM1).!!!(privilege)) {
+        mmuModule.will.output := p(i)(MEM1).will.output
       }
     }
     /** 当出现特殊指令需要暂停整个流水线 */
     val stopPipeline = new Area {
-      val pipelines = Seq(ID, EXE, MEM1, MEM2)
-      // 暂停取指阶段
+      val pipelines = Seq(EXE, MEM1, MEM2)
+      // 暂停译码阶段
       for(stage <- pipelines) {
-        for(id <- 0 to 1) {
-          when(p(id)(stage).produced(fuck)) {
-            IF.is.done := False
+        for(idx <- 0 to 1) {
+          p(idx)(stage).clearWhenEmpty(fuck)
+          when(p(idx)(stage).produced(fuck)) {
+            p0(ID).is.done := False
+            p1(ID).is.done := False
           }
         }
       }
-      // 暂停第二条流水线
-      for((s0, idx) <- pipelines.zipWithIndex) {
-        for(s1 <- pipelines.slice(0, idx)) {
-          println(s"when p0($s0).fuck: p1($s1).is.done = False")
-          when(p0(s0).produced(fuck))(p1(s1).is.done := False)
-        }
-      }
+      when(p0(ID).produced(fuck)) (p1(ID).is.done := False)
     }
   }
   /* 连接各个阶段 */

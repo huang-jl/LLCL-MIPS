@@ -457,7 +457,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     val invalidate = ConstantVal.FINAL_MODE generate new State //清除某个Cache Index
     if(ConstantVal.FINAL_MODE) {
       invalidate.whenIsActive {
-        when(counter.inv.value === config.wayNum)(goto(stateBoot))
+        when(counter.inv.value === config.wayNum)(goto(finish))
       }
       stateBoot.whenIsActive {
         when(io.cpu.invalidate.en)(goto(invalidate)) //当要刷新时，可能需要进行写回
@@ -558,7 +558,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   }
 
   io.cpu.stage2.stall := !(dcacheFSM.isActive(dcacheFSM.finish) |
-    (dcacheFSM.isActive(dcacheFSM.stateBoot) & !dcacheFSMLogic.loadStoreRequest))
+    (dcacheFSM.isActive(dcacheFSM.stateBoot) & !dcacheFSMLogic.loadStoreRequest) & !io.cpu.invalidate.en)
     //cache读出的数据可能是
   //1.如果读miss，此时多打2个周期，能够从hitLine中读到
   //2.命中cache: hitLine

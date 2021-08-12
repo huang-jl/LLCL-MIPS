@@ -104,6 +104,8 @@ class Stage extends Area with ValCallbackRec {
         output(key) := value
       }
     })
+
+    component
   }
 
   def connect(next: Stage, canPass: Bool) = {

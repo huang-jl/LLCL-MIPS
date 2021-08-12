@@ -82,6 +82,24 @@ class DCU1 extends Component {
         }
       }
     }
+    switch(io.input.meType) {
+      is(ME_TYPE.swl) {
+        switch(io.input.byteOffset) {
+          is(U"2'b00")(io.output.wdata(0, 8 bits) := io.input.wdata(24, 8 bits))
+          is(U"2'b01")(io.output.wdata(0, 16 bits) := io.input.wdata(16, 16 bits))
+          is(U"2'b10")(io.output.wdata(0, 24 bits) := io.input.wdata(8, 24 bits))
+          is(U"2'b11")(io.output.wdata := io.input.wdata)
+        }
+      }
+      is(ME_TYPE.swr) {
+        switch(io.input.byteOffset) {
+          is(U"2'b00")(io.output.wdata := io.input.wdata)
+          is(U"2'b01")(io.output.wdata(8, 24 bits) := io.input.wdata(0, 24 bits))
+          is(U"2'b10")(io.output.wdata(16, 16 bits) := io.input.wdata(0, 16 bits))
+          is(U"2'b11")(io.output.wdata(24, 8 bits) := io.input.wdata(0, 8 bits))
+        }
+      }
+    }
   }
 }
 

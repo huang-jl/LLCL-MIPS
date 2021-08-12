@@ -49,22 +49,21 @@ class DU extends Component {
 
     //tlb相关
     //读tlb到CP0
-    val tlbr = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
+    val tlbr = ConstantVal.FINAL_MODE generate out(Bool)
     //CP0写到tlb
-    val tlbw = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
+    val tlbw = ConstantVal.FINAL_MODE generate out(Bool)
     //probe tlb
-    val tlbp = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
+    val tlbp = ConstantVal.FINAL_MODE generate out(Bool)
     //tlbw index src
-    val tlbIndexSrc =
-      Utils.instantiateWhen(out(TLBIndexSrc()), ConstantVal.FINAL_MODE)
+    val tlbIndexSrc = ConstantVal.FINAL_MODE generate out(TLBIndexSrc())
 
     // 仅在开启FINAL_MODE后使用的
-    val invalidate_dcache = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
-    val invalidate_icache = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
-    val is_trap           = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
-    val condition_mov     = Utils.instantiateWhen(out(Bool), ConstantVal.FINAL_MODE)
-    val compare_op        = Utils.instantiateWhen(out(CompareOp), ConstantVal.FINAL_MODE)
-    val me_type           = Utils.instantiateWhen(out(ME_TYPE), ConstantVal.FINAL_MODE)
+    val invalidate_dcache = ConstantVal.FINAL_MODE generate out(Bool)
+    val invalidate_icache = ConstantVal.FINAL_MODE generate out(Bool)
+    val is_trap           = ConstantVal.FINAL_MODE generate out(Bool)
+    val condition_mov     = ConstantVal.FINAL_MODE generate out(Bool)
+    val compare_op        = ConstantVal.FINAL_MODE generate out(CompareOp)
+    val me_type           = ConstantVal.FINAL_MODE generate out(ME_TYPE)
 
     val fuck      = out Bool () //例如特权指令，拉高后让后面的指令都不发射
     val privilege = out Bool () //是否是COP0特权指令
@@ -388,6 +387,7 @@ class DU extends Component {
           set(rfuRdSrc) to RFU_RD_SRC.mu
           set(dcuBe) to U"11"
           set(useRs) to True //手册中对应的是base而不是rs
+          set(useRt) to True
           set(meType) to ty
         }
       }
@@ -400,6 +400,7 @@ class DU extends Component {
           set(dcuWe) to True
           set(dcuBe) to U"11"
           set(useRs) to True //手册中对应的是base而不是rs
+          set(useRt) to True
           set(meType) to ty
         }
       }
@@ -509,11 +510,13 @@ class DU extends Component {
       )
       for ((icacheInv, dcacheInv) <- caches) {
         on(icacheInv) {
+          set(useRs) to True
           set(invalidateICache) to True
           set(fuck) to True
           set(privilege) to True
         }
         on(dcacheInv) {
+          set(useRs) to True
           set(invalidateDCache) to True
           set(fuck) to True
           set(privilege) to True

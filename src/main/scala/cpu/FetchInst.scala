@@ -149,11 +149,11 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
         }
       })
     }
-
     val vaddr     = out UInt (32 bits)                            //取指的虚地址
     val mmuRes    = in(MMUTranslationRes(ConstantVal.FINAL_MODE)) //取指的实地址
     val exception = out(FetchException())
     val ibus      = master(new CPUICacheInterface(icacheConfig))
+    val icacheInv = ConstantVal.FINAL_MODE generate slave Flow UInt(32 bits)
   }
 
   val pcHandler = new PCHandler
@@ -183,6 +183,13 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
   pcHandler.io.except << io.except
 
   val ibus = io.ibus
+  if(ConstantVal.FINAL_MODE) {
+    ibus.invalidate.en := io.icacheInv.valid
+    ibus.invalidate.addr := io.icacheInv.payload
+  }else{
+    ibus.invalidate.en := False
+    ibus.invalidate.addr.assignDontCare()
+  }
   /*
    * stage1: 发起对ICache的请求
    */
