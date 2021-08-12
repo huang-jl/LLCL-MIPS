@@ -513,13 +513,11 @@ class DU extends Component {
           set(useRs) to True
           set(invalidateICache) to True
           set(fuck) to True
-          set(privilege) to True
         }
         on(dcacheInv) {
           set(useRs) to True
           set(invalidateDCache) to True
           set(fuck) to True
-          set(privilege) to True
         }
       }
       on(JR_HB) {
@@ -529,7 +527,8 @@ class DU extends Component {
         set(fuck) to True
       }
       // Privilege Instruction （暂时没有包括Cache指令，上面已经处理了Cache指令）
-      val priv = Set(ERET, TLBP, TLBR, TLBWI, TLBWR, MFC0, MTC0, WAIT)
+      val priv = Set(ERET, TLBP, TLBR, TLBWI, TLBWR, MFC0, MTC0, WAIT,
+        ICacheIndexInvalidate, DCacheIndexInvalidate, ICacheHitInvalidate, DCacheHitInvalidate)
       for (inst <- priv) on(inst) { set(privilege) to True }
       // Instruction that does nothing
       val useless = Set(InstructionSpec.SYNC, WAIT, PREF)

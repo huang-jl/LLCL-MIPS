@@ -25,7 +25,7 @@ class MultiIssueCPU extends Component {
   }
 
   val io = new Bundle {
-    val externalInterrupt = in Bits (6 bits)
+    val externalInterrupt = in Bits (5 bits)
     val icacheAXI         = master(Axi4(ConstantVal.AXI_BUS_CONFIG))
     val dcacheAXI         = master(Axi4(ConstantVal.AXI_BUS_CONFIG))
     val uncacheAXI        = master(Axi4(ConstantVal.AXI_BUS_CONFIG))
@@ -558,6 +558,7 @@ class MultiIssueCPU extends Component {
       }
 
       if (i == 1) {
+        def conflict(key: Key[Bool]): Bool = p0(ID).produced(key) & p1(ID).produced(key)
         val stage = p0(ID)
         stage.!!!(entry1)
         when(stage.produced(rfuWE)) {
@@ -568,8 +569,8 @@ class MultiIssueCPU extends Component {
             rtNotDone := True
           }
         }
-        // 不能发射两条复杂运算指令
-        when(self.produced(complexOp) & stage.produced(complexOp)) {
+        // 不能发射两条复杂运算
+        when(stage.produced(complexOp) & self.produced(complexOp)) {
           self.is.done := False
         }
       }
@@ -701,7 +702,7 @@ class MultiIssueCPU extends Component {
       cp0.io.exceptionBus.valid := !self.is.empty
     }
   }
-  cp0.io.externalInterrupt := io.externalInterrupt(0, 5 bits)
+  cp0.io.externalInterrupt := io.externalInterrupt
 
   when(p0(MEM1).produced(modifyCP0) & p1(MEM1).produced(modifyCP0)) {
     p1(MEM1).is.done := False
@@ -754,7 +755,7 @@ class MultiIssueCPU extends Component {
         }
       }
     }
-  } /* otherwise {
+  }.otherwise {
     when(p0(EXE).stored(predJump)) {
       correct.push(p0(EXE).stored(pc) + 4)
       p0(ID).assign.flush := p0ExeIsNew
@@ -765,7 +766,7 @@ class MultiIssueCPU extends Component {
       p0(ID).assign.flush := p1ExeIsNew
       p1(ID).assign.flush := p1ExeIsNew
     }
-  }*/
+  }
   /* 复杂运算的流水线选择 */
   // complexALU
   for (i <- 1 downto 0) {
@@ -793,7 +794,7 @@ class MultiIssueCPU extends Component {
     mmuModule.interConnect()
     for (i <- 1 downto 0) {
       condWhen(i == 0, p(i)(EXE).!!!(privilege)) {
-        mmuModule.will.input := p(i)(EXE).will.input
+        mmuModule.will.input := p(i)(MEM1).will.input
         mmuModule.receive(p(i)(EXE))
       }
       condWhen(i == 0, p(i)(MEM1).!!!(privilege)) {
@@ -814,6 +815,8 @@ class MultiIssueCPU extends Component {
         }
       }
       when(p0(ID).produced(fuck)) (p1(ID).is.done := False)
+      // 不能同时发射两条特权指令
+      when(p0(ID).produced(privilege) & p1(ID).produced(privilege)) (p1(ID).is.done := False)
     }
   }
   /* 连接各个阶段 */
@@ -828,6 +831,121 @@ class MultiIssueCPU extends Component {
     curr._2.connect(next._2, canPass)
   }
   /**/
+
+  p0(ID).input(pc).addAttribute("mark_debug", "true")
+  p0(ID).input(inst).addAttribute("mark_debug", "true")
+  p0(ID).stored(entry1).valid.addAttribute("mark_debug", "true")
+  p1(ID).input(pc).addAttribute("mark_debug", "true")
+  p1(ID).stored(entry2).valid.addAttribute("mark_debug", "true")
+  p1(ID).input(inst).addAttribute("mark_debug", "true")
+
+  IF.fetchInst.pcHandler.io.pc.current.addAttribute("mark_debug", "true")
+  IF.fetchInst.pcHandler.pc.next.addAttribute("mark_debug", "true")
+  IF.fetchInst.pcHandler.io.predict.valid.addAttribute("mark_debug", "true")
+  IF.fetchInst.io.jump.addAttribute("mark_debug", "true")
+  IF.fetchInst.pcHandler.io.stop.valid.addAttribute("mark_debug", "true")
+  IF.fetchInst.pcHandler.io.retain.addAttribute("mark_debug", "true")
+  IF.fetchInst.pcHandler.io.flush.addAttribute("mark_debug", "true")
+  IF.fetchInst.branch.busy.addAttribute("mark_debug", "true")
+  IF.fetchInst.delaySlot.waiting.addAttribute("mark_debug", "true")
+
+  ibus.stage2.paddr.addAttribute("mark_debug", "true")
+  ibus.stage2.rdata.addAttribute("mark_debug", "true")
+  ibus.stage2.stall.addAttribute("mark_debug", "true")
+
+  io.icacheAXI.r.valid.addAttribute("mark_debug", "true")
+  io.icacheAXI.r.data.addAttribute("mark_debug", "true")
+  io.icacheAXI.r.last.addAttribute("mark_debug", "true")
+
+  IF.fetchInst.S2.recvFromS1.pc.addAttribute("mark_debug", "true")
+  IF.fetchInst.S2.sendToS3.entry(0).inst.addAttribute("mark_debug", "true")
+  IF.fetchInst.S2.sendToS3.entry(0).pc.addAttribute("mark_debug", "true")
+  IF.fetchInst.S2.sendToS3.entry(0).valid.addAttribute("mark_debug", "true")
+  IF.fetchInst.S2.sendToS3.entry(1).inst.addAttribute("mark_debug", "true")
+  IF.fetchInst.S2.sendToS3.entry(0).pc.addAttribute("mark_debug", "true")
+  IF.fetchInst.S2.sendToS3.entry(0).valid.addAttribute("mark_debug", "true")
+  IF.fetchInst.S2.waiting.delaySlot.addAttribute("mark_debug", "true")
+  IF.fetchInst.S2.clearNext.addAttribute("mark_debug", "true")
+
+  IF.fetchInst.S3.validInstFromS2.addAttribute("mark_debug", "true")
+  IF.fetchInst.S3.entry(0).pc.addAttribute("mark_debug", "true")
+  IF.fetchInst.S3.entry(1).pc.addAttribute("mark_debug", "true")
+  IF.fetchInst.S3.entry(0).valid.addAttribute("mark_debug", "true")
+  IF.fetchInst.S3.entry(1).valid.addAttribute("mark_debug", "true")
+
+  IF.fetchInst.fifo.io.pop.en.addAttribute("mark_debug", "true")
+  IF.fetchInst.fifo.io.pop.num.addAttribute("mark_debug", "true")
+  IF.fetchInst.fifo.io.pop.data(0).pc.addAttribute("mark_debug", "true")
+  IF.fetchInst.fifo.io.pop.data(0).branch.is.addAttribute("mark_debug", "true")
+  IF.fetchInst.fifo.io.pop.data(0).inst.addAttribute("mark_debug", "true")
+  IF.fetchInst.fifo.io.pop.data(1).pc.addAttribute("mark_debug", "true")
+  IF.fetchInst.fifo.io.pop.data(1).branch.is.addAttribute("mark_debug", "true")
+  IF.fetchInst.fifo.io.pop.data(1).inst.addAttribute("mark_debug", "true")
+
+  IF.fetchInst.fifo.io.push.en.addAttribute("mark_debug", "true")
+  IF.fetchInst.fifo.io.push.num.addAttribute("mark_debug", "true")
+  IF.fetchInst.fifo.io.push.data(0).pc.addAttribute("mark_debug", "true")
+  IF.fetchInst.fifo.io.push.data(0).inst.addAttribute("mark_debug", "true")
+  IF.fetchInst.fifo.io.push.data(0).branch.is.addAttribute("mark_debug", "true")
+  IF.fetchInst.fifo.io.push.data(1).pc.addAttribute("mark_debug", "true")
+  IF.fetchInst.fifo.io.push.data(1).inst.addAttribute("mark_debug", "true")
+  IF.fetchInst.fifo.io.push.data(1).branch.is.addAttribute("mark_debug", "true")
+
+  IF.fetchInst.fifo.io.empty.addAttribute("mark_debug", "true")
+  IF.fetchInst.fifo.io.full.addAttribute("mark_debug", "true")
+  IF.fetchInst.fifo.counter.counter.addAttribute("mark_debug", "true")
+
+//  p0(EXE).stored(pc).addAttribute("mark_debug", "true")
+//  p0(EXE).stored(isJump).addAttribute("mark_debug", "true")
+//  p0(EXE).stored(isDJump).addAttribute("mark_debug", "true")
+//  p0(EXE).stored(predJump).addAttribute("mark_debug", "true")
+//  p0(EXE).stored(jumpPC).addAttribute("mark_debug", "true")
+//  ju.a.addAttribute("mark_debug", "true")
+//  p0(EXE).stored(predJumpPC).addAttribute("mark_debug", "true")
+//  p1(EXE).stored(pc).addAttribute("mark_debug", "true")
+//  p1(EXE).stored(isJump).addAttribute("mark_debug", "true")
+//  p1(EXE).stored(isDJump).addAttribute("mark_debug", "true")
+//  p1(EXE).stored(predJump).addAttribute("mark_debug", "true")
+//  p1(EXE).stored(predJumpPC).addAttribute("mark_debug", "true")
+//  p1(EXE).stored(jumpPC).addAttribute("mark_debug", "true")
+
+
+  p0(MEM1).stored(pc).addAttribute("mark_debug", "true")
+  p0(MEM1).stored(memRE).addAttribute("mark_debug", "true")
+  p0(MEM1).stored(memWE).addAttribute("mark_debug", "true")
+  p1(MEM1).stored(pc).addAttribute("mark_debug", "true")
+  p1(MEM1).stored(memRE).addAttribute("mark_debug", "true")
+  p1(MEM1).stored(memWE).addAttribute("mark_debug", "true")
+
+  p0(WB).stored(rfuWE).addAttribute("mark_debug", "true")
+  p0(WB).stored(rfuData).addAttribute("mark_debug", "true")
+  p0(WB).stored(rfuIndex).addAttribute("mark_debug", "true")
+  p1(WB).stored(rfuWE).addAttribute("mark_debug", "true")
+  p1(WB).stored(rfuData).addAttribute("mark_debug", "true")
+  p1(WB).stored(rfuIndex).addAttribute("mark_debug", "true")
+
+  rfu.mem(2).addAttribute("mark_debug", "true")  //v0
+  rfu.mem(3).addAttribute("mark_debug", "true")  //v1
+  rfu.mem(4).addAttribute("mark_debug", "true")  //a0
+  rfu.mem(5).addAttribute("mark_debug", "true")  //a1
+//  rfu.mem(6).addAttribute("mark_debug", "true")  //a2
+//  rfu.mem(18).addAttribute("mark_debug", "true")  //s2
+
+//  dbus.stage1.paddr.addAttribute("mark_debug", "true")
+//  dbus.stage1.wdata.addAttribute("mark_debug", "true")
+//  dbus.stage1.write.addAttribute("mark_debug", "true")
+//
+//  dbus.stage2.stall.addAttribute("mark_debug", "true")
+//  dbus.stage2.read.addAttribute("mark_debug", "true")
+//  dbus.stage2.write.addAttribute("mark_debug", "true")
+//  dbus.stage2.uncache.addAttribute("mark_debug", "true")
+
+  cp0.io.exceptionBus.jumpPc.addAttribute("mark_debug", "true")
+  cp0.regs.cause.ipHW.addAttribute("mark_debug", "true")
+  cp0.regs.cause.excCode.addAttribute("mark_debug", "true")
+  cp0.regs.status.exl.addAttribute("mark_debug", "true")
+  cp0.regs.status.ie.addAttribute("mark_debug", "true")
+  cp0.regs.status.im.addAttribute("mark_debug", "true")
 }
 
 object MultiIssueCPU {
