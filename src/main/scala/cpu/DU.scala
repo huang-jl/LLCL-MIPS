@@ -68,6 +68,8 @@ class DU extends Component {
 
     val fuck      = out Bool () //例如特权指令，拉高后让后面的指令都不发射
     val privilege = out Bool () //是否是COP0特权指令
+
+    val canUseMem1ALU = out Bool ()
   }
 
   // wires
@@ -116,6 +118,7 @@ class DU extends Component {
   val conditionMov     = Key(Bool)
   val compareOp        = Key(CompareOp())
   val meType           = Key(ME_TYPE())
+  val canUseMem1ALU    = Key(Bool())
 
   val decoder = new Decoder(32 bits, enableNotConsidered = true) {
     //下面是默认值，避免出现Latch
@@ -142,6 +145,7 @@ class DU extends Component {
     default(exception) to Optional.noneOf(ExcCode())
     default(eret) to False
     default(fuck) to False
+    default(canUseMem1ALU) to False
     if (ConstantVal.FINAL_MODE) {
       default(tlbr) to False
       default(tlbw) to False
@@ -155,6 +159,12 @@ class DU extends Component {
       default(meType) to ME_TYPE.normal
       default(privilege) to False
     }
+
+    /* 可以延迟处理的运算 */
+    for (inst <- Seq(ADDU, ADDIU, SUBU, SLT, SLTI, SLTU, SLTIU, AND, ANDI, LUI, NOR, OR, ORI, XOR, XORI, SLLV, SLL, SRAV, SRLV, SRL)) {
+      on(inst) { set(canUseMem1ALU) to True }
+    }
+    /**/
 
     // Arithmetics
     val saShifts = Map( // useRt rfuWE
@@ -580,6 +590,8 @@ class DU extends Component {
   }
   io.eret := decoder.output(eret)
   io.fuck := decoder.output(fuck)
+
+  io.canUseMem1ALU := decoder.output(canUseMem1ALU)
 
   if (ConstantVal.FINAL_MODE) {
     io.tlbr := decoder.output(tlbr)
