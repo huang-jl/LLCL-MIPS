@@ -327,6 +327,7 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
   pcHandler.io.stop.valid := S3.recvFromS2.valid & !S3.canRecv
   pcHandler.io.stop.payload := RegNext(S2.recvFromS1.pc)
 
+  val pop1Valid = fifo.io.pop.num === 2 & fifo.io.pop.data(1).valid
   val delaySlot = new Area {
     val waiting = new Bundle {
       val next = Bool
@@ -346,7 +347,7 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
     }.elsewhen(S3.sendToID.ready) {
       when(fifo.io.empty)(waiting.next := decoder.is.branch(1) & S3.validInstFromS2)
         .otherwise {
-          waiting.next := fifo.io.pop.data(1).valid ? fifo.io.pop.data(1).branch.is |
+          waiting.next := pop1Valid ? fifo.io.pop.data(1).branch.is |
             fifo.io.pop.data(0).branch.is
         }
     }
@@ -365,7 +366,7 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
       }.otherwise {
         when(fifo.io.empty)(busy.next := decoder.is.branch(1) & S3.validInstFromS2)
           .otherwise {
-            busy.next := fifo.io.pop.data(1).valid ? fifo.io.pop.data(1).branch.is |
+            busy.next := pop1Valid ? fifo.io.pop.data(1).branch.is |
               fifo.io.pop.data(0).branch.is
           }
       }
@@ -374,7 +375,7 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
   when(!branch.busy.reg) {
     when(fifo.io.empty)(branch.inst := S3.entry(1))
       .otherwise {
-        branch.inst := fifo.io.pop.data(1).valid ? fifo.io.pop.data(1) | fifo.io.pop.data(0)
+        branch.inst := pop1Valid ? fifo.io.pop.data(1) | fifo.io.pop.data(0)
       }
   }
 
@@ -383,7 +384,7 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
   when(branch.busy.reg) {
     S3.sendToID.payload(0) := branch.inst.validWhen(!branch.busy.next)
   }.otherwise(S3.sendToID.payload(0) := fifo.io.empty ? S3.entry(0) | fifo.io.pop.data(0))
-  when(branch.busy.next & !fifo.io.empty & !fifo.io.pop.data(1).valid) {
+  when(branch.busy.next & !fifo.io.empty & !pop1Valid) {
     S3.sendToID.payload(0).valid := False
   }
   // 1是发射给第二条流水线
