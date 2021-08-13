@@ -556,7 +556,7 @@ class MultiIssueCPU extends Component {
               nextFwdFrom := FwdFrom.p(i)(FwdFrom.ns(j))
               if (j == MEM2) {
                 data := stage.stored(rfuData)
-                self.produced(rFromMem) := stage.stored(memRE)
+                self.produced(rFromMem) := self.stored(useR) & stage.stored(memRE)
               } else {
                 data := stage.produced(rfuData)
                 self.produced(rFromMem) := False
