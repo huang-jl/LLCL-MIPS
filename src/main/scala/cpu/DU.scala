@@ -161,7 +161,7 @@ class DU extends Component {
     }
 
     /* 可以延迟处理的运算 */
-    for (inst <- Seq(ADDU, ADDIU, SUBU, SLT, SLTI, SLTU, SLTIU, AND, ANDI, LUI, NOR, OR, ORI, XOR, XORI, SLLV, SLL, SRAV, SRLV, SRL)) {
+    for (inst <- Seq(ADDU, ADDIU, SUBU, SLT, SLTI, SLTU, SLTIU, AND, ANDI, LUI, NOR, OR, ORI, XOR, XORI, SLLV, SLL, SRAV, SRA, SRLV, SRL)) {
       on(inst) { set(canUseMem1ALU) to True }
     }
     /**/

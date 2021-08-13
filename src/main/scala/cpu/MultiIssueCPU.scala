@@ -175,6 +175,10 @@ class MultiIssueCPU extends Component {
 
       produced(dataNotReady) := stored(memRE)
 
+      val memData = RegNextWhen(dcu2.io.output.rdata, can.input)
+      input(rsValue) := stored(rsFromMem) ? memData | stored(rsValue)
+      input(rtValue) := stored(rtFromMem) ? memData | stored(rtValue)
+
       val calc = new StageComponent {
         mem1ALU.op := input(aluOp)
         mem1ALU.a := input(aluASrc).mux(
@@ -202,8 +206,7 @@ class MultiIssueCPU extends Component {
 
       produced(dataNotReady) := stored(memRE) | stored(useMem1ALU)
 
-      val memData = Reg(Bits(32 bits))
-      when(will.input) { memData := dcu2.io.output.rdata }
+      val memData = RegNextWhen(dcu2.io.output.rdata, can.input)
       input(rsValue) := stored(rsFromMem) ? memData | stored(rsValue)
       input(rtValue) := stored(rtFromMem) ? memData | stored(rtValue)
 
@@ -388,10 +391,11 @@ class MultiIssueCPU extends Component {
   }
   val accessMem1 = new ComponentStage {
     output(mmuRes) := RegNextWhen(mmu.io.dataRes, will.input)
+    val memData = RegNextWhen(dcu2.io.output.rdata, will.input)
 
     dcu1.io.input.byteOffset := output(mmuRes).paddr(0, 2 bits)
     dcu1.io.input.byteEnable := stored(memBEType)
-    dcu1.io.input.wdata := stored(rtValue)
+    dcu1.io.input.wdata := stored(rtFromMem) ? memData | stored(rtValue)
 
     output(memBE) := dcu1.io.output.byteEnable
     output(memWData) := dcu1.io.output.wdata
@@ -511,14 +515,12 @@ class MultiIssueCPU extends Component {
       }
 
       output(useMem1ALU) := False
-      self.produced(useRs) := False
-      self.produced(useRt) := False
+      self.produced(useRs) := self.output(useRs) & rsNotReady
+      self.produced(useRt) := self.output(useRt) & rtNotReady
 
-      when(self.output(useRs) & rsNotReady | self.output(useRt) & rtNotReady) {
+      when(self.produced(useRs) | self.produced(useRt)) {
         when(self.produced(canUseMem1ALU)) {
           output(useMem1ALU) := True
-          self.produced(useRs) := self.output(useRs) & rsNotReady
-          self.produced(useRt) := self.output(useRt) & rtNotReady
         } otherwise {
           self.is.done := False
         }
@@ -536,6 +538,8 @@ class MultiIssueCPU extends Component {
       val rValue   = if (rt) rtValue else rsValue
       val useR     = if (rt) useRt else useRs
 
+      val rFromMem = if (rt) rtFromMem else rsFromMem
+
       val self        = p(k)(EXE)
       val prev        = p(k)(ID)
       val willOutput  = Bool()
@@ -545,11 +549,18 @@ class MultiIssueCPU extends Component {
       switch(self.stored(rFwdFrom)) {
         for (i <- 0 to 1) {
           for (j <- Seq(MEM1, MEM2)) {
+            val stage = p(i)(j)
             is(FwdFrom.p(i)(j)) {
-              willOutput := p(i)(j).will.output
-              rNotReady := p(i)(j).produced(dataNotReady)
-              data := p(i)(j).produced(rfuData)
+              willOutput := stage.will.output
+              rNotReady := stage.produced(dataNotReady)
               nextFwdFrom := FwdFrom.p(i)(FwdFrom.ns(j))
+              if (j == MEM2) {
+                data := stage.stored(rfuData)
+                self.produced(rFromMem) := stage.stored(memRE)
+              } else {
+                data := stage.produced(rfuData)
+                self.produced(rFromMem) := False
+              }
             }
           }
         }
@@ -558,6 +569,7 @@ class MultiIssueCPU extends Component {
           rNotReady := p0(EXE).produced(dataNotReady)
           data := p0(EXE).produced(rfuData)
           nextFwdFrom := FwdFrom.p0(MEM1)
+          self.produced(rFromMem) := False
         }
       }
 
@@ -666,7 +678,7 @@ class MultiIssueCPU extends Component {
       cp0.io.softwareWrite.valid := self.stored(cp0WE)
       cp0.io.softwareWrite.addr.rd := self.stored(inst).rd
       cp0.io.softwareWrite.addr.sel := self.stored(inst).sel
-      cp0.io.softwareWrite.data := self.stored(rtValue)
+      cp0.io.softwareWrite.data := self.input(rtValue)
 
       cp0.io.exceptionBus.exception.excCode := self.exception
       cp0.io.exceptionBus.exception.instFetch := self.stored(excOnFetch)

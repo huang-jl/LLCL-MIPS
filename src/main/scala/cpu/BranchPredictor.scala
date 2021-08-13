@@ -143,7 +143,7 @@ class BranchPredictor(number: Int) extends Area {
     val metaLine = btb.io.r.metaLine
     val dataLine = btb.io.r.dataLine
     output(btbP) := btb.io.r.p
-    for (i <- 0 to 3) {
+    for (i <- 0 until BTB.NUM_WAYS) {
       output(btbHitLine)(i) := (True ## stored(pc).btbTag) === metaLine(i)
     }
     output(btbHit) := output(btbHitLine).orR
