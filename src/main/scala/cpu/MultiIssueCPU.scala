@@ -366,13 +366,13 @@ class MultiIssueCPU extends Component {
     /**/
     bps(0).write2.io.assignJump := ju.jump
     bps(1).write2.io.assignJump := False
-    bps(0).write2.will.output := p0(EXE).will.output
-    bps(1).write2.will.output := p1(EXE).will.output
+    bps(0).write2.bind(p0(EXE))
+    bps(1).write2.bind(p1(EXE))
     when(!p1(EXE).is.empty & !p1(EXE).stored(pc)(2) | !p0(EXE).is.empty & p0(EXE).stored(pc)(2)) {
       bps(0).write2.io.assignJump := False
       bps(1).write2.io.assignJump := ju.jump
-      bps(0).write2.will.output := p1(EXE).will.output
-      bps(1).write2.will.output := p0(EXE).will.output
+      bps(0).write2.bind(p1(EXE))
+      bps(1).write2.bind(p0(EXE))
     }
     /**/
   }
@@ -650,13 +650,13 @@ class MultiIssueCPU extends Component {
       accessMem1.receive(p(i)(EXE))
     }
     condWhen(i == 0, p(i)(MEM1).!!!(useMem)) {
-      accessMem1.will.output := p(i)(MEM1).will.output
+      accessMem1.bind(p(i)(MEM1))
       accessMem2.will.input := p(i)(MEM2).will.input
       // 注意只有访存才会在MEM1触发异常
       dbus.stage1.write := p(i)(MEM1).stored(memWE) & p(i)(MEM1).exception.isEmpty
     }
     condWhen(i == 0, p(i)(MEM2).!!!(useMem)) {
-      accessMem2.will.output := p(i)(MEM2).will.output
+      accessMem2.bind(p(i)(MEM2))
     }
   }
 
@@ -763,7 +763,7 @@ class MultiIssueCPU extends Component {
       multiCycleCompute.receive(p(i)(ID))
     }
     condWhen(i == 0, p(i)(EXE).stored(complexOp)) {
-      multiCycleCompute.will.output := p(i)(EXE).will.output
+      multiCycleCompute.bind(p(i)(EXE))
       complexALU.io.flush := p(i)(EXE).will.flush
     }
   }
