@@ -249,7 +249,7 @@ class MultiIssueCPU extends Component {
     val id = new Stage {
       setName(s"id_${i}")
 
-      val entry = if (i > 0) stored(entry2) else stored(entry1)
+      val entry = if (i == 0) !!!(entry1) else stored(entry2)
       input(pc) := entry.pc
       input(inst) := entry.inst
       input(isJump) := entry.branch.is
@@ -257,7 +257,10 @@ class MultiIssueCPU extends Component {
       input(predJump) := entry.predict.taken
       input(predJumpPC) := entry.predict.target
       input(jumpPC) := entry.target
-      when(!entry.valid)(assign.flush := True)
+      when(!entry.valid) {
+        assign.flush := True
+        if (i == 0) { input(inst) := NOP }
+      }
 
       val decode = new StageComponent {
         du.io.inst := input(inst)
@@ -489,7 +492,6 @@ class MultiIssueCPU extends Component {
 
       if (i == 1) {
         val stage = p0(ID)
-        stage.!!!(entry1)
         when(stage.produced(rfuWE)) {
           when(stage.produced(rfuIndex) === input(inst).rs) {
             rsNotReady := True
@@ -721,7 +723,7 @@ class MultiIssueCPU extends Component {
   when(p0(EXE).stored(isJump)) {
     correct.payload := ju.jump ? juJumpPC | p0(EXE).stored(pc) + 8
     when(p0ExeIsNew) {
-      when(ju.jump & (!p0(EXE).stored(predJump)/* | p0(EXE).stored(predJumpPC) =/= juJumpPC */) | !ju.jump & p0(EXE).stored(predJump)) {
+      when(ju.jump & (!p0(EXE).stored(predJump) /* | p0(EXE).stored(predJumpPC) =/= juJumpPC */ ) | !ju.jump & p0(EXE).stored(predJump)) {
         correct.valid := True
         when(!p1(EXE).is.empty) {
           p0(ID).assign.flush := True
