@@ -110,6 +110,8 @@ class LLCL_CPU extends Component {
     val icacheAXI = master(Axi4(ConstantVal.AXI_BUS_CONFIG))
     val dcacheAXI = master(Axi4(ConstantVal.AXI_BUS_CONFIG))
     val uncacheAXI = master(Axi4(ConstantVal.AXI_BUS_CONFIG))
+
+    val pc = out UInt(64 bits)
   }
 
   val aClockDomain = ClockDomain(
@@ -126,6 +128,8 @@ class LLCL_CPU extends Component {
     cpu.io.icacheAXI <> io.icacheAXI
     cpu.io.dcacheAXI <> io.dcacheAXI
     cpu.io.uncacheAXI <> io.uncacheAXI
+    io.pc(0, 32 bits) := cpu.p0(WB).stored(cpu.pc).pull
+    io.pc(32, 32 bits) := cpu.p1(WB).stored(cpu.pc).pull
   }.setName("")
 
   noIoPrefix()

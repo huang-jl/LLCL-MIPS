@@ -257,10 +257,8 @@ class ICache(config: CacheRamConfig) extends Component {
   write.data(config.wordNum - 1) := io.axi.r.data
   //如果是invalidate指令，那么直接刷掉那一行
   when(io.cpu.invalidate.en) {
-    for (i <- 0 until config.wayNum) {
-      write.en(i) := True
-      cacheRam.tags(i).io.portA.addr := io.cpu.invalidate.addr.index
-    }
+    write.addr := io.cpu.invalidate.addr.index
+    write.en.setAll()
   }
 }
 

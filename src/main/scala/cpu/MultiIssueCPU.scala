@@ -254,13 +254,15 @@ class MultiIssueCPU extends Component {
 
       val entry = if (i > 0) !!!(entry2) else !!!(entry1)
       input(pc) := entry.pc
-      input(inst) := entry.inst
+      input(inst) := entry.valid ? entry.inst | ConstantVal.INST_NOP
       input(isJump) := entry.branch.is
       input(isDJump) := entry.branch.isDjump
       input(predJump) := entry.predict.taken
       input(predJumpPC) := entry.predict.target
       input(jumpPC) := entry.target
       when(!entry.valid)(assign.flush := True)
+      input(tlbRefillException) := entry.exception.refillException & entry.valid
+      input(excOnFetch) := entry.exception.code.isDefined & entry.valid
 
       val decode = new StageComponent {
         du.io.inst := input(inst)
@@ -305,6 +307,9 @@ class MultiIssueCPU extends Component {
         }
 
         exceptionToRaise := du.io.exception
+        when(entry.valid & entry.exception.code.isDefined) {
+          exceptionToRaise := entry.exception.code
+        }
       }
 
       val calcRFUData = new StageComponent {
@@ -325,7 +330,7 @@ class MultiIssueCPU extends Component {
   val p1 = p(1)
 
   val multiCycleCompute = new ComponentStage {
-    val hi, lo = Bits(32 bits)
+    val hi, lo  = Bits(32 bits)
     val memData = RegNextWhen(dcu2.io.output.rdata, will.input)
     complexALU.io.input.op := !!!(aluOp)
     // 复杂运算的操作数一定来自于GPR
@@ -352,14 +357,20 @@ class MultiIssueCPU extends Component {
     mmu.io.instVaddr := fetchInst.io.vaddr
     produced(entry1) := fetchInst.io.issue.payload(0)
     produced(entry2) := fetchInst.io.issue.payload(1)
+    // 取指有异常就invalid
+    for ((entry, i) <- Seq(entry1, entry2).zipWithIndex) {
+      when(fetchInst.io.issue.payload(i).exception.code.isDefined) {
+        produced(entry).inst := ConstantVal.INST_NOP
+      }
+    }
     when(!fetchInst.io.issue.valid) {
       produced(entry1).valid := False
       produced(entry2).valid := False
     }
-    produced(tlbRefillException) := fetchInst.io.exception.refillException
-    produced(excOnFetch) := fetchInst.io.exception.code.isDefined
-
-    exceptionToRaise := fetchInst.io.exception.code
+//    produced(tlbRefillException) := fetchInst.io.exception.refillException
+//    produced(excOnFetch) := fetchInst.io.exception.code.isDefined
+//
+//    exceptionToRaise := fetchInst.io.exception.code
 
     ibus <> fetchInst.io.ibus
 
@@ -412,6 +423,12 @@ class MultiIssueCPU extends Component {
       IF.fetchInst.io.icacheInv.valid := !!!(invalidateICache)
       IF.fetchInst.io.icacheInv.payload := stored(mmuRes).paddr
       dbus.invalidate.en := !!!(invalidateDCache)
+      // 当清空ICache时刷新流水线
+      when(stored(invalidateICache)) {
+        correct.push(stored(pc) + 4)
+        p0(ID).assign.flush := True
+        p1(ID).assign.flush := True
+      }
     }
 
   }
@@ -429,12 +446,12 @@ class MultiIssueCPU extends Component {
     output(memBE) := dcu1.io.output.byteEnable
     output(memWData) := dcu1.io.output.wdata
 
+    clearWhenEmpty(memRE)
+    clearWhenEmpty(memWE)
     ConstantVal.DISABLE_VIRT_UART generate {
       output(memRE) := output(mmuRes).paddr =/= U"32'h1faf_fff0" & stored(memRE)
       output(memWE) := output(mmuRes).paddr =/= U"32'h1faf_fff0" & stored(memWE)
     }
-    clearWhenEmpty(memRE)
-    clearWhenEmpty(memWE)
 
     val excCode = Optional(ExcCode()) // 访存相关的异常
     excCode := None
@@ -442,7 +459,7 @@ class MultiIssueCPU extends Component {
       // DCU1
       dcu1.io.input.meType := stored(meType)
 
-      // 异常
+      // 访问数据出现的异常
       val refillException = output(mmuRes).tlbRefillException
       val invalidException =
         output(mmuRes).tlbInvalidException
@@ -452,15 +469,16 @@ class MultiIssueCPU extends Component {
           .elsewhen(stored(memWE))(excCode := ExcCode.storeTLBError)
       }.elsewhen(modifiedException)(excCode := ExcCode.tlbModError)
       // 当memRe或memWe时才会由本阶段触发refillException
-      cp0.io.exceptionBus.exception.tlbRefill := stored(tlbRefillException) |
-        (refillException & (stored(memRE) | stored(memWE)))
+      output(tlbRefillException) := refillException & (stored(memRE) | stored(memWE))
+//      cp0.io.exceptionBus.exception.tlbRefill := stored(tlbRefillException) |
+//        (refillException & (stored(memRE) | stored(memWE)))
       // 地址不对齐错误更优先
       when(!dcu1.io.output.addrValid & !stored(invalidateICache) & !stored(invalidateDCache)) {
         when(stored(memRE))(excCode := ExcCode.loadAddrError)
         when(stored(memWE))(excCode := ExcCode.storeAddrError)
       }
     } else {
-      cp0.io.exceptionBus.exception.tlbRefill := stored(tlbRefillException)
+      output(tlbRefillException) := False
       when(!dcu1.io.output.addrValid) {
         when(stored(memRE))(excCode := ExcCode.loadAddrError)
         when(stored(memWE))(excCode := ExcCode.storeAddrError)
@@ -543,8 +561,9 @@ class MultiIssueCPU extends Component {
         }
       }
       ConstantVal.FINAL_MODE.generate {
-        // MOVZ数据冲突直接暂停1个周期
-        for(j <- 0 to 1) {
+        // 第一条流水线是MOV那么直接暂停第二条流水线
+        // MOV数据冲突直接暂停1个周期
+        for (j <- 0 to 1) {
           val stage = p(j)(EXE)
           when(stage.!!!(conditionMov) & stage.produced(rfuWE)) {
             when(stage.stored(rfuIndex) === input(inst).rs) {
@@ -558,7 +577,7 @@ class MultiIssueCPU extends Component {
       }
 
       if (i == 1) {
-        def conflict(key: Key[Bool]): Bool = p0(ID).produced(key) & p1(ID).produced(key)
+        when(p0(ID).produced(conditionMov))(p1(ID).is.done := False)
         val stage = p0(ID)
         stage.!!!(entry1)
         when(stage.produced(rfuWE)) {
@@ -646,7 +665,7 @@ class MultiIssueCPU extends Component {
 
   /* 关注点 mem 处理 */
   for (i <- 1 downto 0) {
-    def useMemModuleCondition(pipe:Map[Value, Stage], stage:STAGES.Value): Bool = {
+    def useMemModuleCondition(pipe: Map[Value, Stage], stage: STAGES.Value): Bool = {
       val s = pipe(stage)
       if (ConstantVal.FINAL_MODE) {
         s.!!!(useMem) | s.!!!(invalidateICache) | s.!!!(invalidateDCache)
@@ -662,14 +681,17 @@ class MultiIssueCPU extends Component {
     condWhen(i == 0, useMemModuleCondition(p(i), MEM1)) {
       accessMem1.will.output := p(i)(MEM1).will.output
       accessMem2.will.input := p(i)(MEM2).will.input
-      // 异常
-      when(accessMem1.excCode.isDefined) {
-        p(i)(MEM1).exceptionToRaise := accessMem1.excCode
-      }
       dbus.stage1.write := p(i)(MEM1).stored(memWE) & p(i)(MEM1).exception.isEmpty
     }
     condWhen(i == 0, useMemModuleCondition(p(i), MEM2)) {
       accessMem2.will.output := p(i)(MEM2).will.output
+    }
+    // MEM1阶段的异常
+    p(i)(MEM1).output(tlbRefillException) := p(i)(MEM1).stored(tlbRefillException)
+    when(p(i)(MEM1).!!!(useMem)) {
+      p(i)(MEM1).exceptionToRaise := accessMem1.excCode
+      p(i)(MEM1).output(tlbRefillException) := p(i)(MEM1).stored(tlbRefillException) |
+        accessMem1.output(tlbRefillException)
     }
   }
 
@@ -695,6 +717,7 @@ class MultiIssueCPU extends Component {
 
       cp0.io.exceptionBus.exception.excCode := self.exception
       cp0.io.exceptionBus.exception.instFetch := self.stored(excOnFetch)
+      cp0.io.exceptionBus.exception.tlbRefill := self.produced(tlbRefillException)
       cp0.io.exceptionBus.eret := self.stored(eret)
       cp0.io.exceptionBus.vaddr := self.stored(memAddr)
       cp0.io.exceptionBus.pc := self.stored(pc)
@@ -757,12 +780,14 @@ class MultiIssueCPU extends Component {
     }
   }.otherwise {
     when(p0(EXE).stored(predJump)) {
-      correct.push(p0(EXE).stored(pc) + 4)
+      correct.valid := p0ExeIsNew
+      correct.payload := p0(EXE).stored(pc) + 4
       p0(ID).assign.flush := p0ExeIsNew
       p1(ID).assign.flush := p0ExeIsNew
       p1(EXE).assign.flush := p0ExeIsNew
     } elsewhen p1(EXE).stored(predJump) {
-      correct.push(p1(EXE).stored(pc) + 4)
+      correct.valid := p0ExeIsNew
+      correct.payload := p0(EXE).stored(pc) + 4
       p0(ID).assign.flush := p1ExeIsNew
       p1(ID).assign.flush := p1ExeIsNew
     }
@@ -781,6 +806,7 @@ class MultiIssueCPU extends Component {
   }
 
   ConstantVal.FINAL_MODE generate {
+
     /** TLB模块 */
     val mmuModule = new ComponentStage {
       cp0.io.tlbBus.tlbr := !!!(tlbr)
@@ -801,12 +827,11 @@ class MultiIssueCPU extends Component {
         mmuModule.will.output := p(i)(MEM1).will.output
       }
     }
-    /** 当出现特殊指令需要暂停整个流水线 */
     val stopPipeline = new Area {
       val pipelines = Seq(EXE, MEM1, MEM2)
       // 暂停译码阶段
-      for(stage <- pipelines) {
-        for(idx <- 0 to 1) {
+      for (stage <- pipelines) {
+        for (idx <- 0 to 1) {
           p(idx)(stage).clearWhenEmpty(fuck)
           when(p(idx)(stage).produced(fuck)) {
             p0(ID).is.done := False
@@ -814,11 +839,14 @@ class MultiIssueCPU extends Component {
           }
         }
       }
-      when(p0(ID).produced(fuck)) (p1(ID).is.done := False)
-      // 不能同时发射两条特权指令
-      when(p0(ID).produced(privilege) & p1(ID).produced(privilege)) (p1(ID).is.done := False)
     }
+    when(p0(ID).produced(fuck))(p1(ID).is.done := False)
+    // 不能同时发射两条特权指令
+    when(p0(ID).produced(privilege) & p1(ID).produced(privilege))(p1(ID).is.done := False)
+
+    /** 当出现特殊指令需要暂停整个流水线 */
   }
+
   /* 连接各个阶段 */
   val seq = (IF, IF) +: p0.values.zip(p1.values).toSeq
   for ((curr, next) <- seq.zip(seq.tail).reverse) {
@@ -835,14 +863,39 @@ class MultiIssueCPU extends Component {
   p0(ID).input(pc).addAttribute("mark_debug", "true")
   p0(ID).input(inst).addAttribute("mark_debug", "true")
   p0(ID).stored(entry1).valid.addAttribute("mark_debug", "true")
+  p0(ID).is.empty.addAttribute("mark_debug", "true")
+
   p1(ID).input(pc).addAttribute("mark_debug", "true")
-  p1(ID).stored(entry2).valid.addAttribute("mark_debug", "true")
   p1(ID).input(inst).addAttribute("mark_debug", "true")
+  p1(ID).stored(entry2).valid.addAttribute("mark_debug", "true")
+  p1(ID).is.empty.addAttribute("mark_debug", "true")
+
+  for (s <- Seq(ID, EXE, MEM1, MEM2)) {
+    p0(s).produced(fuck).addAttribute("mark_debug", "true")
+    p1(s).produced(fuck).addAttribute("mark_debug", "true")
+  }
+
+//  cp0.regs.entryHi.vpn2.addAttribute("mark_debug", "true")
+//  cp0.regs.entryLo0.pfn.addAttribute("mark_debug", "true")
+//  cp0.regs.entryLo0.V.addAttribute("mark_debug", "true")
+//  cp0.regs.entryLo1.pfn.addAttribute("mark_debug", "true")
+//  cp0.regs.entryLo0.V.addAttribute("mark_debug", "true")
+//
+//  cp0.io.tlbBus.index.addAttribute("mark_debug", "true")
+//  cp0.io.tlbBus.random.addAttribute("mark_debug", "true")
+//  cp0.io.tlbBus.tlbwEntry.addAttribute("mark_debug", "true")
+//  cp0.io.tlbBus.tlbwr.addAttribute("mark_debug", "true")
+
+//  mmu.io.index.addAttribute("mark_debug", "true")
+//  mmu.io.write.addAttribute("mark_debug", "true")
+//  mmu.io.wdata.addAttribute("mark_debug", "true")
+//
+  mmu.io.instVaddr.addAttribute("mark_debug", "true")
 
   IF.fetchInst.pcHandler.io.pc.current.addAttribute("mark_debug", "true")
   IF.fetchInst.pcHandler.pc.next.addAttribute("mark_debug", "true")
   IF.fetchInst.pcHandler.io.predict.valid.addAttribute("mark_debug", "true")
-  IF.fetchInst.io.jump.addAttribute("mark_debug", "true")
+  IF.fetchInst.pcHandler.io.jump.valid.addAttribute("mark_debug", "true")
   IF.fetchInst.pcHandler.io.stop.valid.addAttribute("mark_debug", "true")
   IF.fetchInst.pcHandler.io.retain.addAttribute("mark_debug", "true")
   IF.fetchInst.pcHandler.io.flush.addAttribute("mark_debug", "true")
@@ -852,44 +905,49 @@ class MultiIssueCPU extends Component {
   ibus.stage2.paddr.addAttribute("mark_debug", "true")
   ibus.stage2.rdata.addAttribute("mark_debug", "true")
   ibus.stage2.stall.addAttribute("mark_debug", "true")
+  ibus.stage2.en.addAttribute("mark_debug", "true")
 
-  io.icacheAXI.r.valid.addAttribute("mark_debug", "true")
-  io.icacheAXI.r.data.addAttribute("mark_debug", "true")
-  io.icacheAXI.r.last.addAttribute("mark_debug", "true")
+//  io.icacheAXI.ar.addr.addAttribute("mark_debug", "true")
+//  io.icacheAXI.ar.valid.addAttribute("mark_debug", "true")
+//  io.icacheAXI.r.valid.addAttribute("mark_debug", "true")
+//  io.icacheAXI.r.data.addAttribute("mark_debug", "true")
+//  io.icacheAXI.r.last.addAttribute("mark_debug", "true")
 
   IF.fetchInst.S2.recvFromS1.pc.addAttribute("mark_debug", "true")
   IF.fetchInst.S2.sendToS3.entry(0).inst.addAttribute("mark_debug", "true")
   IF.fetchInst.S2.sendToS3.entry(0).pc.addAttribute("mark_debug", "true")
   IF.fetchInst.S2.sendToS3.entry(0).valid.addAttribute("mark_debug", "true")
   IF.fetchInst.S2.sendToS3.entry(1).inst.addAttribute("mark_debug", "true")
-  IF.fetchInst.S2.sendToS3.entry(0).pc.addAttribute("mark_debug", "true")
-  IF.fetchInst.S2.sendToS3.entry(0).valid.addAttribute("mark_debug", "true")
+  IF.fetchInst.S2.sendToS3.entry(1).pc.addAttribute("mark_debug", "true")
+  IF.fetchInst.S2.sendToS3.entry(1).valid.addAttribute("mark_debug", "true")
   IF.fetchInst.S2.waiting.delaySlot.addAttribute("mark_debug", "true")
   IF.fetchInst.S2.clearNext.addAttribute("mark_debug", "true")
 
   IF.fetchInst.S3.validInstFromS2.addAttribute("mark_debug", "true")
-  IF.fetchInst.S3.entry(0).pc.addAttribute("mark_debug", "true")
-  IF.fetchInst.S3.entry(1).pc.addAttribute("mark_debug", "true")
+//  IF.fetchInst.S3.entry(0).pc.addAttribute("mark_debug", "true")
+//  IF.fetchInst.S3.entry(1).pc.addAttribute("mark_debug", "true")
   IF.fetchInst.S3.entry(0).valid.addAttribute("mark_debug", "true")
   IF.fetchInst.S3.entry(1).valid.addAttribute("mark_debug", "true")
 
+  IF.fetchInst.byPass.addAttribute("mark_debug", "true")
+
   IF.fetchInst.fifo.io.pop.en.addAttribute("mark_debug", "true")
   IF.fetchInst.fifo.io.pop.num.addAttribute("mark_debug", "true")
-  IF.fetchInst.fifo.io.pop.data(0).pc.addAttribute("mark_debug", "true")
-  IF.fetchInst.fifo.io.pop.data(0).branch.is.addAttribute("mark_debug", "true")
-  IF.fetchInst.fifo.io.pop.data(0).inst.addAttribute("mark_debug", "true")
-  IF.fetchInst.fifo.io.pop.data(1).pc.addAttribute("mark_debug", "true")
-  IF.fetchInst.fifo.io.pop.data(1).branch.is.addAttribute("mark_debug", "true")
-  IF.fetchInst.fifo.io.pop.data(1).inst.addAttribute("mark_debug", "true")
+//  IF.fetchInst.fifo.io.pop.data(0).pc.addAttribute("mark_debug", "true")
+//  IF.fetchInst.fifo.io.pop.data(0).branch.is.addAttribute("mark_debug", "true")
+//  IF.fetchInst.fifo.io.pop.data(0).inst.addAttribute("mark_debug", "true")
+//  IF.fetchInst.fifo.io.pop.data(1).pc.addAttribute("mark_debug", "true")
+//  IF.fetchInst.fifo.io.pop.data(1).branch.is.addAttribute("mark_debug", "true")
+//  IF.fetchInst.fifo.io.pop.data(1).inst.addAttribute("mark_debug", "true")
 
   IF.fetchInst.fifo.io.push.en.addAttribute("mark_debug", "true")
   IF.fetchInst.fifo.io.push.num.addAttribute("mark_debug", "true")
-  IF.fetchInst.fifo.io.push.data(0).pc.addAttribute("mark_debug", "true")
-  IF.fetchInst.fifo.io.push.data(0).inst.addAttribute("mark_debug", "true")
-  IF.fetchInst.fifo.io.push.data(0).branch.is.addAttribute("mark_debug", "true")
-  IF.fetchInst.fifo.io.push.data(1).pc.addAttribute("mark_debug", "true")
-  IF.fetchInst.fifo.io.push.data(1).inst.addAttribute("mark_debug", "true")
-  IF.fetchInst.fifo.io.push.data(1).branch.is.addAttribute("mark_debug", "true")
+//  IF.fetchInst.fifo.io.push.data(0).pc.addAttribute("mark_debug", "true")
+//  IF.fetchInst.fifo.io.push.data(0).inst.addAttribute("mark_debug", "true")
+//  IF.fetchInst.fifo.io.push.data(0).branch.is.addAttribute("mark_debug", "true")
+//  IF.fetchInst.fifo.io.push.data(1).pc.addAttribute("mark_debug", "true")
+//  IF.fetchInst.fifo.io.push.data(1).inst.addAttribute("mark_debug", "true")
+//  IF.fetchInst.fifo.io.push.data(1).branch.is.addAttribute("mark_debug", "true")
 
   IF.fetchInst.fifo.io.empty.addAttribute("mark_debug", "true")
   IF.fetchInst.fifo.io.full.addAttribute("mark_debug", "true")
@@ -909,43 +967,80 @@ class MultiIssueCPU extends Component {
 //  p1(EXE).stored(predJumpPC).addAttribute("mark_debug", "true")
 //  p1(EXE).stored(jumpPC).addAttribute("mark_debug", "true")
 
+  accessMem1.stored(pc).addAttribute("mark_debug", "true")
+  accessMem1.stored(memRE).addAttribute("mark_debug", "true")
+  accessMem1.stored(memWE).addAttribute("mark_debug", "true")
+  accessMem2.stored(pc).addAttribute("mark_debug", "true")
+
+  accessMem1.excCode.addAttribute("mark_debug", "true")
+  accessMem1.stored(tlbRefillException).addAttribute("mark_debug", "true")
+
+  accessMem1.output(mmuRes).invalid.addAttribute("mark_debug", "true")
+  accessMem1.output(mmuRes).miss.addAttribute("mark_debug", "true")
+  accessMem1.output(mmuRes).mapped.addAttribute("mark_debug", "true")
+
+//  dbus.stage2.paddr.addAttribute("mark_debug", "true")
+//  dbus.stage2.rdata.addAttribute("mark_debug", "true")
+//  dbus.stage2.wdata.addAttribute("mark_debug", "true")
+//  dbus.stage2.read.addAttribute("mark_debug", "true")
+//  dbus.stage2.write.addAttribute("mark_debug", "true")
+//  dbus.stage2.uncache.addAttribute("mark_debug", "true")
+//  dbus.stage2.stall.addAttribute("mark_debug", "true")
 
   p0(MEM1).stored(pc).addAttribute("mark_debug", "true")
   p0(MEM1).stored(memRE).addAttribute("mark_debug", "true")
   p0(MEM1).stored(memWE).addAttribute("mark_debug", "true")
+  p0(MEM1).stored(useMem).addAttribute("mark_debug", "true")
+  p0(MEM1).stored(tlbRefillException).addAttribute("mark_debug", "true")
+  p0(MEM1).exception.addAttribute("mark_debug", "true")
+  p0(MEM1).is.empty.addAttribute("mark_debug", "true")
+
   p1(MEM1).stored(pc).addAttribute("mark_debug", "true")
   p1(MEM1).stored(memRE).addAttribute("mark_debug", "true")
   p1(MEM1).stored(memWE).addAttribute("mark_debug", "true")
+  p1(MEM1).stored(useMem).addAttribute("mark_debug", "true")
+  p1(MEM1).stored(tlbRefillException).addAttribute("mark_debug", "true")
+  p1(MEM1).exception.addAttribute("mark_debug", "true")
+  p1(MEM1).is.empty.addAttribute("mark_debug", "true")
 
+  p0(WB).stored(pc).addAttribute("mark_debug", "true")
   p0(WB).stored(rfuWE).addAttribute("mark_debug", "true")
   p0(WB).stored(rfuData).addAttribute("mark_debug", "true")
   p0(WB).stored(rfuIndex).addAttribute("mark_debug", "true")
+  p1(WB).stored(pc).addAttribute("mark_debug", "true")
   p1(WB).stored(rfuWE).addAttribute("mark_debug", "true")
   p1(WB).stored(rfuData).addAttribute("mark_debug", "true")
   p1(WB).stored(rfuIndex).addAttribute("mark_debug", "true")
 
-  rfu.mem(2).addAttribute("mark_debug", "true")  //v0
-  rfu.mem(3).addAttribute("mark_debug", "true")  //v1
-  rfu.mem(4).addAttribute("mark_debug", "true")  //a0
-  rfu.mem(5).addAttribute("mark_debug", "true")  //a1
+  IF.fetchInst.io.mmuRes.miss.addAttribute("mark_debug", "true")
+  IF.fetchInst.io.mmuRes.invalid.addAttribute("mark_debug", "true")
+  IF.fetchInst.io.mmuRes.mapped.addAttribute("mark_debug", "true")
+  IF.fetchInst.S2.recvFromS1.exception.refillException.addAttribute("mark_debug", "true")
+
+  p0(ID).produced(tlbRefillException).addAttribute("mark_debug", "true")
+  p1(ID).produced(tlbRefillException).addAttribute("mark_debug", "true")
+  p0(ID).exceptionToRaise.addAttribute("mark_debug", "true")
+  p1(ID).exceptionToRaise.addAttribute("mark_debug", "true")
+
+  cp0.io.exceptionBus.exception.addAttribute("mark_debug", "true")
+  cp0.io.exceptionBus.vaddr.addAttribute("mark_debug", "true")
+  cp0.io.exceptionBus.pc.addAttribute("mark_debug", "true")
+  cp0.io.exceptionBus.bd.addAttribute("mark_debug", "true")
+
+//  rfu.mem(2).addAttribute("mark_debug", "true")  //v0
+//  rfu.mem(3).addAttribute("mark_debug", "true")  //v1
+//  rfu.mem(4).addAttribute("mark_debug", "true")  //a0
+//  rfu.mem(5).addAttribute("mark_debug", "true")  //a1
+//  rfu.mem(30).addAttribute("mark_debug", "true")  //s8
+//  rfu.mem(29).addAttribute("mark_debug", "true")  //sp
 //  rfu.mem(6).addAttribute("mark_debug", "true")  //a2
 //  rfu.mem(18).addAttribute("mark_debug", "true")  //s2
 
-//  dbus.stage1.paddr.addAttribute("mark_debug", "true")
-//  dbus.stage1.wdata.addAttribute("mark_debug", "true")
-//  dbus.stage1.write.addAttribute("mark_debug", "true")
-//
-//  dbus.stage2.stall.addAttribute("mark_debug", "true")
-//  dbus.stage2.read.addAttribute("mark_debug", "true")
-//  dbus.stage2.write.addAttribute("mark_debug", "true")
-//  dbus.stage2.uncache.addAttribute("mark_debug", "true")
-
   cp0.io.exceptionBus.jumpPc.addAttribute("mark_debug", "true")
-  cp0.regs.cause.ipHW.addAttribute("mark_debug", "true")
-  cp0.regs.cause.excCode.addAttribute("mark_debug", "true")
-  cp0.regs.status.exl.addAttribute("mark_debug", "true")
-  cp0.regs.status.ie.addAttribute("mark_debug", "true")
-  cp0.regs.status.im.addAttribute("mark_debug", "true")
+  cp0.regs.epc.addAttribute("mark_debug", "true")
+  cp0.regs.badVaddr.addAttribute("mark_debug", "true")
+  cp0.regs.cause.addAttribute("mark_debug", "true")
+  cp0.regs.status.addAttribute("mark_debug", "true")
 }
 
 object MultiIssueCPU {
