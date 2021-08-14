@@ -71,8 +71,11 @@ class Stage extends Area with ValCallbackRec {
     /**/
     produced.keys.foreach { case key =>
       if (!hasAssignment(produced(key))) {
-        if (output.contains(key)) { produced(key) := output(key) }
-        else { produced(key) := input(key) }
+        if (output.contains(key)) {
+          produced(key) := output(key)
+        } else {
+          produced(key) := input(key)
+        }
       }
     }
     /**/
@@ -119,7 +122,18 @@ class Stage extends Area with ValCallbackRec {
     // Prioritize reset over send.
     atTheBeginning {
       when(next.will.input) {
-        next.stored.keys foreach { case key => next.stored(key) := produced(key) }
+        next.stored.keys foreach { case key =>
+          if (hasInit(next.stored(key))) {
+            next.stored(key) := produced(key)
+          }
+        }
+      }
+      when(next.can.input) {
+        next.stored.keys foreach { case key =>
+          if (!hasInit(next.stored(key))) {
+            next.stored(key) := produced(key)
+          }
+        }
       }
     }
   }
@@ -140,6 +154,7 @@ class Stage extends Area with ValCallbackRec {
       }
     }
   }
+
   def !!![T <: Data](key: Key[T]): T = {
     clearWhenEmpty(key)
     stored(key)
