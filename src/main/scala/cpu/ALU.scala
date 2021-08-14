@@ -11,8 +11,6 @@ import scala.language.postfixOps
 
 object ALU_OP extends SpinalEnum {
   val add, addu, sub, subu, and, or, xor, nor, sll, lu, srl, sra, mult, multu, div, divu, seq, sne, slt, sltu, mul = newElement()
-  val madd, maddu, msub, msubu, clo, clz, sge, sgeu =
-    Utils.instantiateWhen(newElement(), ConstantVal.FINAL_MODE)
 }
 
 object ALU_A_SRC extends SpinalEnum {
@@ -104,28 +102,6 @@ class ALU extends Component {
     is(sltu) {
       c := (a < b).asUInt(32 bits)
     }
-    if (ConstantVal.FINAL_MODE) {
-      is(clo) {
-        c := cloImpl(a, clo)
-//        c := ALU.clo(a)
-      }
-      is(clz) {
-        c := cloImpl(~a, clz)
-//        c := ALU.clz(a)
-      }
-      is(seq) {
-        c := (a === b).asUInt(32 bits)
-      }
-      is(sne) {
-        c := (a =/= b).asUInt(32 bits)
-      }
-      is(sge) {
-        c := (S(a) >= S(b)).asUInt(32 bits)
-      }
-      is(sgeu) {
-        c := (a >= b).asUInt(32 bits)
-      }
-    }
     def cloImpl(a: BitVector, nameProvider: Nameable) =
       new Composite(nameProvider) {
         val layers = mutable.ArrayBuffer[Vec[Bits]](
@@ -155,8 +131,6 @@ class ALU extends Component {
 class ComplexALU extends Component {
   val io = new Bundle {
     val input = in(ALUInput())
-    val hi    = Utils.instantiateWhen(UInt(32 bits), ConstantVal.FINAL_MODE)
-    val lo    = Utils.instantiateWhen(UInt(32 bits), ConstantVal.FINAL_MODE)
     val flush = in Bool ()
 
     // out
@@ -248,28 +222,6 @@ class ComplexALU extends Component {
     is(divu) {
       io.c := divide.remainder
       io.d := divide.quotient
-    }
-    if (ConstantVal.FINAL_MODE) {
-      val hi     = io.hi
-      val lo     = io.lo
-      val mulAdd = (hi @@ lo) + multiply.result
-      val mulSub = (hi @@ lo) - multiply.result
-      is(madd) {
-        io.c := mulAdd(32, 32 bits)
-        io.d := mulAdd(0, 32 bits)
-      }
-      is(maddu) {
-        io.c := mulAdd(32, 32 bits)
-        io.d := mulAdd(0, 32 bits)
-      }
-      is(msub) {
-        io.c := mulSub(32, 32 bits)
-        io.d := mulSub(0, 32 bits)
-      }
-      is(msubu) {
-        io.c := mulSub(32, 32 bits)
-        io.d := mulSub(0, 32 bits)
-      }
     }
   }
 }

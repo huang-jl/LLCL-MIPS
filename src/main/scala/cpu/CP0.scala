@@ -288,53 +288,15 @@ object CP0 {
     val config1  = new Config1
     val errorEPC = new ErrorEPC
 
-    val entryLo0 = new EntryLo0
-    val entryLo1 = new EntryLo1
-    val index    = new Index
-    val entryHi  = new EntryHi
-    val pageMask = new PageMask
-    val random   = new Random
-    val wired    = new Wired
-    val context  = new Context
-    val prid     = new PRId
-  }
-}
-
-/** 从CP0中读和TLB相关值的接口 */
-class TLBInterface extends Bundle with IMasterSlave {
-  val TLBIndexWidth: Int = log2Up(ConstantVal.TLBEntryNum)
-
-  /** index is used for TLBWI and TLBWR, write to MMU */
-  val index     = UInt(TLBIndexWidth bits) //读出的index寄存器值
-  val random    = UInt(TLBIndexWidth bits) //读出的random寄存器值
-  val tlbwEntry = new TLBEntry             //从CP0读出要写入tlb的内容
-
-  /** following is used for TLBR, write to CP0 */
-  val tlbr      = Bool //是否是TLBR而修改CP0
-  val tlbrEntry = new TLBEntry
-
-  /** following is used for tlbp to write Index Reg */
-  val tlbp       = Bool
-  val probeIndex = Bits(32 bits)
-
-  /** following is used for random register to update (round robin) */
-  val tlbwr = Bool
-
-  override def asMaster(): Unit = {
-    in(index, random, tlbwEntry)
-    out(tlbrEntry, tlbr, tlbp, tlbwr, probeIndex)
-  }
-}
-
-/** 从CP0返回当前机器状态的信息 */
-class MachineStateBus extends Bundle with IMasterSlave {
-  val userMode = Bool
-  val cu0      = Bool
-  val ERL      = Bool
-  val K0       = Bits(3 bits)
-
-  override def asMaster(): Unit = {
-    in(userMode, cu0, ERL, K0)
+//    val entryLo0 = new EntryLo0
+//    val entryLo1 = new EntryLo1
+//    val index    = new Index
+//    val entryHi  = new EntryHi
+//    val pageMask = new PageMask
+//    val random   = new Random
+//    val wired    = new Wired
+//    val context  = new Context
+//    val prid     = new PRId
   }
 }
 
@@ -345,9 +307,6 @@ class CP0 extends Component {
   val io = new Bundle {
     val softwareWrite = slave Flow (Write())
     val read          = Vec(slave(Read()), 2)
-
-    val tlbBus       = Utils.instantiateWhen(slave(new TLBInterface), ConstantVal.FINAL_MODE)
-    val machineState = slave(new MachineStateBus)
 
     val externalInterrupt = in Bits (5 bits)
     val exceptionBus      = slave(new ExceptionBus)
@@ -368,10 +327,6 @@ class CP0 extends Component {
       reg.softWrite(io.softwareWrite.data)
     }
   }
-  //reset random when write Wired Reg
-  when(io.softwareWrite.valid & io.softwareWrite.addr === regs.wired.addr) {
-    regs.random.random := B(ConstantVal.TLBEntryNum - 1, TLBIndexWidth bits)
-  }
 
   val increaseCount = Reg(Bool) init False
   increaseCount := !increaseCount
@@ -391,14 +346,7 @@ class CP0 extends Component {
   } else {
     regs.cause.ipHW(5) := False
   }
-  val tlbHandler       = if (ConstantVal.FINAL_MODE) new TLBHandler(regs, io.tlbBus) else null
   val exceptionHandler = new ExceptionHandler(regs, io.exceptionBus)
-  //其他的信息
-  io.machineState.ERL := regs.status.erl.asBool
-  io.machineState.K0 := regs.config0.K0
-  // 目前仅实现了Kernel和User Mode
-  io.machineState.userMode := regs.status.um === 1 & regs.status.erl === 0 & regs.status.exl === 0
-  io.machineState.cu0 := regs.status.cu0.asBool
 }
 
 class ExceptionHandler(val regs: Cp0Reg, val exceptBus: ExceptionBus) extends Area {
@@ -426,19 +374,10 @@ class ExceptionHandler(val regs: Cp0Reg, val exceptBus: ExceptionBus) extends Ar
     // 下面的逻辑：不论EXL的值是多少都需要修改
     regs.cause.excCode := exc.asBits.resized
     errorEpc := exceptBus.bd ? (exceptBus.pc - 4).asBits | exceptBus.pc.asBits
-    when(ExcCode.addrRelated(exc) | ExcCode.tlbRelated(exc)) {
+    when(ExcCode.addrRelated(exc)) {
       regs.badVaddr.badVaddr := (instFetch
         ? exceptBus.pc
         | exceptBus.vaddr).asBits
-    }
-    when(ExcCode.tlbRelated(exc)) {
-      regs.entryHi.vpn2 := (instFetch
-        ? exceptBus.pc
-        | exceptBus.vaddr)(31 downto 13).asBits
-
-      regs.context.badVPN2 := (instFetch
-        ? exceptBus.pc
-        | exceptBus.vaddr)(31 downto 13).asBits
     }
     // TODO 目前只实现了COP0，只会有COP0异常
     when(exc === ExcCode.copUnusable) (regs.cause.ce := 0)
@@ -471,13 +410,6 @@ class ExceptionHandler(val regs: Cp0Reg, val exceptBus: ExceptionBus) extends Ar
   //当异常或中断发生时，默认是偏移180
   val offset = U"10'h180"
   excCode.whenIsDefined { exc =>
-    // TLB Refill并且Status.EXL为0时offset为0x0
-    when(
-      Utils.equalAny(exc, ExcCode.loadTLBError, ExcCode.storeTLBError) &
-        exceptBus.exception.tlbRefill & !exl.asBool
-    ) {
-      offset := U"10'h0"
-    }
     jumpPc := vectorBaseAddr + offset
   }
 
@@ -501,58 +433,5 @@ class ExceptionHandler(val regs: Cp0Reg, val exceptBus: ExceptionBus) extends Ar
       jumpPc := epc.asUInt
       exl := False.asBits
     }
-  }
-}
-
-class TLBHandler(val regs: Cp0Reg, val tlbBus: TLBInterface) extends Area {
-  // TLB related logic and register
-  val entryHi  = regs.entryHi
-  val entryLo0 = regs.entryLo0
-  val entryLo1 = regs.entryLo1
-  val index    = regs.index
-  val random   = regs.random
-  when(tlbBus.tlbwr) {
-    random.random := B(random.random.asUInt + 1)
-    when(random.random.andR)(random.random := regs.wired.wired)
-  }
-  //tlbBus signal
-  tlbBus.index := index.index.asUInt
-  tlbBus.random := random.random.asUInt
-  //tlbp
-  when(tlbBus.tlbp) {
-    index.hardWrite(tlbBus.probeIndex)
-  }
-  //read from cp0
-  tlbBus.tlbwEntry.vpn2 := entryHi.vpn2 //TLB模块会自己做Mask处理
-  tlbBus.tlbwEntry.asid := entryHi.asid
-  tlbBus.tlbwEntry.G := (entryLo0.G & entryLo1.G).asBool
-  tlbBus.tlbwEntry.pfn1 := entryLo1.pfn
-  tlbBus.tlbwEntry.C1 := entryLo1.C
-  tlbBus.tlbwEntry.D1 := entryLo1.D.asBool
-  tlbBus.tlbwEntry.V1 := entryLo1.V.asBool
-  tlbBus.tlbwEntry.pfn0 := entryLo0.pfn
-  tlbBus.tlbwEntry.C0 := entryLo0.C
-  tlbBus.tlbwEntry.D0 := entryLo0.D.asBool
-  tlbBus.tlbwEntry.V0 := entryLo0.V.asBool
-  tlbBus.tlbwEntry.mask := regs.pageMask.mask
-  //write to cp0 for TLBR
-  when(tlbBus.tlbr) {
-    // TODO Becasue current only support 4KiB page, so cannot modify PageMask's Mask Field
-    val vpnMask = ~tlbBus.tlbrEntry.mask.resize(TLBConfig.vpn2Width)
-    val pfnMask = ~tlbBus.tlbrEntry.mask.resize(TLBConfig.pfnWidth)
-    entryHi.vpn2 := tlbBus.tlbrEntry.vpn2 & vpnMask
-    entryHi.asid := tlbBus.tlbrEntry.asid
-
-    entryLo0.pfn := tlbBus.tlbrEntry.pfn0 & pfnMask
-    entryLo0.C := tlbBus.tlbrEntry.C0
-    entryLo0.D := tlbBus.tlbrEntry.D0.asBits
-    entryLo0.V := tlbBus.tlbrEntry.V0.asBits
-    entryLo0.G := tlbBus.tlbrEntry.G.asBits
-
-    entryLo1.pfn := tlbBus.tlbrEntry.pfn1 & pfnMask
-    entryLo1.C := tlbBus.tlbrEntry.C1
-    entryLo1.D := tlbBus.tlbrEntry.D1.asBits
-    entryLo1.V := tlbBus.tlbrEntry.V1.asBits
-    entryLo1.G := tlbBus.tlbrEntry.G.asBits
   }
 }

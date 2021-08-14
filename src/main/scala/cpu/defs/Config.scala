@@ -22,7 +22,7 @@ object Config {
   object BHT {
     val NUM_ENTRIES = 2048
     val INDEX_WIDTH = log2Up(NUM_ENTRIES)
-    val DATA_WIDTH  = 4
+    val DATA_WIDTH  = 2
   }
 
   object PHT {

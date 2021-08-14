@@ -81,11 +81,11 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     val hitPerWay = Bits(config.wayNum bits)
     val hit       = Bool
     val fifo = new Bundle {
-      val hit     = new Bundle {
-        val read = Bool()
+      val hit = new Bundle {
+        val read  = Bool()
         val write = Bool()
       }
-      val rdata   = Bits(32 bits)
+      val rdata = Bits(32 bits)
     }
   }
   val io = new Bundle {
@@ -105,8 +105,8 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   // 解析第一阶段的物理地址
   val stage1 = new Area {
     val wordOffset = io.cpu.stage1.paddr.wordOffset
-    val index = io.cpu.stage1.paddr.index
-    val tag   = io.cpu.stage1.paddr.cacheTag
+    val index      = io.cpu.stage1.paddr.index
+    val tag        = io.cpu.stage1.paddr.cacheTag
   }
 
   //解析Stage 2的物理地址
@@ -156,7 +156,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
         val data  = RegNext(_write_.data)
         val addr  = RegNext(_write_.addr)
         val valid = Reg(Bits(2 bits)) init 0
-        valid := B"00"  //默认情况下个周期都为0
+        valid := B"00" //默认情况下个周期都为0
       }
     }
     val extra = new Bundle {
@@ -373,7 +373,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     val inv  = Counter(0 to config.wayNum)     //刷新cache某个index时，用来的计算写回数的计数器
   }
 
-  readMiss := !cache.hit & !recvFromS1.fifo.hit.read & cache.read   //读缺失
+  readMiss := !cache.hit & !recvFromS1.fifo.hit.read & cache.read    //读缺失
   writeMiss := !cache.hit & !recvFromS1.fifo.hit.write & cache.write //写缺失
 
   ram.we.assignFromBits(B(0, ram.we.getBitsWidth bits))
@@ -452,17 +452,6 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
 
     refill.whenIsActive(goto(finish))
     finish.whenIsActive(goto(stateBoot))
-
-    // 刷新DCache
-    val invalidate = ConstantVal.FINAL_MODE generate new State //清除某个Cache Index
-    if(ConstantVal.FINAL_MODE) {
-      invalidate.whenIsActive {
-        when(counter.inv.value === config.wayNum)(goto(stateBoot))
-      }
-      stateBoot.whenIsActive {
-        when(io.cpu.invalidate.en)(goto(invalidate)) //当要刷新时，可能需要进行写回
-      }
-    }
   }
 
   val wbFSM = new StateMachine {
@@ -509,7 +498,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
       counter.inv.clear()
     }
     dcacheFSM.stateBoot.whenIsActive {
-      when(readMiss|writeMiss)(ram.read.addr := stage2.index)
+      when(readMiss | writeMiss)(ram.read.addr := stage2.index)
       //读或写命中时更新LRU
       when((cache.read | cache.write) & cache.hit)(LRU.we := True)
     }
@@ -559,7 +548,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
 
   io.cpu.stage2.stall := !(dcacheFSM.isActive(dcacheFSM.finish) |
     (dcacheFSM.isActive(dcacheFSM.stateBoot) & !dcacheFSMLogic.loadStoreRequest))
-    //cache读出的数据可能是
+  //cache读出的数据可能是
   //1.如果读miss，此时多打2个周期，能够从hitLine中读到
   //2.命中cache: hitLine
   //3.命中Fifo中的数据
@@ -639,26 +628,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
       }
     }
   }
-  if(ConstantVal.FINAL_MODE) {
-    // 刷新Cache某个index的写回检测逻辑
-    dcacheFSM.invalidate.whenIsActive {
-      val wayIndex = counter.inv.value.resize(log2Up(config.wayNum))
-      when(ram.extra.tags(wayIndex).valid & ram.extra.tags(wayIndex).dirty) {
-        writeBuffer.io.push := True
-        writeBuffer.io.pushTag := ram.extra.tags(wayIndex).tag ## stage2.index
-        writeBuffer.io.pushData := ram.read.datas(wayIndex)
-        when(!writeBuffer.io.full)(counter.inv.increment())
-      }.otherwise(counter.inv.increment())
 
-      // 最后一拍时写回
-      for (i <- 0 until config.wayNum) {
-        when(counter.inv.valueNext === config.wayNum) {
-          ram.we.tag(i) := True
-          ram.write.tag.valid := False
-        }
-      }
-    }
-  }
 }
 
 object DCache {

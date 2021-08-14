@@ -34,6 +34,7 @@ case class BranchInfo() extends Bundle {
 class InstEntry extends Bundle {
   val inst    = Mips32Inst()
   val pc      = UInt(32 bits)
+  val exception = FetchException()
   val branch  = BranchInfo()
   val predict = PredictInfo()
   val valid   = Bool()
@@ -43,6 +44,7 @@ class InstEntry extends Bundle {
     entry.inst := inst
     entry.pc := pc
     entry.branch := branch
+    entry.exception := exception
     entry.predict := predict
     entry.valid := valid & cond
     entry
@@ -54,12 +56,10 @@ object InstEntry {
 
 case class FetchException() extends Bundle {
   val code            = Optional(ExcCode())
-  val refillException = Bool()
 
   /** 只有寄存器能调用 */
   def init(): this.type = {
     code.init(None)
-    refillException.init(False)
     this
   }
 }
@@ -118,7 +118,6 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
     val pc        = UInt(32 bits)
   }
   class PipeS2S3 extends Bundle {
-    val exception = FetchException()
     val entry     = Vec(InstEntry(), 2)
     val delaySlot = Bool()
   }
@@ -149,10 +148,9 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
         }
       })
     }
-
     val vaddr     = out UInt (32 bits)                            //取指的虚地址
-    val mmuRes    = in(MMUTranslationRes(ConstantVal.FINAL_MODE)) //取指的实地址
-    val exception = out(FetchException())
+    val mmuRes    = in(MMUTranslationRes()) //取指的实地址
+//    val exception = out(FetchException())
     val ibus      = master(new CPUICacheInterface(icacheConfig))
   }
 
@@ -191,15 +189,10 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
     // 地址检查
     val check = new Area {
       val aligned          = pcHandler.io.pc.current(0, 2 bits) === U"00"
-      val refillException  = io.mmuRes.tlbRefillException
-      val invalidException = io.mmuRes.tlbInvalidException
       val exception        = FetchException()
-      when(!aligned | io.mmuRes.illegal) {
+      when(!aligned) {
         exception.code := ExcCode.loadAddrError
-      }.elsewhen(refillException | invalidException) {
-        exception.code := ExcCode.loadTLBError
       }.otherwise(exception.code := None)
-      exception.refillException := refillException
     }
 
     sendToS2.valid := True
@@ -236,6 +229,7 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
       sendToS3.entry(i).inst.assignFromBits(ibus.stage2.rdata(i * 32, 32 bits))
       sendToS3.entry(i).branch.is.assignDontCare()
       sendToS3.entry(i).branch.ty.assignDontCare()
+      sendToS3.entry(i).exception := recvFromS1.exception
     }
 
     // 由于AXI通信无法直接被打断，因此刷新信号需要寄存
@@ -254,8 +248,8 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
     sendToS3.entry(0).valid := sendToS3.valid & recvFromS1.pc.isAligned(Aligned.Even) & !clearNext
     sendToS3.entry(1).valid := sendToS3.valid & !waiting.delaySlot & !clearNext
 
-    sendToS3.exception := recvFromS1.exception
-    when(!recvFromS1.valid | flush)(sendToS3.exception.code := None)
+//    sendToS3.exception := recvFromS1.exception
+//    when(!recvFromS1.valid | flush)(sendToS3.exception.code := None)
     sendToS3.valid := recvFromS1.fire & !clearNext & !flush
   }
 
@@ -319,6 +313,7 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
       entry(i).branch.is := decoder.is.branch(i)
       entry(i).branch.ty := recvFromS2.entry(i).inst.branchTy
       entry(i).valid := recvFromS2.entry(i).valid & validInstFromS2
+      entry(i).exception := recvFromS2.entry(i).exception
     }
   }
   // 先进行分支指令解码
@@ -425,8 +420,8 @@ class FetchInst(icacheConfig: CacheRamConfig) extends Component {
   // FIFO FLUSH
   fifo.io.flush := pcHandler.io.flush.s3
 
-  io.exception := S3.recvFromS2.exception
-  when(!S3.recvFromS2.valid | pcHandler.io.flush.s3)(io.exception.code := None)
+//  io.exception := S3.recvFromS2.exception
+//  when(!S3.recvFromS2.valid | pcHandler.io.flush.s3)(io.exception.code := None)
 }
 
 class PCHandler extends Component {
