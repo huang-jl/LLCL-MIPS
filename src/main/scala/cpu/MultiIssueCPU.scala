@@ -106,7 +106,7 @@ class MultiIssueCPU extends Component {
   val rfuSrc       = Key(RFU_RD_SRC())
   val rfuData      = Key(Bits(32 bits))
 
-  val mmuRes = Key(MMUTranslationRes(ConstantVal.FINAL_MODE))
+  val mmuRes = Key(MMUTranslationRes())
 
   val predJump   = Key(Bool()) setEmptyValue False
   val predJumpPC = Key(UInt(32 bits))
@@ -121,8 +121,6 @@ class MultiIssueCPU extends Component {
   val rsFwdFrom = Key(FwdFrom())
   val rtFwdFrom = Key(FwdFrom())
 
-  val tlbRefillException = Key(Bool) //是否是TLB缺失异常（影响异常处理地址）
-
   val mmu        = new MMU
   val icu        = new ICU
   val ju         = new JU
@@ -135,8 +133,6 @@ class MultiIssueCPU extends Component {
 
   val bps = Seq(new BranchPredictor(0), new BranchPredictor(1))
 
-  /* temp */
-  mmu.io.asid.assignDontCare()
   /**/
 
   var p: Seq[Map[Value, Stage]] = Seq()
@@ -265,7 +261,8 @@ class MultiIssueCPU extends Component {
       when(!entry.valid) {
         assign.flush := True
         if (i == 0) { input(inst) := NOP }
-      }
+      }.elsewhen(entry.exception.code.isDefined) (input(inst) := NOP)
+      input(excOnFetch) := entry.exception.code.isDefined & entry.valid
 
       val decode = new StageComponent {
         du.io.inst := input(inst)
@@ -297,6 +294,9 @@ class MultiIssueCPU extends Component {
         output(canUseMem1ALU) := du.io.canUseMem1ALU
 
         exceptionToRaise := du.io.exception
+        when(entry.valid & entry.exception.code.isDefined) {
+          exceptionToRaise := entry.exception.code
+        }
       }
 
       val calcRFUData = new StageComponent {
@@ -343,10 +343,10 @@ class MultiIssueCPU extends Component {
       produced(entry1).valid := False
       produced(entry2).valid := False
     }
-    produced(tlbRefillException) := fetchInst.io.exception.refillException
-    produced(excOnFetch) := fetchInst.io.exception.code.isDefined
-
-    exceptionToRaise := fetchInst.io.exception.code
+//    produced(tlbRefillException) := fetchInst.io.exception.refillException
+//    produced(excOnFetch) := fetchInst.io.exception.code.isDefined
+//
+//    exceptionToRaise := fetchInst.io.exception.code
 
     ibus <> fetchInst.io.ibus
 
@@ -696,7 +696,6 @@ class MultiIssueCPU extends Component {
 
       cp0.io.exceptionBus.exception.excCode := self.exception
       cp0.io.exceptionBus.exception.instFetch := self.stored(excOnFetch)
-      cp0.io.exceptionBus.exception.tlbRefill := self.stored(tlbRefillException)
       cp0.io.exceptionBus.eret := self.stored(eret)
       cp0.io.exceptionBus.vaddr := self.stored(memAddr)
       cp0.io.exceptionBus.pc := self.stored(pc)

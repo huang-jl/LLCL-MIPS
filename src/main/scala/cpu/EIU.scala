@@ -52,5 +52,4 @@ object ExcCode extends SpinalEnum {
 class EXCEPTION extends Bundle {
   val instFetch = Bool
   val excCode = Optional(ExcCode())
-  val tlbRefill = Bool
 }

@@ -81,11 +81,11 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     val hitPerWay = Bits(config.wayNum bits)
     val hit       = Bool
     val fifo = new Bundle {
-      val hit     = new Bundle {
-        val read = Bool()
+      val hit = new Bundle {
+        val read  = Bool()
         val write = Bool()
       }
-      val rdata   = Bits(32 bits)
+      val rdata = Bits(32 bits)
     }
   }
   val io = new Bundle {
@@ -105,8 +105,8 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
   // 解析第一阶段的物理地址
   val stage1 = new Area {
     val wordOffset = io.cpu.stage1.paddr.wordOffset
-    val index = io.cpu.stage1.paddr.index
-    val tag   = io.cpu.stage1.paddr.cacheTag
+    val index      = io.cpu.stage1.paddr.index
+    val tag        = io.cpu.stage1.paddr.cacheTag
   }
 
   //解析Stage 2的物理地址
@@ -156,7 +156,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
         val data  = RegNext(_write_.data)
         val addr  = RegNext(_write_.addr)
         val valid = Reg(Bits(2 bits)) init 0
-        valid := B"00"  //默认情况下个周期都为0
+        valid := B"00" //默认情况下个周期都为0
       }
     }
     val extra = new Bundle {
@@ -373,7 +373,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     val inv  = Counter(0 to config.wayNum)     //刷新cache某个index时，用来的计算写回数的计数器
   }
 
-  readMiss := !cache.hit & !recvFromS1.fifo.hit.read & cache.read   //读缺失
+  readMiss := !cache.hit & !recvFromS1.fifo.hit.read & cache.read    //读缺失
   writeMiss := !cache.hit & !recvFromS1.fifo.hit.write & cache.write //写缺失
 
   ram.we.assignFromBits(B(0, ram.we.getBitsWidth bits))
@@ -452,6 +452,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
 
     refill.whenIsActive(goto(finish))
     finish.whenIsActive(goto(stateBoot))
+  }
 
   val wbFSM = new StateMachine {
     val waitAXIReady  = new State //等待aw.ready
@@ -497,7 +498,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
       counter.inv.clear()
     }
     dcacheFSM.stateBoot.whenIsActive {
-      when(readMiss|writeMiss)(ram.read.addr := stage2.index)
+      when(readMiss | writeMiss)(ram.read.addr := stage2.index)
       //读或写命中时更新LRU
       when((cache.read | cache.write) & cache.hit)(LRU.we := True)
     }
@@ -547,7 +548,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
 
   io.cpu.stage2.stall := !(dcacheFSM.isActive(dcacheFSM.finish) |
     (dcacheFSM.isActive(dcacheFSM.stateBoot) & !dcacheFSMLogic.loadStoreRequest))
-    //cache读出的数据可能是
+  //cache读出的数据可能是
   //1.如果读miss，此时多打2个周期，能够从hitLine中读到
   //2.命中cache: hitLine
   //3.命中Fifo中的数据
