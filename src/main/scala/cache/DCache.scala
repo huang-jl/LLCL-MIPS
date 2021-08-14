@@ -453,18 +453,6 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
     refill.whenIsActive(goto(finish))
     finish.whenIsActive(goto(stateBoot))
 
-    // 刷新DCache
-    val invalidate = ConstantVal.FINAL_MODE generate new State //清除某个Cache Index
-    if(ConstantVal.FINAL_MODE) {
-      invalidate.whenIsActive {
-        when(counter.inv.value === config.wayNum)(goto(stateBoot))
-      }
-      stateBoot.whenIsActive {
-        when(io.cpu.invalidate.en)(goto(invalidate)) //当要刷新时，可能需要进行写回
-      }
-    }
-  }
-
   val wbFSM = new StateMachine {
     val waitAXIReady  = new State //等待aw.ready
     val writeMem      = new State
@@ -639,26 +627,7 @@ class DCache(config: CacheRamConfig, fifoDepth: Int = 16) extends Component {
       }
     }
   }
-  if(ConstantVal.FINAL_MODE) {
-    // 刷新Cache某个index的写回检测逻辑
-    dcacheFSM.invalidate.whenIsActive {
-      val wayIndex = counter.inv.value.resize(log2Up(config.wayNum))
-      when(ram.extra.tags(wayIndex).valid & ram.extra.tags(wayIndex).dirty) {
-        writeBuffer.io.push := True
-        writeBuffer.io.pushTag := ram.extra.tags(wayIndex).tag ## stage2.index
-        writeBuffer.io.pushData := ram.read.datas(wayIndex)
-        when(!writeBuffer.io.full)(counter.inv.increment())
-      }.otherwise(counter.inv.increment())
 
-      // 最后一拍时写回
-      for (i <- 0 until config.wayNum) {
-        when(counter.inv.valueNext === config.wayNum) {
-          ram.we.tag(i) := True
-          ram.write.tag.valid := False
-        }
-      }
-    }
-  }
 }
 
 object DCache {
