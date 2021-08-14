@@ -144,7 +144,7 @@ class BranchPredictor(number: Int) extends Area {
     io.bhtV := stored(bhtV)
     io.phtV := output(phtV)
     /**/
-    btb.io.r.en := will.input
+    btb.io.r.en := can.input
     val metaLine = btb.io.r.metaLine
     val dataLine = btb.io.r.dataLine
     output(btbP) := btb.io.r.p

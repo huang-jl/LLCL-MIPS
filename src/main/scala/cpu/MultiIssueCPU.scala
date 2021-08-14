@@ -250,7 +250,7 @@ class MultiIssueCPU extends Component {
     val id = new Stage {
       setName(s"id_${i}")
 
-      val entry = if (i == 0) !!!(entry1) else stored(entry2)
+      val entry = if (i == 0) !!!(entry1) else !!!(entry2)
       input(pc) := entry.pc
       input(inst) := entry.inst
       input(isJump) := entry.branch.is
@@ -317,7 +317,7 @@ class MultiIssueCPU extends Component {
   val p1 = p(1)
 
   val multiCycleCompute = new ComponentStage {
-    val memData = RegNextWhen(dcu2.io.output.rdata, will.input)
+    val memData = RegNextWhen(dcu2.io.output.rdata, can.input)
     complexALU.io.input.op := !!!(aluOp)
     // 复杂运算的操作数一定来自于GPR
     complexALU.io.input.a := U(stored(rsFromMem) ? memData | stored(rsValue))
@@ -392,7 +392,7 @@ class MultiIssueCPU extends Component {
     dbus.stage2.uncache := !stored(mmuRes).cached
   }
   val accessMem1 = new ComponentStage {
-    output(mmuRes) := RegNextWhen(mmu.io.dataRes, will.input)
+    output(mmuRes) := RegNextWhen(mmu.io.dataRes, can.input)
 
     dcu1.io.input.byteOffset := output(mmuRes).paddr(0, 2 bits)
     dcu1.io.input.byteEnable := stored(memBEType)
