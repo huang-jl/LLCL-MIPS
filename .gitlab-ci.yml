@@ -1,0 +1,157 @@
+# Based on NonTrival-Mips project(https://github.com/trivialmips/nontrivial-mips)
+
+variables:
+  VIVADO_DIR: "/opt/Xilinx/Vivado/2019.2"
+  VIVADO: "${VIVADO_DIR}/bin/vivado"
+  FUNC_TEST_WORK_DIR: "./official/soc_axi_func"
+  PERF_TEST_WORK_DIR: "./official/soc_axi_perf"
+  SBT_OPTS: "-Dsbt.global.base=sbt-cache/.sbtboot -Dsbt.boot.directory=sbt-cache/.boot -Dsbt.ivy.home=sbt-cache/.ivy -Dsbt.override.build.repos=true -Dsbt.repository.config=repositories"
+
+cache:
+  key: "$CI_COMMIT_REF_SLUG"
+  paths:
+    - mycpu_top.v
+    - mergeRTL.v
+    - vivado.conf
+    - official/**/rtl/xilinx_ip
+    - official/**/run_vivado/mycpu_prj1/mycpu.sim
+    - official/**/run_vivado/mycpu_prj1/mycpu.runs
+    - official/**/run_vivado/mycpu_prj1/mycpu.cache
+    - "sbt-cache/.ivy/cache"
+    - "sbt-cache/.boot"
+    - "sbt-cache/.sbtboot"
+    - "sbt-cache/target"
+
+stages:
+  - generate_verilog
+  - init_test_environment
+  - test
+  - init_vivado
+  - bitstreams
+
+spinal_verilog:
+  stage: generate_verilog
+  tags:
+    - vivado
+  script:
+    - sbt ${SBT_OPTS} 'runMain cpu.Generate'
+  artifacts:
+    paths:
+      - ./mycpu_top.v
+      - ./mergeRTL.v
+
+
+init_test_environment:
+  stage: init_test_environment
+  tags:
+    - vivado
+  script:
+    - echo -e "vivado {\n    path = ${VIVADO_DIR}\n}" > vivado.conf
+
+
+func_test:
+  stage: test
+  tags:
+    - vivado
+  rules:
+    - if: '$CI_COMMIT_MESSAGE =~ /\[func-test/i'
+  script:
+    - sbt ${SBT_OPTS} 'Test / runMain cpu.funcTest.FuncTestNormal'
+  artifacts:
+    paths:
+      - ./simWorkspace/FuncTestNormal/*.vcd
+    when: on_failure
+
+
+func_test_low_latency:
+  stage: test
+  tags:
+    - vivado
+  rules:
+    - if: '$CI_COMMIT_MESSAGE =~ /\[func-test/i'
+  script:
+    - sbt ${SBT_OPTS} 'Test / runMain cpu.funcTest.FuncTestLowLatency'
+  artifacts:
+    paths:
+      - ./simWorkspace/FuncTestLowLatency/*.vcd
+    when: on_failure
+
+
+perf_test:
+  stage: test
+  tags:
+    - vivado
+  rules:
+    - if: '$CI_COMMIT_MESSAGE =~ /\[perf-test/i'
+  script:
+    - sbt ${SBT_OPTS} 'Test / runMain cpu.funcTest.PerfTest'
+
+
+# Below is used for generating Bitstream
+
+build_func_ip:
+  stage: init_vivado
+  tags:
+    - vivado
+  variables:
+    PROJECT_NAME: "mycpu"
+    XPR_PATH: "run_vivado/mycpu_prj1/${PROJECT_NAME}.xpr"
+  rules:
+    - if: '$CI_COMMIT_MESSAGE =~ /\[build/i'
+  script:
+    - export JOBS_NUMBER=18
+    - export AXI_RAM_COE_FILE="official/func_test/soft/func/obj/inst_ram.coe"
+    - export PLL_FREQ=$(echo $CI_COMMIT_MESSAGE | grep -Po "(?<=\[build)(.*?)([0-9])+(?=M)" | grep -Eo "[0-9]+")
+    - ${VIVADO} -mode tcl -source scripts/generate_ip.tcl ${FUNC_TEST_WORK_DIR}/${XPR_PATH}
+
+build_perf_ip:
+  stage: init_vivado
+  tags:
+    - vivado
+  variables:
+    PROJECT_NAME: "mycpu"
+    XPR_PATH: "run_vivado/mycpu_prj1/${PROJECT_NAME}.xpr"
+  rules:
+    - if: '$CI_COMMIT_MESSAGE =~ /\[build/i'
+  script:
+    - export JOBS_NUMBER=18
+    - export AXI_RAM_COE_FILE="official/perf_test/soft/perf_func/obj/allbench/axi_ram.coe"
+    - export PLL_FREQ=$(echo $CI_COMMIT_MESSAGE | grep -Po "(?<=\[build)(.*?)([0-9])+(?=M)" | grep -Eo "[0-9]+")
+    - ${VIVADO} -mode tcl -source scripts/generate_ip.tcl ${PERF_TEST_WORK_DIR}/${XPR_PATH}
+
+
+generate_func_bit_stream:
+  stage: bitstreams
+  tags:
+    - vivado
+  variables:
+    PROJECT_NAME: "mycpu"
+    XPR_PATH: "run_vivado/mycpu_prj1/${PROJECT_NAME}.xpr"
+  rules:
+    - if: '$CI_COMMIT_MESSAGE =~ /\[build/i'
+  script:
+    - export JOBS_NUMBER=18
+    - ${VIVADO} -mode tcl -source scripts/generate_bitstream.tcl ${FUNC_TEST_WORK_DIR}/${XPR_PATH}
+  artifacts:
+    paths:
+      - ${FUNC_TEST_WORK_DIR}/run_vivado/mycpu_prj1/mycpu.runs/impl_1/soc_axi_lite_top.bit
+      - ${FUNC_TEST_WORK_DIR}/run_vivado/mycpu_prj1/mycpu.runs/*/runme.log
+    when: always
+
+generate_perf_bit_stream:
+  stage: bitstreams
+  tags:
+    - vivado
+  variables:
+    PROJECT_NAME: "mycpu"
+    XPR_PATH: "run_vivado/mycpu_prj1/${PROJECT_NAME}.xpr"
+  rules:
+    - if: '$CI_COMMIT_MESSAGE =~ /\[build/i'
+  script:
+    - export JOBS_NUMBER=18
+    - ${VIVADO} -mode tcl -source scripts/generate_bitstream.tcl ${PERF_TEST_WORK_DIR}/${XPR_PATH}
+  artifacts:
+    paths:
+      - ${PERF_TEST_WORK_DIR}/run_vivado/mycpu_prj1/mycpu.runs/impl_1/soc_axi_lite_top.bit
+      - ${PERF_TEST_WORK_DIR}/run_vivado/mycpu_prj1/mycpu.runs/*/runme.log
+    when: always

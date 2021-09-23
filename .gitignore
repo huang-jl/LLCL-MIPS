@@ -1,0 +1,65 @@
+*.class
+*.log
+*.bak
+*.o
+*.a
+vivado.conf
+*.txt
+!golden_trace.txt
+
+# sbt specific
+.bsp/
+.cache/
+.history/
+.lib/
+dist/*
+target
+lib_managed/
+src_managed/
+project/boot/
+project/plugins/project/
+
+# Scala-IDE specific
+.scala_dependencies
+.worksheet
+
+.idea
+out
+
+# Eclipse
+bin/
+.classpath
+.project
+.settings
+.cache-main
+# VSCode
+.vscode/
+
+# Metals
+.metals/
+.bloop/
+project/project
+metals.sbt
+
+#User
+/*.vhd
+/*.v
+*.cf
+*.json
+*.vcd
+!tester/src/test/resources/*.vhd
+
+
+simWorkspace/
+tmp/
+null
+
+# Vivado
+*.hw/
+*.runs/
+*.sim/
+*.tmp/
+*.cache/
+*.Xil/
+*.jou
+*.ip_user_files/
